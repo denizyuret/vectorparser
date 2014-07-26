@@ -1,12 +1,24 @@
 2014-07-26  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* TODO:dbg: check to see if during multi-epoch we are using cpu!
-	compactify during multi epoch! run_multi_epoch.m figure out the
-	memory problem with k_train in run_embeddings!  We probably were
-	not using gpu in multi_epoch before and now it blows up around
-	186K sv.  So all speeds in run_multi_epoch are wrong, all nsv's
-	are wrong because of redundancy but the accuracy results should be
-	correct.
+	* k_perceptron_multi_train_gpu.m: check to see if during
+	multi-epoch we are using cpu!  compactify during multi epoch!
+	run_multi_epoch.m figure out the memory problem with k_train in
+	run_embeddings!  We probably were not using gpu in multi_epoch
+	before and now it blows up around 186K sv.  So all speeds in
+	run_multi_epoch are wrong, all nsv's are wrong because of
+	redundancy but the accuracy results should be correct.
+
+	OK, another matlab bug: if we have an SV matrix more than half the
+	size of gpu memory, we can't add anything to it, we can't change
+	it etc. etc. Everything I try (concat, subasgn etc.) ends up
+	trying to create a copy.  This is the third bug I found in matlab
+	(after max and skinny multiply problems), should send a bug
+	report.  (TODO).
+
+	After fixing the bug, multi-epoch became ten times faster and I
+	confirmed the same results for m1->m2 (at least up to the point
+	where batchsize was reduced to fit memory).  This, combined with
+	compactify should allow us to run one epoch in < 20 mins.
 
 2014-07-25  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -47,27 +59,35 @@
 	Elapsed time is 861.776661 seconds.
 	Same answer as below.
 
-	>> load m10 % --i10
+	>> load m10
 	>> m10c = compactify(m10)
 	>> trn1=loadCoNLL('embedded/conllWSJToken_wikipedia2MUNK-50/00/wsj_0001.dp');
 	>> newFeatureVectors;
 	>> [r10cd, m10cd] = trainparser_gpu(m10c, trn1, fv804);
 	Elapsed time is 27415.730252 seconds.
 	model	nsv	aer	time	gtrans	ptrans	phead	notes
-	m10cd	256065	2.84	27415	4.07	3.84	10.15	compactified, dynamic oracle
+	m10	536294	3.18	21252	3.40	3.76	 9.89	
+	m10c	204438	3.18	21252	3.40	3.76	 9.89	compactified
+	m10cd	256065	2.84	27415	4.07	3.84	10.15	dynamic oracle
+
+	++i10 >> [r10cd2, m10cd2] = trainparser_gpu(m10cd, trn1, fv804);
 
 	* model_sparsify.m: Added unique to sort(model.S): in multi-epoch
 	models, same index gets added multiple times.  Since we are not
 	shuffling they should still be correct.  For example m9 has 201060
 	unique SVs out of a 503651 total.  (TODO: take advantage of this
-	for multi-epoch training).  Running with m9 on ++i00.  In fact
+	for multi-epoch training).  Running with m9 on --i00.  In fact
 	with dynamic oracle things are even more confusing, the data we
 	see depends on the moves.  So either go to the S+X convention and
 	do not have SV, or (better) forget about keeping the original SV
 	and just pick randomly.
 
-	* run_embeddings.m: restarted again on ++b42 after solving the
-	issues below. Results:
+	time	iter	nsv	err_tr	err_te	maxdiff	note
+	0	0	503651	24373	2475	0	m9 (201060 uniq sv)
+	72721	754468	79425	28008	2535	3.37138e+06 m9 sparsified
+
+	* run_embeddings.m: restarted again on after solving the issues
+	below. Results:
 
 	Compare the following to m1 with 0.0401 (aer:6.48)
 	from conllWSJToken_wikipedia2MUNK-50:
@@ -82,7 +102,7 @@
 	conllWSJToken_hpca50scaled01: out of memory error?
 	score:0.0477044	conllWSJToken_huang-0.1 (aer:7.30)
 	conllWSJToken_manaal48: out of memory error?
-	
+	++b42: fixed memory errors, running...
 
 	* run_multi_epoch.m: When training the second epoch (starting
 	with 100K sv) the same relation does not hold, bigger batches are
@@ -94,7 +114,7 @@
 	model	nsv	aer	time	gtrans	ptrans	phead	notes
 	m_trn	101517		15841	3.78	4.25	11.02	old fulltrain+static model
 	m_trn01	251480		52817	3.89	3.94	10.15	old fulltrain+static+dynamic
-	m1	111431	6.48	321	4.01	4.47	11.75	one epoch batchsize=1250
+	m1	111431	6.47	321	4.01	4.47	11.75	one epoch batchsize=1250
 	m2	183901	5.94	6105	3.64	4.09	10.80	second epoch batchsize=1000
 	m3	245190	5.09	8781	3.50	3.99	10.37	third epoch batchsize=1000
 	m4	299268	4.58	11049	3.44	3.91	10.17	fourth epoch batchsize=1000
@@ -112,13 +132,15 @@
 	* RUNNING-featselect_gpu.m: ++b43 we can do feature selection with
 	the full data!  (using batchsize=500)
 
-	8.56	6.01	165880	424.36	n0,s0,s1
-	7.43	5.19	143744	389.52	n0,n1,s0,s1
-	6.14	4.52	123114	374.21	n0,n0l1,n1,s0,s1
-	5.63	4.15	113844	427.12	n0,n0l1,n1,s0,s0r1,s1
-	5.46	3.93	108832	416.48	n0,n0l1,n1,s0,s0r1,s1,s1r1l
-	5.27	3.82	104968	992.87	n0,n0l1,n1,s0,s0l1,s0r1,s1,s1r1l
-	5.13	3.76	104270	398.77	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l
+	3	8.56	6.01	165880	424.36	n0,s0,s1
+	4	7.43	5.19	143744	389.52	n0,(n1),s0,s1
+	5	6.14	4.52	123114	374.21	n0,(n0l1),n1,s0,s1
+	6	5.63	4.15	113844	427.12	n0,n0l1,n1,s0,(s0r1),s1
+	7	5.46	3.93	108832	416.48	n0,n0l1,n1,s0,s0r1,s1,(s1r1l)
+	8	5.27	3.82	104968	992.87	n0,n0l1,n1,s0,(s0l1),s0r1,s1,s1r1l
+	9	5.13	3.76	104270	398.77	n0,n0l1,n1,s0,s0l1,s0r1,(s0r1l),s1,s1r1l
+	10	5.09	3.71	102805	427.76	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l,(s2)
+	11	5.27	3.70	103133	430.94	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,(s1l1r),s1r1l,s2
 
 	Got interrupted.  To restart we need to reconstruct the cache from
 	textual output:
