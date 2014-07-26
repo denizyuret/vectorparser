@@ -1,0 +1,2133 @@
+2014-07-26  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* TODO:dbg: check to see if during multi-epoch we are using cpu!
+	compactify during multi epoch! run_multi_epoch.m figure out the
+	memory problem with k_train in run_embeddings!  We probably were
+	not using gpu in multi_epoch before and now it blows up around
+	186K sv.  So all speeds in run_multi_epoch are wrong, all nsv's
+	are wrong because of redundancy but the accuracy results should be
+	correct.
+
+2014-07-25  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* TODO:
+
+	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
+	-- Beam search parser: read paper.  read redshift.  minibatch?
+	-- we can start by writing a beam decoder to parse with existing models.  no training.
+	-- how often does the gold sequence have a total score better than greedy sequence?
+	
+	- Try ArcEager.  -- should be easy 1-epoch, needs code
+	-- need feature optimization again!
+	-- Nivre says it is important not to put the root on the left?
+
+	- rbf kernel with gpu?
+	-- Optimize and try rbf kernel calculation and fselect.
+
+	- experiment with different number encodings for distance and
+	children.
+	
+	- write matlab gpu tutorial on blog
+
+	- goldberg-nivre-2013: gives results for conll07 english using
+	greedy parsers.  training is 02-11 (half my size), look at where
+	the test data comes from (could be different domain). (TODO)
+
+
+	* trainparser_gpu.m: Adding the weight updates.  Appending a
+	single SV is 25ms regardless of which way we turn the matrix.
+	Unexpectedly overwriting to existing space takes about the same.
+	We'll leave it be for now.  However training would be much faster
+	if we could eliminate the redundancy in SVs caused by multi-epoch.
+	So I wrote compactify.m to eliminate redundant SV's and add their
+	weights.  Testing on before applying dynamic oracle.
+
+	>> m9c = compactify(m9)
+	>> trainparser_gpu(m9c, dev1, fv804)
+	Elapsed time is 861.776661 seconds.
+	Same answer as below.
+
+	>> load m10 % --i10
+	>> m10c = compactify(m10)
+	>> trn1=loadCoNLL('embedded/conllWSJToken_wikipedia2MUNK-50/00/wsj_0001.dp');
+	>> newFeatureVectors;
+	>> [r10cd, m10cd] = trainparser_gpu(m10c, trn1, fv804);
+	Elapsed time is 27415.730252 seconds.
+	model	nsv	aer	time	gtrans	ptrans	phead	notes
+	m10cd	256065	2.84	27415	4.07	3.84	10.15	compactified, dynamic oracle
+
+	* model_sparsify.m: Added unique to sort(model.S): in multi-epoch
+	models, same index gets added multiple times.  Since we are not
+	shuffling they should still be correct.  For example m9 has 201060
+	unique SVs out of a 503651 total.  (TODO: take advantage of this
+	for multi-epoch training).  Running with m9 on ++i00.  In fact
+	with dynamic oracle things are even more confusing, the data we
+	see depends on the moves.  So either go to the S+X convention and
+	do not have SV, or (better) forget about keeping the original SV
+	and just pick randomly.
+
+	* run_embeddings.m: restarted again on ++b42 after solving the
+	issues below. Results:
+
+	Compare the following to m1 with 0.0401 (aer:6.48)
+	from conllWSJToken_wikipedia2MUNK-50:
+	
+	score:0.042067	conllToken_rcv1UNK (aer:6.82)
+	score:0.0409643	conllToken_wikipedia2MUNK-25 (aer:6.56)
+	score:0.0401373	conllToken_wikipedia2MUNK-50 (aer:6.47)  -- this is m1
+	score:0.0596959	conllWSJToken_cw25 (aer:9.74)
+	score:0.0626732	conllWSJToken_cw25scaled (aer:10.27)
+	score:0.0516464	conllWSJToken_cw50scaled (aer:8.62)
+	score:0.0523769	conllWSJToken_hlbl50scaled (aer:8.78)
+	conllWSJToken_hpca50scaled01: out of memory error?
+	score:0.0477044	conllWSJToken_huang-0.1 (aer:7.30)
+	conllWSJToken_manaal48: out of memory error?
+	
+
+	* run_multi_epoch.m: When training the second epoch (starting
+	with 100K sv) the same relation does not hold, bigger batches are
+	faster.  The max speed is about 10x slower than the beginning.  It
+	takes 20-25 secs to do 10K.  So one epoch starting at 100K sv
+	should take about an hour or two.  Looking at multi-epoch static
+	oracle performance:
+
+	model	nsv	aer	time	gtrans	ptrans	phead	notes
+	m_trn	101517		15841	3.78	4.25	11.02	old fulltrain+static model
+	m_trn01	251480		52817	3.89	3.94	10.15	old fulltrain+static+dynamic
+	m1	111431	6.48	321	4.01	4.47	11.75	one epoch batchsize=1250
+	m2	183901	5.94	6105	3.64	4.09	10.80	second epoch batchsize=1000
+	m3	245190	5.09	8781	3.50	3.99	10.37	third epoch batchsize=1000
+	m4	299268	4.58	11049	3.44	3.91	10.17	fourth epoch batchsize=1000
+	m5	347577	4.21	12990	3.42	3.90	10.17	fifth epoch batchsize=1000
+	m6	391424	3.92	15004	3.42	3.89	10.13	sixth epoch batchsize=1000
+	m7	431962	3.69	16784	3.43	3.83	10.02	seventh epoch batchsize=1000
+	m8	469130	3.49	18120	3.42	3.82	10.00	
+	m9	503651	3.33	19897	3.41	3.79	 9.99   
+	m10	536294	3.18	21252	3.40	3.76	 9.89	
+	m11	566656	3.05	22599	3.39	3.75	 9.85	out of memory, compactify
+	m12	++b40
+	m13
+	model	nsv	aer	gtrans	ptrans	phead	time	notes
+
+	* RUNNING-featselect_gpu.m: ++b43 we can do feature selection with
+	the full data!  (using batchsize=500)
+
+	8.56	6.01	165880	424.36	n0,s0,s1
+	7.43	5.19	143744	389.52	n0,n1,s0,s1
+	6.14	4.52	123114	374.21	n0,n0l1,n1,s0,s1
+	5.63	4.15	113844	427.12	n0,n0l1,n1,s0,s0r1,s1
+	5.46	3.93	108832	416.48	n0,n0l1,n1,s0,s0r1,s1,s1r1l
+	5.27	3.82	104968	992.87	n0,n0l1,n1,s0,s0l1,s0r1,s1,s1r1l
+	5.13	3.76	104270	398.77	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l
+
+	Got interrupted.  To restart we need to reconstruct the cache from
+	textual output:
+
+	$ ./featselect-cache.pl ~/yunus/parser/logs/0724-ilac-2-1.log >	~/yunus/parser/logs/0724-ilac-2-1.cache
+	>> c0 = featselect_cache('logs/0724-ilac-2-1.cache');
+	>> save logs/0724-ilac-2-1.mat c0
+	>> [a,b,c] = featselect_gpu(trn_x, trn_y, dev_x, dev_y, 3, 'n0,s0,s1', c0);
+
+	
+	* trainparser_gpu.m: rewriting for both test/train. 
+	>> load m1
+	>> dev1=loadCoNLL('embedded/conllWSJToken_wikipedia2MUNK-50/01/wsj_0101.dp');
+	>> newFeatureVectors  % defines fv804
+	>> r1 = trainparser_gpu(m1, dev1, fv804, 0)
+	Elapsed time is 530.643937 seconds.
+	npct: 0.1175
+	xpct: 0.0447
+	wtot: 34681
+	werr: 3473
+	wpct: 0.0866
+
+	Nonpunct number is wrong, should be 35324.  OK, looked at the
+	difference, it is catching 351x$ (which is wrong), and the 292x`
+	character (which is right).  I guess eval.pl has a bug with the
+	backtick!  Looking at the P deprels like parser.py gets it mostly
+	right, except misses one comma, does not take % as punct (which
+	sounds right like $)  Anyway I fixed the code so it gives the same
+	nonpunct count as eval.pl for now.
+
+	>> r9 = trainparser_gpu(m9, dev1, fv804, 0)
+	Elapsed time is 2215.061447 seconds.
+	ntot: 40117
+	nerr: 4007
+	npct: 0.0999
+	xtot: 76834
+	xerr: 2917
+	xpct: 0.0380
+	wtot: 35324
+	werr: 3089
+	wpct: 0.0770 (92.3)
+
+	* DONE: 	
+	- Try smaller word vectors, type based word vectors, other embeddings.
+	oo Try /ai/home/vcirik/eParse/run/embedded/conllWSJToken_rcv1UNK50  -- should be easy 1-epoch
+	most parsers do better with it.  can do this without waiting for featselect...
+	oo or we can make featureindices part of ArcHybrid, that way code should work!
+	-- need to finish feature optimization and fix features before
+	experimenting with embeddings!
+	-- run_embeddings.m: Try all embeddings under
+	/mnt/ai/home/vcirik/eParse/run/embedded
+	problem is different sized embeddings have different indices so
+	idx804 does not work.  better wait until featselection is over and
+	use ArcHybrid that just produces the necessary features.
+
+	* archybrid.m,dumpfeatures2.m: temporary new versions to replace
+	the old when scripts finish.  need to keep these separate until
+	featselect etc. is updated.
+	
+	* features.m: new feature script.  verified the same output as old
+	features.  found a bug in old features (variable d overwritten),
+	which may have caused distances not being selected.  should try
+	again.  also should try different encoding of numbers.  however
+	new features.m twice as slow.  no obvious improvement.  presumably
+	shorter feature sets will be faster.  hardcoding features will
+	speed up future code.
+
+	>> newFeatureVectors % defines the usual features in new format
+	>> [dev1_x, dev1_y] = dumpfeatures2(dev1(1:100), fv804);
+	Elapsed time is 5.990231 seconds.
+	>> [dev_x, dev_y] = dumpfeatures(dev_w(1:100), dev_h(1:100));
+	Elapsed time is 7.681979 seconds.
+	>> dev_x2=dev_x(idx804,:);
+	>> all(dev_x2(:)==dev1_x(:)) => 1
+
+	Addressed the following, archybrid no longer has the sentence or
+	the features: -- make parser and features, embedding dim etc part
+	of model or vice versa.  think about software engineering.  conll
+	fields.  embeddings.  features.  arceager. forget dogma.
+
+	* loadCoNLL.m: modified to load the whole information.
+
+2014-07-24  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* DONE:
+	- make sure testparser is efficient.
+	-- convert into trainer (like primal case)
+	- try dynamic oracle / sparsification on top of multi-epoch.
+	-- we can do dynamic oracle by running the parser and collecting data
+	-- is running the parser faster?  try on small sets.  we need to speed up dyn oracle.
+	-- 38wps seems to be max
+	
+	* DONE:
+	- Need performance numbers excluding punctuation on section 23.
+	oo change loadCoNLL.m to load all fields and testparser to report punc and non-punc scores.
+	-- or testparser can output conll format to be fed into eval.pl.
+	-- wsj22 has 40117 tokens 35324 non-punc according to all versions of eval.pl.
+	-- Honnibal says: I then converted the gold-standard trees from WSJ 22, for the evaluation. Accuracy scores refer to unlabelled attachment score (i.e. the head index) of all non-punctuation tokens.
+	-- Nivre says: The numbers are excluding punctuation on the standard split (2-21, 23).
+	-- Husnu says: Asagidaki wordler icin parent prediction basarimi hesaba katilmiyor.
+	if (strcmp(w->postag, ",") != 0 && strcmp(w->postag, ":") != 0 && strcmp(w->postag, ".") != 0 && strcmp(w->postag, "``") != 0 && strcmp(w->postag, "''") != 0) 
+	-- eval.pl uses: scalar(Encode::decode_utf8($word)=~ /^\p{Punctuation}+$/).  wsj22 has 35324 non-punc.
+	-- parser.py uses: deplabel P or punct.  wsj22 has 4728 P, leaving 35389 non-punc.
+	
+	* DONE:
+	- bigger models suffer more from copying. pre-allocate in perceptron_train.
+	-- daume trick for beta2 in perceptron_train.
+	-- are we using singletons to train or not?
+	-- transpose cost anything in perceptron_train?
+
+	* DONE:
+	x gpu multiply how can it be so slow?  how can it improve our
+	other code?  (e.g. model_predict, sparsify etc)?
+	x New version of primal (with turan) should get same accuracy. it doesn't!
+	r0=trainparser_primal_12(dev_w(1:50),dev_h(1:50),idx708,w0,0);
+	% s=50 w=1175 we=0.4647 m=2250 me=0.1720 wps=10.20 Elapsed time is 115.170739 seconds.
+	r1=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w1,0);
+	% s=50 w=1175 we=0.4247 m=2250 me=0.1631 wps=14.33 Elapsed time is 82.015995 seconds.
+	x Also compare and confirm match of primal with dual model.
+	x Maybe some more feat optimization with dynamic oracle.
+	x Do a kernel x feature exhaustive experiment.
+	x Try second degree primal?
+	x Adding dep labels help?  Only .0007 according to ZN11.
+
+	* DONE:
+	x try other algorithms that do better in one epoch (pegasos, pa) after converting to minibatch. needs code.
+	-- Effect of learning algorithm: pegasos, pa etc. on perf, feats.
+	-- Could actually try on 5k before converting to minibatch.  running...
+	-- Figure out the right way to run pegasos, make it multiclass...
+	-- Figure out opt params for pa, make it gpu-minibatch...
+	-- Just try pa for one epoch: not impressed...
+
+	* multi-epoch:
+	>> m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
+	>> tic();m1=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m0);toc();
+	Elapsed time is 321.474055 seconds.
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m1, 1); toc();
+	Elapsed time is 26.001716 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0401  % avg model
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m1, 0); toc();
+	Elapsed time is 26.334112 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0482  % last model
+	>> save m1.mat m1
+	>> tic();m2=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m1);toc();
+	Elapsed time is 6105.521107 seconds.
+	>> save m2.mat m2
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m2, 1); toc();
+	Elapsed time is 44.278723 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0364
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m2, 0); toc();
+	Elapsed time is 42.569236 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0524
+	>> tic(); r1=testparser(m1, dev_w, dev_h, idx); toc();
+	Elapsed time is 2214.591667 seconds.
+	>> r1
+	ntot: 40117
+	nerr: 4715  (0.1175)
+	xtot: 76834
+	xerr: 3433  (0.0447)
+	>> tic(); r2=testparser(m2, dev_w, dev_h, idx); toc();
+	Elapsed time is 3468.987827 seconds.
+	>> r2
+	ntot: 40117
+	nerr: 4333  (0.1080)
+	xtot: 76834
+	xerr: 3142  (0.0409)
+	>> tic(); r3=testparser(m3, dev_w, dev_h, idx); toc();r3
+	Elapsed time is 4621.268330 seconds.
+	>> r3
+	ntot: 40117
+	nerr: 4161  (0.1037)
+	xtot: 76834
+	xerr: 3046  (0.0399)
+
+	
+	* testparser_gpu.m: Here is the wps for various things for a model
+	with 250K SV (model_trn01):
+
+	dumpfeatures: 313wps -- does not use a model, just gold parser moves
+	testparser: 12wps
+	testparser_par: 24wps
+	testparser_gpu: 8wps -- improved to 38wps by the end of this note
+	model_predict_gpu: 700wps -- advantage of minibatch processing
+
+	Dynamic oracle requires at least testparser cost.  Parallelization
+	is limited because the next state is determined by the last move.
+	If we keep the model fixed we could use kernel caching.  It would
+	be fast to cache gold contexts and moves.  Add new elements to
+	cache when we stray from gold path for future epochs.  But model
+	updated and cache useless before the next epoch.  Need a hash
+	table with several million context/score entries.  
+	
+	Is gpu useless even when SV matrix is large?  Maybe try dot
+	instead of mtimes?  Let's profile testparser_gpu.  Testing with
+	model_trn with SV:804x101517.
+
+	Is bsxfun better than mtimes for vector x matrix?  Not so, in fact
+	5x slower.
+
+	>> s=gpuArray(rand(804,100000));
+	>> x=gpuArray(rand(804,1));
+	>> str=s';
+	>> tic;for i=1:1000 k2=sum(bsxfun(@times,s,x));wait(gpuDevice);end; toc;
+	Elapsed time is 20.198047 seconds.
+	>> tic;for i=1:1000 k1=str*x;wait(gpuDevice);end; toc;
+	Elapsed time is 4.740397 seconds.
+	>> max(abs(k1(:)-k2(:)))
+	3.9790e-13
+
+	But both at least 5x faster than the cpu:
+	>> s=rand(804,100000);
+	>> x=rand(804,1);
+	>> str=s';
+	>> tic;for i=1:1000 k1=str*x;end; toc;
+	Elapsed time is 23.783135 seconds.
+	>> tic;for i=1:10 k2=sum(bsxfun(@times,s,x));end; toc;
+	Elapsed time is 3.486507 seconds.
+
+	How about the skinny beta * K_x operation?  It seems like the best
+	option is to use bsxfun+sum on the gpu.  Faster than mtimes or dot.
+
+	>> b=rand(3,100000);
+	>> c=b';
+	>> k=rand(100000,1);
+	>> bgpu=gpuArray(b);
+	>> cgpu=gpuArray(b);
+	>> kgpu=gpuArray(k);
+	>> tic;for i=1:10000 f1=b*k;end;toc
+	Elapsed time is 3.429669 seconds.
+	>> tic;for i=1:10000 f2=sum(bsxfun(@times,c,k));end;toc
+	Elapsed time is 24.121618 seconds.
+	>> max(abs(f1(:)-f2(:)))
+	1.9281e-10
+	>> tic;for i=1:10000 f1gpu=bgpu*kgpu;end;wait(gpuDevice);toc
+	Elapsed time is 84.003939 seconds.
+	>> max(abs(f1(:)-f1gpu(:)))
+	1.8190e-10
+	>> tic;for i=1:10000 f2gpu=sum(bsxfun(@times,cgpu,kgpu));end;wait(gpuDevice);toc
+	Elapsed time is 4.584367 seconds.
+	>> max(abs(f1(:)-f2gpu(:)))
+	1.8190e-10
+	>> tic;for i=1:10000 f1x=gather(bgpu)*gather(kgpu);end;toc
+	Elapsed time is 27.313679 seconds.
+	>> tic;for i=1:10000 for j=1:3 f1gpu(j)=dot(cgpu(:,j),kgpu);end;end;wait(gpuDevice);toc
+	Elapsed time is 10.073763 seconds.
+	>> max(abs(f1gpu(:)-f1(:)))
+	1.8554e-10
+
+	Applying the bsxfun trick to testparser_gpu makes a difference.
+	On dev(1:100), 2449 words, the speed goes from 8wps to 38wps.
+	Regular testparser is 12wps, parfor version with 12 workers is
+	24wps.  Can't use parfor and gpu together.  So 38wps is as fast as
+	it gets for dynamic-oracle or any problem where we have to
+	evaluate contexts one by one.  This is 25000 secs (7 hrs) for the
+	ptb (for a 250K SV model).
+
+	Before:
+	>> tic(); r=testparser_gpu(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
+	Elapsed time is 295.032944 seconds.
+
+	After:
+	>> tic(); r=testparser_gpu(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
+	Elapsed time is 64.945317 seconds.
+	>> tic(); r=testparser_par(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
+	Elapsed time is 129.508759 seconds.
+	>> tic(); r=testparser(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
+	Elapsed time is 290.181428 seconds.
+
+	
+	* k_pa_multi_train: run for one epoch unoptimized.
+	
+	>> m0=model_init(@compute_kernel,hp);
+	>> tic();m1pa=k_pa_multi_train(trn_x(idx,:),trn_y,m0);toc();
+	#1721 SV:16.33(281074)	AER: 5.01
+	Elapsed time is 87270.739688 seconds.
+
+	This is way too slow but comparable to m3 in terms of aer and nsv.
+	
+	PA models have sparse betas for some reason?
+	>> issparse(m1pa.beta2) => 1
+	>> m1pa.beta = full(m1pa.beta);	
+	>> m1pa.beta2 = full(m1pa.beta2);	
+	>> save m1pa.mat m1pa
+
+	It does not generalize as well as m2 (2 epochs of avg perceptron):
+	
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m1pa, 1); toc();
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0370  % for avg model, better than m1 but worse than m2
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m1pa, 1); toc();
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0470  % for last model
+
+	Conclusion: maybe worth trying to optimize parameters etc on a
+	smaller dataset but results are not promising.
+	
+
+
+2014-07-23  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run_idx708.m: try optimized feats for one epoch and compare to
+	idx804.  Does worse.  I guess we need to wait until full corpus
+	optimization is done.  --i00.
+	
+	idx804 = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
+	idx708=featureindices({'n0','n0l1','n0l2','n1','s0','s0r','s0r1','s0s1','s1'});
+	>> m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
+	>> tic();m1=k_perceptron_multi_train_gpu(trn_x(idx708,:),trn_y,m0);toc();
+	Elapsed time is 314.146673 seconds. SV:708x118690
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx708,:), m1, 1); toc();
+	Elapsed time is 26.159195 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0424  % avg model - compare to 0.0401 with idx804
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx708,:), m1, 0); toc();
+	Elapsed time is 26.030733 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0509  % last model - compare to 0.0482 with idx804
+	>> tic(); r1=testparser(m1, dev_w, dev_h, idx708); toc();
+	Elapsed time is 2074.158120 seconds.
+	>> r1
+	ntot: 40117
+	nerr: 4949  (0.1234) - compare to 0.1175 for idx804
+	xtot: 76834
+	xerr: 3585  (0.0467) - compare to 0.0447 for idx804
+
+
+	* parser.py: compare parser.py at one epoch.  OK, first parser.py
+	counts as punctuation any token with DEPREL=P and excludes them
+	from scoring, reporting 32025/35389 correct for wsj22 after 15
+	epochs of dynamic-oracle training.  It is difficult to compare
+	this with my results for multiple reasons: excluding punctuation
+	-- getting the parser_with_punct.py results with all 40117 tokens
+	now.  The way punct is excluded is nonstandard, eval.pl uses
+	characters in the word and gets 35324 non-punc tokens.  Dynamic
+	oracle means to ramp up is pretty slow during the first few epochs
+	(compare model00 with model5k).  The initial results are on the
+	training set and do not include weight averaging, only the final
+	result is comparable.  The initial results do not exclude
+	punctuation.  When punctuation is included the final result of
+	parser.py falls 1.5% to 88.9!  So our static parser is already way
+	ahead.
+
+	altay:parser[09:25:36(0)]$ make parser_py_model
+	awk '{if(NF==0){print $0}else{print $2, $4, $7-1, $8}}' wsj_0001.dp > parser_py_train
+	cut -f2,4 wsj_0101.dp | perl -pe 'if(/\S/){s/\t/\//;s/\n/ /;}' > parser_py_test
+	awk '{if(NF==0){print $0}else{print $2, $4, $7-1, $8}}' wsj_0101.dp > parser_py_gold
+	python parser.py parser_py_model parser_py_train parser_py_test parser_py_gold
+	0 0.758
+	1 0.816
+	2 0.836
+	3 0.849
+	4 0.860
+	5 0.874
+	6 0.880
+	7 0.886
+	8 0.891
+	9 0.894
+	10 0.896
+	11 0.900
+	12 0.902
+	13 0.904
+	14 0.906
+	Averaging weights
+	Saving model to parser.pickle
+	Parsing took 21271.548 ms
+	32025 35389 0.904942213682
+	altay:parser[12:34:46(11347)]$
+
+	balina:parser[18:52:08(0)]$ python parser_with_punct.py parser_py_model parser_py_train parser_py_test parser_py_gold
+	0 0.757
+	1 0.815
+	2 0.836
+	3 0.850
+	4 0.859
+	5 0.874
+	6 0.881
+	7 0.886
+	8 0.890
+	9 0.894
+	10 0.897
+	11 0.900
+	12 0.903
+	13 0.905
+	14 0.906
+	Averaging weights
+	Saving model to parser.pickle
+	Parsing took 21752.239 ms
+	35675 40117 0.889273873919
+	balina:parser[21:41:53(10163)]$ 	
+
+2014-07-22  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* k_perceptron_multi_train_gpu.m: To optimize featselect we need
+	to optimize train: look into mini-batch perceptron training so we
+	can use gpu: http://acl.cs.qc.edu/~lhuang/papers/minibatch.pdf
+	
+	Implementing minibatch training.  Kernel calculation takes 8.5ms
+	per 500 batch, 17us per instance.  This is 10x faster than
+	yesterdays results, because we are starting with an empty model,
+	yesterday we were experimenting with 100K sv.  Updates are done in
+	a 500 for loop which is expensive (2921ms).  Vectorized updates
+	reduce the whole operation (kernel plus update) to 27ms per 500
+	minibatch.  This means 20K instances/sec, 86 seconds for the whole
+	ptb?  Well it slows down as we collect more SV and one epoch takes
+	432 secs at a slight accuracy cost:
+
+	old:
+	>> model_trn = k_perceptron_multi_train(trn_x(idx,:), trn_y, model_trn);
+	#1720 SV: 5.90(101473)	AER: 5.90
+	Elapsed time is 15841.799743 seconds.
+        SV: [804x101517 double]
+        pred: [3x1720842 double]
+
+	new:
+	m=model_init(@compute_kernel,hp);m.batchsize=500; m.step=10;
+	tic();m=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m);toc();
+	#1720000 SV: 6.13(105351)	AER: 6.13	t=431.945
+
+	* done: Implemented beta2 ignoring age differences within one batch.
+
+	* done: Fastest batch size seems to be 1250.  Training with 100K:
+	batch	time
+	250	4.65
+	500	3.56
+	750	3.22
+	1000	3.18
+	1250	3.14
+	1500	3.18
+	1750	3.26
+	2000	3.36
+
+	* run_learners_5k.m: compare learners on 5k data.  I think I did
+	5k instances instead of 5k sentences.  Rerunning on 5k sentences.
+	SVM has an advantage that gets smaller as data gets larger and it
+	is too slow.  PA has an advantage on the first epoch but later
+	results show that second epoch of avg perceptron beats PA.
+
+	5k instance results
+	last	avg	nsv	time	algo
+	16.86	14.17	941	190.49	k_perceptron_multi_train
+	13.26	12.58	3201	260.74	k_pa_multi_train
+	16.86	14.17	941	186.68	k_projectron2_multi_train
+	0.00	11.26	2930	21.44	svmtrain
+	
+	5k sentence results
+	last	avg	nsv	time	algo
+	7.01	5.35	18164	1127.07	k_perceptron_multi_train
+	5.97	5.17	55428	2657.21	k_pa_multi_train
+	7.01	5.35	18145	30339.92 k_projectron2_multi_train
+	0.00	5.09	42035	108601.55	svmtrain
+
+	>> save m4svm.mat m4  % ilac-2-2
+
+	old 5k results for comparison
+	model	nsv	gtrans	ptrans	phead	time	notes
+	mo5k	17318	5.43	5.78	15.14	1939	one epoch static, from scratch
+	mo01	40502	5.56	5.36	14.13	6489	static+dynamic, from model5k
+	mo02	58979	5.74	5.31	13.79	10679	static+2*dynamic, from model01
+
+	* run_batchsize.m: look at differences in final performance as a
+	fn of batchsize.
+
+	batch	nsv	aer	time
+	1	101517	5.90	15481.80
+	100	102869	5.98	945.91
+	500	105390	6.12	401.66
+	1000	109144	6.34	335.52
+	1500	113888	6.61	325.42
+	2000	118131	6.86	336.41
+	2500	out-of-memory
+
+2014-07-21  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* trainparser_gpu.m: Profiling trainparser to find the ideal
+	minibatch size.  When computing kernels for single x's cpu and gpu
+	have the same speed (18ms for SV=804x101517).  The gpu advantage
+	comes out as we process multiple x's:
+
+	xcnt	cpuμs/x	gpuμs/x
+	1	16479	16606
+	10	4152	3549
+	100	2037	427
+	250		301
+	500		272
+	1000	1752	262
+	2500	1683	271
+
+	Seems like we hit max performance around 500 x's and memory
+	overflows at 2500 x's.  This should speed up static oracle
+	training 60x!  Make 500 decisions at once and compare with static
+	oracle, apply all updates together.  However dynamic oracle
+	requires making decisions sequentially so this won't help us...
+	Still, one ptb epoch in 5 mins makes multi-epoch experiments
+	easier.
+
+	* model_sparsify_profile.m: Profiling version.  margins is taking
+	most of the time, more than twice that of pred_tr update.
+	specifically the max(pred_tr) in margins.  It turns out gpu max
+	takes 134ms where cpu max on the same data takes 2.5ms.  MAX IS
+	EXTREMELY SLOW ON THE GPU.  So changing max(f) with max(gather(f))
+	makes the program roughly 2.5x as fast.  This should reduce full
+	ptb time from 9 hours to 3.6.
+
+	* model_sparsify_popt.m: Parameter optimization version.  The
+	errors are reported at 1000 SV.  Seems same point is (epsilon=0.1,
+	margin=1.0, eta=0.3) still efficient.
+
+	epsilon	margin	eta	time	iter	err_tr	err_te
+	0.1	1.0	0.3	1590	8392	138754	6827
+	0.2	1.0	0.3	1386	7310	138983	6970
+	0.05	1.0	0.3	1625	8580	144475	7328
+	0.1	2.0	0.3	1590	8392	138752	6827  ?? why so close
+	0.1	0.5	0.3	1590	8392	138752	6827  ?? why so close
+	0.1	1.0	0.6	898	4704	152362	7786
+	0.1	1.0	0.15	2816	14943	145843	7473
+
+2014-07-20  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* model_sparsify.m: New version uses singles and subsamples the
+	data to fit the gpu.  Running with trn_x(idx804,:) Subsampling
+	x_tr from 1720842 to 1411972 instances to fit in gpu.  It
+	eventually reaches a better point but with more time and more SV.
+	Should optimize the parameters on the big set.  Here are the
+	results in comparison with the earlier 433k training set results.
+	(model_sparsify_0718.log vs model_sparsify_0721.log) The 433K is
+	better up to 18000 SVs and about 3x faster (which is linear with
+	the size increase in the training set).  Starting parameter
+	optimization at 1000 SV experiment (model_sparsify_popt).
+
+	433K results			1.4M results
+	nsv	time	iter	err_tr	err_te	time	iter	err_tr	err_te
+	101517	0	0	13044	2740	0	0	47820	2740
+	1000	610	8368	36997	6464	1590	8392	138754	6827
+	2000	1178	16151	27445	4909	3068	16180	104949	5206
+	3000	1738	23831	23736	4250	4490	23660	92833	4616
+	4000	2260	30972	21570	3948	5876	30951	83229	4098
+	5000	2730	37405	20138	3733	7240	38118	78250	3913
+	6000	3202	43857	18654	3533	8490	44685	73853	3763
+	7000	3621	49586	17835	3452	9733	51209	71192	3656
+	8000	4017	54994	17249	3405	10940	57538	68933	3490
+	9000	4409	60333	16495	3303	12120	63723	66933	3454
+	10000	4766	65200	15888	3275	13256	69666	64980	3355
+	11000	5098	69724	15400	3228	14301	75133	63546	3324
+	12000	5406	73920	14930	3179	15303	80368	62171	3284
+	13000	5703	77945	14552	3138	16357	85883	61033	3264
+	14000	5969	81558	14169	3104	17321	90918	59697	3183
+	15000	6212	84843	13877	3100	18290	95978	58643	3136
+	16000	6432	87807	13601	3058	19215	100810	57913	3105
+	17000	6623	90380	13348	3042	20104	105449	57129	3066
+	18000	6794	92682	13192	3037	20946	109840	56270	3036
+	19000	6944	94680	13002	3044	21781	114189	55358	3008
+	20000	7075	96424	12885	3028	22579	118348	54607	3004
+	21000	7197	98028	12764	3018	23350	122359	54211	2957
+	22000	7311	99540	12686	3007	24076	126138	53686	2936
+	22340	7349	100038	12641	2998	
+	23000			(2.9%)	(4.1%)	24777	129780	53187	2944	
+	40614					32470	169251	48144	2808
+								(3.4%)	(3.9%)
+
+2014-07-19  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* model_sparsify.m: Look into sparsification with full data.
+	>> m0s=model_trn;
+	>> m0s.step=10;
+	>> idx804 = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
+	>> p=struct('average',1,'x_te',dev_x(idx,:),'y_te',dev_y,'eta',0.3,'epsilon',0.1,'margin',1.0);
+	% edit model_sparsify to turn off gpu completely...
+	>> m0sc = model_sparsify(m0s,trn_x(idx,:),trn_y,p);
+	% takes too long
+	% increase max_num_el to 1e10 (80GB)
+	% still takes too long
+	% try turning gpu back on but not pushing x_tr
+	% It becomes 2x slower than the cpu version!
+	% We have to keep x in gpu :(
+	% Or just use the cpu at one sv every 5 seconds!
+	% Use singles and automatically subsample x_tr.
+
+	* featselect.m: Now reading cache.
+	[bestf, besterr, cache] = featselect(x5k(:,10001:end),y5k(10001:end),x5k(:,1:10000),y5k(1:10000),3,'n0,s0,s1',featselect_03_5k)
+
+	* featselect-cache.m,featselect-cache.pl,featselect_03_5k.mat:
+	Convert text output to cache file.
+
+2014-07-18  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* timing: To get model_trn with static oracle from 950028 words we
+	spent 15841 seconds (60wps=4.4h/ptb) going from 0 to 100K SVs.
+	Dynamic training the next epoch, model_trn01, took 52817 secs
+	(18wps=14.7h/ptb) going from 100K to 250K SVs.  trainparser_primal
+	goes at a constant speed (13wps=20.3h/ptb).  In dual models, the
+	time cost of static and dynamic are roughly the same, the number
+	of SVs determine the runtime (see m5s-vs-m5d below).
+	Sparsification seems very fast (129wps=2h/ptb) but note that we
+	were not able to use the full trn (1720842 move instances) with
+	the gpu, we had to subsample.  parser.py finishes 15 epochs at 100
+	words/sec (i.e. goes at 1500 words/sec?)!
+
+	full trn experiments:
+	model		nsv	gtrans	ptrans	phead	time	notes
+	model_trn	101517	3.78	4.25	11.02	15841	fulltrain+static, from scratch
+	model_trn_sp	22340	4.13	4.59	11.92	7349	fulltrain+static+sparsify, from trn
+	model_trn01	251480	3.89	3.94	10.15	52817	fulltrain+static+dynamic, from trn
+	model_trn_sp01	186554	4.14	4.22	10.87	46844	fulltrain+static+sparsify+dynamic, from trn_sp
+
+	5k experiments:
+	model		nsv	gtrans	ptrans	phead	time	notes
+	model00		29187	9.21	6.78	17.56	?	one epoch dynamic, from scratch
+	model5k		17318	5.43	5.78	15.14	1939	one epoch static, from scratch
+	model01		40502	5.56	5.36	14.13	6489	static+dynamic, from model5k
+	model02		58979	5.74	5.31	13.79	10679	static+2*dynamic, from model01
+	m6		12555	5.34	5.72	15.04	9219	static+sparsify, from model5k
+	model03b	36073	5.47	5.46	14.18	5467	static+sparsify+dynamic, from m6
+	model04		13043	5.35	5.59	14.47	2157	static+sparsify+dynamic+sparsify, from model03b w/gpu?
+
+	* m5s-vs-m5d: m5s takes 593 secs on ilac-0-0 but gets dumpfeatures
+	for free which is 358 secs, m5d takes 1251 secs doing its own
+	feature extraction.  The small difference is due to the larger
+	number of SVs m5d accumulates (17318 vs 27954).
+
+	m0=model_init(@compute_kernel,hp);
+	tic(); m5s=k_perceptron_multi_train(x_tr,y_tr,m0); toc();
+	% Elapsed time is 592.851920 seconds.
+	tic();size(dumpfeatures(trn_w(210:5000),trn_h(210:5000)));toc();
+	% Elapsed time is 357.939658 seconds.
+	tic(); m5d = trainparser(m0, trn_w(210:5000), trn_h(210:5000), idx); toc();
+	% Elapsed time is 1251.707183 seconds.
+	
+	* naming: Better naming convention for models:
+	1. 'm' is the first char
+	2. [0-9]+ indicating the training set size in 1000 sentences
+	   use 0 to indicate the full ptb training set.
+	3. Followed by a sequence of letters indicating training steps:
+	   's' for static oracle (perceptron)
+	   'd' for dynamic oracle (trainparser)
+	   'c' for compression (sparsify)
+
+	* x5k: we got x5k from the first 5000 sentences of trn.  in the 5k
+	experiments we have been using the first 10k features as test and
+	the remaining 207603 as training set.  How many sentences does
+	this correspond to, so we can run corresponding experiments with
+	trainparser?  It turns out the answer is the 209 sentences give
+	the first 10013 instances.  So we can use trn_w(1:209) as test and
+	trn_w(210:5000) as train.
+	
+	* trainparser_primal.m: Now we can also do averaging at a cost of
+	25% speed.  At this speed 1 epoch of ptb (950028 words) will take
+	18 hours.  Testing on dev (40117 words) is 45 mins.
+
+	% This time with w2 calculation.
+	>> [w,w2]=trainparser_primal(trn_w(1:10),trn_h(1:10),idx708);
+	% s=10 w=189 wps=14.6609 Elapsed time is 12.891465 seconds.
+
+	% Run old/new versions on (1:50) to confirm:
+	[w1,w1b]=trainparser_primal(trn_w(1:50),trn_h(1:50),idx708);
+	% s=50 w=1259 wps=13.2452 Elapsed time is 95.053105 seconds.
+	[w0,w0b]=trainparser_primal_12(trn_w(1:50),trn_h(1:50),idx708);
+	% 50 Elapsed time is 136.959744 seconds.  w0b empty.
+	
+	% Averaged version should get better accuracy.
+	r1b=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w1b,0);
+	% s=50 w=1175 we=0.4085 m=2250 me=0.1551 wps=14.32 Elapsed time is 82.079185 seconds.
+	
+	% Check the averaging calculation by comparing with slow version.
+	[nv,v,v2,v2b]=trainparser_primal(trn_w(1:50),trn_h(1:50),idx708);
+	% s=50 w=1259 we=0.4845 m=2418 me=0.1729 wps=8.04 Elapsed time is 156.651738 seconds.
+	all(w1(:)==v(:)) => 1
+	all(w1b(:)==v2(:)) => 1
+	all(v2(:)==v2b(:)) => 0
+	max(abs(v2(:)-v2b(:))) => 0.0029  % we have rounding errors
+	% Daume's trick could be numerically less stable :(
+
+	% Try adding 1 as x0.  Definitely improves the averaged results.
+	[n2,w2,w2b]=trainparser_primal(trn_w(1:50),trn_h(1:50),idx708);
+	% s=50 w=1259 we=0.4599 m=2418 me=0.1625 wps=12.12 Elapsed time is 103.896044 seconds.
+	% n2.f=709 -- used to be 708
+	r2=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w2,0);
+	% s=50 w=1175 we=0.4409 m=2250 me=0.1733 wps=14.26 Elapsed time is 82.371071 seconds.
+	% compare to r1 we=0.4247 me=0.1631
+	% compare to r0 we=0.4647 me=0.1720
+	r2b=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w2b,0);
+	% s=50 w=1175 we=0.3651 m=2250 me=0.1378 wps=14.28 Elapsed time is 82.311780 seconds.
+	% compare to r1b we=0.4085 me=0.1551
+	
+	% How slow is the non-gpu version?
+	[n3,w3,w3b]=trainparser_primal_nogpu(trn_w(1:50),trn_h(1:50),idx708);
+	% s=11 w=222 we=0.5811 m=422 me=0.1848 wps=0.56 Elapsed time is 396.590939 seconds.
+	% compare to n2 with wps=12.12 about 20x faster
+	
+	% BAD IDEA: is this good for learning?  try moving after max and
+	% learn from guessing impossible moves.
+	% scores(cost == inf) = -inf;
+	% [maxscore, move] = max(scores);
+	[n2,w2,w2b]=trainparser_primal(trn_w(1:50),trn_h(1:50),idx708);
+	% s=50 w=1259 we=0.4599 m=2418 me=0.1625 wps=12.12 Elapsed time is 103.896044 seconds.
+	r2b=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w2b,0);
+	% s=50 w=1175 we=0.3651 m=2250 me=0.1378 wps=14.28 Elapsed time is 82.311780 seconds.
+	% Now after the mod:
+	[n4,w4,w4b]=trainparser_primal(trn_w(1:50),trn_h(1:50),idx708);
+	% s=50 w=1259 we=0.4821 m=2418 me=0.2047 wps=13.34 t=94.41
+	r4b=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w4b,0);
+	% s=50 w=1175 we=0.3736 m=2250 me=0.1516 wps=16.79 t=69.98
+	
+	* turan.m: Sule suggested Turan's theorem to construct the filter
+	matrix.  This reduces the redundancy in the matrix representation
+	of triples, halves memory use and doubles the speed:
+
+	>> [w,w2]=trainparser_primal(trn_w(1:10),trn_h(1:10),idx708);
+	Training in 8.89744e+07 dims...
+	% Used to be Training in 1.77698e+08 dims...
+	Sentences=10 Words=189 Words/Sec=17.4957
+	Elapsed time is 10.802716 seconds.
+	% Used to be 20.96 seconds with wps=9.
+	
+	* model_trn_sparse01.mat: fulltrn-static+sparsify+dynamic.
+	#3541 SV: 5.27(186537)	AER: 7.50
+	Elapsed time is 46844.421232 seconds.
+
+	* trainparser_primal.m: Test training with primal vectors for
+	efficiency.  It does 7.5 wps, which would finish PTB in 35 hours.
+	Compared to dual models it is not very good.  Also gpu memory is
+	limited and can only handle 788 dims (at least until I can figure
+	out how to reduce dims to n(n+1)(n+2)/6.)
+
+	>> [w,w2]=trainparser_primal(trn_w(1:10),trn_h(1:10),idx708);
+	Training in 1.77698e+08 dims...
+	Sentences=10 Words=189 Words/Sec=9.01343
+	Elapsed time is 20.968780 seconds.
+	>> size(model_trn01.SV)
+         804      251480
+	>> tic();m=trainparser_gpu(model_trn01,trn_w(1:10),trn_h(1:10),idx);toc();
+	Elapsed time is 28.091093 seconds.
+	>> tic();m=trainparser(model_trn01,trn_w(1:10),trn_h(1:10),idx);toc();
+	Elapsed time is 16.848159 seconds.
+	
+	- ok not working again.  i give up.  either singles causing cuda
+	failure.  or multiply not working.  this is all messed up.  fixed
+	when I sprinkled some wait(gpuDevice) in the code.
+
+	>> [w,w2]=trainparser_primal(trn_w,trn_h,idx708);
+	Sentences=39832 Words=950028 Words/Sec=9.4902
+	Elapsed time is 100106.226213 seconds.
+	M-x write-region trainparser_primal_0719.log
+	save trainparser_primal_0719.mat w w2
+	This is the first version of trainparser_primal,
+	i.e. unnecessarily large w, no w2, no 1 added...
+
+	* profile: Use matlab profiler (e.g. on dumpfeatures).
+	>> profile on -history
+	>> [n2p,w2p,w2bp]=trainparser_primal(trn_w(1:50),trn_h(1:50),idx708);
+	>> p=profile('info');
+	>> profsave(p,'primal-profile');
+	Saves nice html file.
+	But was useless with GPU code.
+	
+2014-07-17  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* q: gpu instability caused by singles?  no we just need a bunch of wait(gpuDevice)
+	
+	* gpu: weird shit is happening.  gpu takes 15 secs to multiply.
+	what am i doing wrong?  I think applying matrix multiply for dot
+	product is the cause.  MATRIX MULTIPLY IS NOT GOOD FOR SKINNY
+	MATRICES ON GPU! Should use 'dot'.
+	http://blog.theincredibleholk.org/blog/2012/12/10/optimizing-dot-product/
+
+	* gpu: This is out of control:
+	
+	>> a=gpuArray(rand(1,1e8));
+	>> b=gpuArray(rand(1,1e8));
+	>> tic();c=sum(b.*a);disp(c);toc();
+	   2.5000e+07
+	Elapsed time is 0.025064 seconds.
+	>> tic();c=b*a';disp(c);toc();
+	   2.5000e+07
+	Elapsed time is 7.178565 seconds.
+
+
+2014-07-16  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* poly3basis.c (mexFunction): 0.29 secs to generate one poly 3
+	basis vector from a 804 dimensional original vector.  The
+	resulting vector size is n(n+1)(n+2)/6 = 86943220 (695MB).  Dot
+	product is negligible.  model_trn takes about the same amount of
+	time to do kernels with 100K SV for 100 x vectors.
+
+	GPU does it 7 times faster:
+	>> x1 = gpuArray(rand(804,1));
+	>> xi = gpuArray(triu(true(804,804)));
+	>> tic();for i=1:1000 x2=x1*x1';x3=x2(xi)*x1';end; toc();
+	Elapsed time is 40.811311 seconds.
+
+	If I could find a better xi filter it could be even faster and
+	more memory efficient.  The array indexing operation does not seem
+	to slow it down:
+
+	n=500;
+	x1=gpuArray(rand(n,1));
+	xi=gpuArray(triu(true(n,n)));
+	x2=x1*x1';
+	size(x2(:))  250000           1
+	size(x2(xi)) 125250           1
+	tic();for i=1:1000 x2=x1*x1';x3=x2(:)*x1';end; toc();
+	% Elapsed time is 14.054163 seconds.
+	tic();for i=1:1000 x2=x1*x1';x3=x2(xi)*x1';end; toc();
+	% Elapsed time is 8.054333 seconds.
+
+	Does the speed have to do with the shape of xi?  No...
+
+	>> xi=false(n,n);
+	>> xi(round(rand(175000,1)*n*n))=true;
+	>> sum(xi(:))
+	125848
+	>> xi=gpuArray(xi);
+	>> x1=gpuArray(rand(n,1));
+	>> tic();for i=1:1000 x2=x1*x1';x3=x2(xi)*x1';end; toc();
+	Elapsed time is 7.933409 seconds.
+
+	Working with single's to save memory the gpuDevice crashes.
+	Unless I use wait(gpuDevice).  Does that slow us down?  No.
+
+	>> tic();for i=1:1000 wait(gpuDevice);x2=x1*x1';x3=x2(xi)*x1';end; toc();
+	Elapsed time is 8.042499 seconds.
+	>> x1=gpuArray(rand(n,1,'single'));
+	>> tic();for i=1:1000 wait(gpuDevice);x2=x1*x1';x3=x2(xi)*x1';end; toc();
+	Elapsed time is 6.866563 seconds.
+
+	We can now do the full triple product with 804 dimensions, but no need:
+	
+	>> tic();for i=1:1000 wait(gpuDevice);x2=x1*x1';x3=x2(:)*x1';end; toc();
+	Elapsed time is 60.887271 seconds.
+	>> tic();for i=1:1000 wait(gpuDevice);x2=x1*x1';x3=x2(xi)*x1';end; toc();
+	Elapsed time is 27.982342 seconds.
+
+	The operations with singles are still a bit unstable.  Getting GPU
+	errors half the time.  If I can find a smaller xi, it would be
+	more memory efficient and possibly faster.
+	
+	* model_trn_sparse: Optimize model_sparsify and try on model03,
+	model_trn, model_trn01.  GPU memory is not sufficient to handle
+	the full problem.  We have to subsample the training data.
+
+	load dumpfeatures
+	load model_trn
+	pick = false(1,size(trn_x,2));
+	pick(model_trn.S)=true;
+	pick(round(rand(1,500000)*size(trn_x,2)))=true;
+	sum(pick)
+	% 433500
+	x_tr500k = trn_x(idx,pick);
+	y_tr500k = trn_y(pick);
+	model_trn_sparse = model_sparsify(model_trn, x_tr500k, y_tr500k, struct('x_te',dev_x(idx,:),'y_te',dev_y,'eta',0.3,'epsilon',0.1,'margin',1.0));
+	
+	time	iter	nsv	err_tr	err_te	maxdiff
+	0	0	101517	13044	2740	0
+	7349	100038	22340	12641	2998	2.329387e+08
+
+	save model_trn_sparse.mat model_trn_sparse
+	>> model_trn_sparse
+	SV: [804x22340 double]    %% compare with 101517 of model_trn
+        pred: [3x1720842 double]
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), model_trn_sparse, 1); toc();
+	Elapsed time is 8.466255 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0413   %% compare to 0.0378 of model_trn
+	>> tic(); r=testparser(model_trn_sparse, dev_w, dev_h, idx); toc();
+	Elapsed time is 560.445457 seconds.
+	>> r
+	ntot: 40117
+	nerr: 4782  (0.1192)
+	xtot: 76834
+	xerr: 3526  (0.0459)
+	
+	* featselect.m: Implemented the SFFS algorithm with backtrack.
+	From Guyon's feature selection book pp.149.  TODO: exit when no
+	more improvement?
+
+	* featselect: do 5k featselect for order6 kernel.  Below is the
+	top two for each size, and comparison with order3.   It looks like
+	order3 has the advantage after the third feature.
+
+	nfeat	last	avg6	avg3	best3	nsv	time	feats
+	2	15.06	11.68	12.27	12.27	30848	289.06	n0,s0
+	2	19.19	14.82	14.57	12.27	39803	398.05	n0,s1
+	3	10.59	8.36	8.75	8.75	23186	317.80	n0,s0,s1
+	3	14.56	11.14	?	8.75	28960	273.85	n0,s0,s0r1r
+	4	9.69	7.83	7.74	7.64	21493	300.65	n0,s0,s0r1r,s1
+	4	10.86	7.88	8.49	7.64	22723	298.05	n0,n0l2-,s0,s1
+	4	9.34	7.88	7.64	7.64	20588	363.11	n0,n0l1,s0,s1
+	5	9.66	7.53	?	7.08	21326	392.55	n0,s0,s0r1r,s1,s1r2
+	5	9.91	7.53	?	7.08	21063	286.53	n0,n0l2-,s0,s0r1r,s1
+	5	9.60	7.58	?	7.08	21106	296.12	n0,s0,s0r1r,s1,s1+
+	6	9.67	7.22	?	6.63	21248	287.42	n0,n0l2-,s0,s0r1r,s0r2r,s1
+	6	8.95	7.27	?	6.63	19466	347.79	n0,n0l2-,n1,s0,s0r1r,s1
+	6	9.76	7.27	?	6.63	21292	291.94	n0,n0+,n0l2-,s0,s0r1r,s1
+	6	9.76	7.27	?	6.63	21292	297.71	n0,n0l2-,s0,s0+,s0r1r,s1
+	6	9.76	7.27	?	6.63	21292	301.43	n0,n0l2-,n0r,s0,s0r1r,s1
+
+	* dogma/model_sparsify.m: Added gpu support.  Unfortunately gives
+	only 50% speedup.  GPU is detected and used automatically if
+	present.  Here is re-optimization with new beta scaling.  The
+	ideal settings in the new version are:
+
+	eta=0.3
+	epsilon=0.1
+	margin=1.0
+
+	>> model_sparsify(model5k, x_tr, y_tr, struct('x_te',x_te,'y_te',y_te,'eta',0.5,'epsilon',0.1,'margin',1));
+	Scaled epsilon = 1.92221e+07, margin = 1.92221e+08
+	Scaled eta = 64858.8 (used to be 37984.1)
+
+	time	iter	nsv	err_tr	err_te	notes(eta/epsilon/margin)
+	0	0	17318	275	618	(original model)
+	1199	5761	1000	17968	919	(old best 0.5/0.1/1.0)
+	197	5728	1000	17639	912	(new best 0.3/0.1/1.0)
+	186	5390	1000	17729	912	(0.3/0.15/1.0)
+	227	6609	1000	17705	925	(0.25/0.1/1.0)
+	173	5021	1000	17578	940	(0.35/0.1/1.0)
+	207	6025	1000	17640	966	(0.3/0.05/1.0)
+	177	5138	1000	17997	978	(0.3/0.1/0.75)
+	276	8043	1000	18161	989	(0.2/0.1/1.0)
+	176	5122	1000	17739	994	(0.3/0.2/1.0)
+	212	6168	1000	18874	994	(0.3/0.1/1.5)
+	132	3833	1000	18622	1029	(0.5/0.1/1.0)
+
+2014-07-15  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* dogma/model_sparsify.m: The output beta needs to be scaled.
+	If we approximate beta2, then use it as beta, new training data
+	cannot make a dent.  Norm^2 of beta is nsv if binary problem, 2*nsv
+	if multiclass problem.  Other learning algorithms may have
+	different scaling.  So we will just copy the norm from the old
+	beta at the same number of sv.
+
+2014-07-14  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* testparser_par.m: parfor version.
+	- schd = findResource('scheduler', 'configuration', 'local')
+	gives ClusterSize=12.  Should be higher.
+	- new version parpool, old version matlabpool to start pool before
+	using parfor.
+	- says findResource is deprecated, use parcluster.
+	- parfor copies everything.  To speed up need shared memory.
+	Found at http://www.mathworks.com/matlabcentral/fileexchange/28572-sharedmatrix
+	- labindex and numlabs show the id and number of threads inside an
+	spmd block but not a parfor block.  for parfor getCurrentTask()
+	works.
+	- matlab prior to 2014 allows up to 12 workers which is what these
+	results are based on:
+	- does not work well on altay/balina as opposed to biyofiz.
+	matlab version possible difference.
+
+	>> tic(); r=testparser(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
+	Elapsed time is 202.581656 seconds.
+	>> tic(); r=testparser_gpu(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
+	Elapsed time is 295.032944 seconds.
+	>> tic(); r=testparser_par(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
+	Elapsed time is 102.460237 seconds.
+
+	* testparser_gpu.m: GPU does not give much improvement in
+	testparser, which needs to go sequential.  Maybe parfor is better?
+
+	>> tic(); r=testparser_gpu(model_trn01, dev_w(1:30), dev_h(1:30), idx); toc();
+	Loading model on GPU.
+	Elapsed time is 3.647802 seconds.
+	Processing sentences...
+	Elapsed time is 52.543305 seconds.
+	Elapsed time is 52.546265 seconds.
+	>> tic(); r=testparser(model_trn01, dev_w(1:30), dev_h(1:30), idx); toc();
+	Elapsed time is 61.559950 seconds.
+
+	* dogma/model_predict_gpu.m: GPU optimized version of
+	model_predict.m.  About 6x faster:
+
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), model_trn, 1); toc();
+	tic(); [a,b]=model_predict_gpu(dev_x(idx,:), model_trn, 1); toc();
+	Gpu mem: 4.90497e+09, will use max 6.12508e+08 doubles.
+	svtr:101517x804 beta:3x101517 margins:3x72551 numel*8:6.57135e+08 free:4.24764e+09
+	Processing 28 chunks of ksize:101517x2601 (numel*8:2.11237e+09).
+	Elapsed time is 22.509422 seconds.
+	>> tic(); [a2,b2]=model_predict(dev_x(idx,:), model_trn, 1); toc();
+	tic(); [a2,b2]=model_predict(dev_x(idx,:), model_trn, 1); toc();
+	Elapsed time is 149.088427 seconds.
+
+	* startup: To startup a gpu machine for the experiment above:
+	dyuret@yunus:~[0]$ ssh biyofiz-4-2
+	-bash-3.2$ /mnt/kufs/progs/matlab/R2013a/bin/matlab
+	cd parser
+	path('dogma',path);
+	load conllWSJToken_wikipedia2MUNK-50.mat
+	load model_trn.mat
+	load model_trn01.mat
+	idx = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
+	load dumpfeatures.mat
+
+2014-07-13  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* GPU: matlab and gpu: gpuArray, arrayfun.  nvidia-smi for info gives
+	Tesla K20m with 4799MB memory.  Web search says 2496 cores, >1 TFlop,
+	706MHz clock.  Try some operations with gpuArray.  Maybe model.beta2
+	can be a gpuArray.  Do some profiling and speed tests.  In matlab
+	gpuDevice and gpuDeviceCount give information about the GPU
+	hardware.  Use class and classUnderlying to find out about
+	variable types.
+
+	The advantage is not too big for loop operations:
+	>> a=rand(1000,100000);
+	>> b=rand(1000,1);
+	>> tic();for i=1:1000 c=a'*b;end;toc();
+	Elapsed time is 19.321784 seconds.
+	>> aa=gpuArray(a);
+	>> bb=gpuArray(b);
+	>> tic();for i=1:1000 cc=aa'*bb;end;toc();
+	Elapsed time is 12.098012 seconds.
+
+	But it is huge for single operations:
+	>> a=rand(2e4,1e3);
+	>> b=rand(1e3,2e4);
+	>> tic(); c=a*b; toc();
+	Elapsed time is 4.911055 seconds.
+
+	>> aa=gpuArray(a);
+	>> bb=gpuArray(b);
+	>> tic();cc=aa*bb;toc();
+	Elapsed time is 0.015769 seconds.
+
+	GPU memory is 4.8e9 bytes, i.e. 6e8 doubles.  When exceeded we get:
+	Out of memory on device. To view more detail about available memory on the GPU,
+	use 'gpuDevice()'. If the problem persists, reset the GPU by calling
+	'gpuDevice(1)'.
+
+	More realistic example of our kernel calculation:
+	>> a=rand(1e5,1e3);
+	>> b=rand(1e3,2.5e3);  % the biggest size gpu can handle
+	>> tic();c=(a*b+1).^3;toc();
+	Elapsed time is 5.796152 seconds.
+	>> aa=gpuArray(a);bb=gpuArray(b);
+	>> tic();cc=(aa*bb+1).^3;toc();
+	Elapsed time is 0.671553 seconds.
+
+	arrayfun and bsxfun serve the function of map with one and two
+	elements, respectively.  But memory needs to be sufficient to keep
+	intermediate values.
+
+	We should be able to improve model_predict and model_sparsify
+	ten-fold.  Maybe some other day... (done) Training will be harder to
+	improve unless we can organize it in mini-batches.
+
+	* featselect-5k.log: do feature selection for the 5k dataset with
+	poly3 kernel.  avg2 gives the second best score.  Results similar to
+	1k.
+
+	nfeat	last	avg		avg2		nsv	time	feats
+	2	16.74	12.27(n0,s0)	14.57(n0,s1)	32924	173.68	n0,s0
+	3	11.84	8.75(s1)	11.23(n0l1)	24319	183.60	n0,s0,s1
+	4	10.64	7.64(n0l1)	7.68(s0r1)	21430	176.57	n0,n0l1,s0,s1
+	5	10.49	7.15(s0r)	7.18(s1r1r)	21127	187.71	n0,n0l1,s0,s0r,s1
+xx	5	9.08	7.08(s0r1+n1)			19979	251.18	n0,n1,s0,s0r1,s1
+	6	9.07	6.70(n1)	7.04(n0l1r)	19017	204.83	n0,n0l1,n1,s0,s0r,s1
+xx	6	8.72	6.63(-s0r+s0r1)			18609	270.89	n0,n0l1,n1,s0,s0r1,s1
+	7	8.38	6.35(s0r1)	6.45(s0l2+,s0s1)18800	258.10	n0,n0l1,n1,s0,s0r,s0r1,s1
+xx	7	8.94	6.34(-s0r+s1r2r)6.38(-s0r+s1r1+)18349	265.81	n0,n0l1,n1,s0,s0r1,s1,s1r2r	
+	8	8.60	6.20(s0l1)	6.22(s1r1l,s0s1)17879	300.95	n0,n0l1,n1,s0,s0l1,s0r,s0r1,s1
+xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
+	9	8.05	5.99(n0l2)	6.16(s1r2r)	17736	298.63	n0,n0l1,n0l2,n1,s0,s0r,s0r1,s0s1,s1
+
+	* idx708.mat: idx708=featureindices({'n0','n0l1','n0l2','n1','s0','s0r','s0r1','s0s1','s1'});
+	
+	* model_trn.mat:
+	>> path('dogma',path);
+	>> load dumpfeatures.mat
+	>> idx = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
+	>> hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3)
+	>> model_trn = model_init(@compute_kernel, hp);
+	>> model_trn = k_perceptron_multi_train(trn_x(idx,:), trn_y, model_trn);
+	#1720 SV: 5.90(101473)	AER: 5.90
+	Elapsed time is 15841.799743 seconds.
+        SV: [804x101517 double]
+        pred: [3x1720842 double]
+	>> tic(); [a,b]=model_predict(dev_x(idx,:), model_trn, 1); toc();
+	Elapsed time is 151.497801 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0378
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), model_trn, 0); toc();
+	Elapsed time is 22.676895 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0527
+	>> tic(); r=testparser(model_trn, dev_w, dev_h, idx); toc();
+	Elapsed time is 1408.589679 seconds.
+	ntot: 40117
+	nerr: 4422  (0.1102)
+	xtot: 76834
+	xerr: 3263  (0.0425)
+	>> tic(); model_trn01 = trainparser(model_trn, trn_w, trn_h, idx); toc();
+	Elapsed time is 52817.115166 seconds.
+	>> model_trn01
+        SV: [804x251480 double]
+        pred: [3x3541234 double]
+	>> tic(); [a,b]=model_predict(dev_x(idx,:), model_trn01, 1); toc();
+	Elapsed time is 393.421166 seconds.
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), model_trn01, 1); toc();
+	Elapsed time is 56.210434 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0389
+	>> tic(); r=testparser_par(model_trn01, dev_w, dev_h, idx); toc();
+	Elapsed time is 1610.735364 seconds.
+	>> r
+	ntot: 40117
+	nerr: 4072  (0.1015)
+	xtot: 76834
+	xerr: 3029  (0.0394)
+
+	* trainparser.m: Next train using dynamic oracle to fine tune.  Use
+	trn_w and trn_h (1:5000) to train, dev_w and dev_h to test.  gtrans
+	is the error rate on gold transitions (static oracle), ptrans is the
+	error rate during parsing (dynamic oracle), phead is the UAS.
+
+	- model00: starting from scratch and training for one epoch with
+	dynamic oracle we get parser transition error of 6.78, gold-path
+	transition error of 9.21, head error of 17.56,
+
+	>> path('dogma', path);
+	>> load conllWSJToken_wikipedia2MUNK-50.mat
+	>> hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3)
+	>> idx = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
+	>> model00 = model_init(@compute_kernel,hp);
+	>> model00.n_cla = 3;
+	>> model00 = trainparser(model00, trn_w(1:5000), trn_h(1:5000), idx)
+	#230 SV:12.69(29177)	AER:12.69
+	SV: [804x29187 double]
+	pred: [3x230120 double]
+	>> [dev_x,dev_y]=dumpfeatures(dev_w,dev_h);
+	Elapsed time is 114.633561 seconds.
+	dev_x           1768x72551             1026161344  double
+	dev_y              1x72551                 580408  double
+	>> [a,b]=model_predict(dev_x(idx,:), model00, 1);
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0921
+	>> tic(); r=testparser(model00, dev_w, dev_h, idx); toc();
+	Elapsed time is 2098.151274 seconds.
+	ntot: 40117 (0.1756)
+	nerr: 7044
+	xtot: 76834
+	xerr: 5210  (0.0678)
+
+	- model01: starting from static x5k model and train one epoch with
+	dynamic oracle.  The static model has gold transition error of 5.43,
+	parser transition error of 5.78, and head error of 15.14.  After one
+	epoch of dynamic oracle training we have gold: 5.56, ptrans:5.36,
+	head:14.13.
+
+	>> load dump5000-model.mat
+	model         1x1                 120667128  struct
+	SV: [804x17318 double]
+        pred: [3x207603 double]
+	>> model.step = 1000;
+	>> tic(); [a,b]=model_predict(dev_x(idx,:), model, 1); toc();
+	Elapsed time is 58.129140 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0543
+	>> tic(); r = testparser(model, dev_w, dev_h, idx); toc();
+	Elapsed time is 336.569856 seconds.
+	>> tic(); r2 = testparser_par(model, dev_w, dev_h, idx); toc();
+	Elapsed time is 103.098387 seconds.
+	ntot=40117 % number of words
+	nerr=6072 (0.1514) % number of wrong heads
+	xtot=76834 % number of parser transitions
+	xerr=4443 (0.0578) % number of suboptimal transitions
+	% Note the original model was not trained on 1:5000, it used the
+	% first 10k transitions as test
+	>> tic(); model01 = trainparser(model, trn_w(1:5000), trn_h(1:5000), idx); toc();
+	Elapsed time is 6489.773220 seconds.
+        SV: [804x40502 double]
+        pred: [3x437723 double]
+	>> tic(); [a,b]=model_predict(dev_x(idx,:), model01, 1); toc();
+	Elapsed time is 140.067637 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0556
+	>> tic(); r=testparser(model01, dev_w, dev_h, idx); toc();
+	Elapsed time is 2865.993597 seconds.
+	ntot: 40117
+	nerr: 5667  (0.1413)
+	xtot: 76834
+	xerr: 4121  (0.0536)
+
+	- model02: try multiple epochs.  doing the second round of dynamic
+	oracle over model01.
+
+	>> model02 = trainparser(model01, trn_w(1:5000), trn_h(1:5000), idx);
+	#667 SV: 8.83(58916)	AER: 8.83
+	Elapsed time is 10679.100909 seconds.
+	>> model02
+        SV: [804x58979 double]
+	pred: [3x667843 double]
+	>> [a,b]=model_predict(dev_x(idx,:), model02, 1);
+	Elapsed time is 211.158363 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0574
+	>> tic(); r=testparser(model02, dev_w, dev_h, idx); toc();
+	Elapsed time is 4107.217578 seconds.
+	>> r
+	ntot: 40117
+	nerr: 5533  (0.1379)
+	xtot: 76834
+	xerr: 4081  (0.0531)
+
+	- model03: starting from sparsified x5k model m6.
+
+	>> load m6
+	SV: [804x12555 double]
+        pred: [3x207603 double]
+	>> tic(); [a,b]=model_predict(dev_x(idx,:), m6, 0); toc();
+	Elapsed time is 80.493971 seconds.
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m6, 1); toc();
+	Elapsed time is 10.364309 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0534
+	>> tic(); r = testparser_par(m6, dev_w, dev_h, idx); toc();
+	Elapsed time is 75.726568 seconds.
+	>> r
+	ntot: 40117
+	nerr: 6035  (0.1504)
+	xtot: 76834
+	xerr: 4393  (0.0572)
+	>> tic(); model03 = trainparser(m6, trn_w(1:5000), trn_h(1:5000), idx); toc();
+	Elapsed time is 5483.439487 seconds.
+	>> model03
+        SV: [804x36073 double]
+        pred: [3x274392 double]
+	>> tic(); [a,b]=model_predict(dev_x(idx,:), model03, 1); toc();
+	Elapsed time is 123.986750 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0716
+	>> tic(); r3=testparser_par(model03, dev_w, dev_h, idx); toc();
+	Elapsed time is 2573.779485 seconds.
+	>> r3
+	ntot: 40117
+	nerr: 6319  (0.1575)
+	xtot: 76834
+	xerr: 4638  (0.0604)
+
+	% maybe getting rid of beta2 was not a good idea.  let us try with
+	% appropriately weighted beta2 this time.
+
+	>> n1=norm(model.beta2(:,1:nsv),'fro')
+	>> n2=norm(m6.beta2, 'fro')
+	>> m6.beta2 = m6.beta2 * (n1/n2);
+	>> tic(); model03b = trainparser(m6, trn_w(1:5000), trn_h(1:5000), idx); toc();
+	Elapsed time is 5467.717893 seconds.
+	>> model03b
+        SV: [804x36073 double]
+        pred: [3x274392 double]
+	% same errors, same sv, but different beta2
+	>> a0=model_predict_gpu(dev_x(idx,:), model03, 0); numel(find(a0 ~= dev_y))/numel(dev_y)
+	0.1192
+	>> b0=model_predict_gpu(dev_x(idx,:), model03b, 0); numel(find(b0 ~= dev_y))/numel(dev_y)
+	0.1192
+	>> a1=model_predict_gpu(dev_x(idx,:), model03, 1); numel(find(a1 ~= dev_y))/numel(dev_y)
+	0.0716
+	>> b1=model_predict_gpu(dev_x(idx,:), model03b, 1); numel(find(b1 ~= dev_y))/numel(dev_y)
+	0.0547
+	>> tic(); r3b=testparser(model03b, dev_w, dev_h, idx); toc();
+	Elapsed time is 2574.903771 seconds.
+	>> r3b
+	ntot: 40117
+	nerr: 5689  (0.1418)
+	xtot: 76834
+	xerr: 4192  (0.0546)
+
+	% TODO: in fact, why don't we use the scaled averaged beta during
+	training?  If we know it is better it will make less mistakes,
+	accumulate fewer support vectors.
+
+	>> model04 = model_sparsify(model03b, x_tr, y_tr, struct('x_te',x_te,'y_te',y_te,'eta',0.3,'epsilon',0.1,'margin',1.0));
+	Elapsed 2157 secs.
+	>> model04
+        SV: [804x13043 double]
+        pred: [3x274392 double]
+	pred_te: [3x10000 double]
+	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), model04, 1); toc();
+	Elapsed time is 16.827549 seconds.
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0535
+	>> tic(); r=testparser_par(model04, dev_w, dev_h, idx); toc();
+	Elapsed time is 379.683786 seconds.
+	>> r
+	ntot: 40117
+	nerr: 5803  (0.1447)
+	xtot: 76834
+	xerr: 4296  (0.0559)
+
+	* model_dbg: test to see if trainparser gives the same result when oracle moves
+	are picked.  However be careful because it is using the whole x5k as training,
+	older model used the first 10k instances for testing.  Another difference is
+	whether or not to call the learner when there is only one legal move.  I started
+	not to in dumpfeatures, but now I think maybe that was a bad idea.  So we need to
+	add options to dumpfeatures for this test.
+
+	Result: trainparse is faster to train than dumpfeatures+k_perceptron
+	and results in an identical model.
+
+	>> path('dogma',path);
+	>> hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3)
+	>> idx = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
+	>> load conllWSJToken_wikipedia2MUNK-50.mat
+	>> [x5k1,y5k1] = dumpfeatures(trn_w(1:5000), trn_h(1:5000), 1);
+	Elapsed time is 348.282005 seconds.
+	x5k1           1768x230120            3254817280  double
+	y5k1              1x230120               1840960  double
+	>> model_ref = model_init(@compute_kernel,hp);
+	>> tic(); model_ref = k_perceptron_multi_train(x5k1(idx,:), y5k1, model_ref); toc();
+	#230 SV: 7.98(18348)	AER: 7.98
+	Elapsed time is 2262.626120 seconds.
+	>> model_dbg = model_init(@compute_kernel,hp);
+	>> model_dbg.n_cla = 3;
+	>> tic(); model_dbg = trainparser_dbg(model_dbg, trn_w(1:5000), trn_h(1:5000), idx); toc();
+	Elapsed time is 2509.524566 seconds.
+	>> all(model_ref.S == model_dbg.S)
+	1
+
+	* dumpfeatures.m: added option to dump singleton moves (moves without
+	alternative) as well.
+
+	* testparser.m (testparser): modified to return single struct
+	array.
+
+	* dumpfeatures.mat: convert all data to features once and for all. (on yunus)
+	[trn_x,trn_y]=dumpfeatures(trn_w,trn_h);
+	Elapsed time is 2922.888628 seconds.
+	[dev_x,dev_y]=dumpfeatures(dev_w,dev_h);
+	Elapsed time is 123.879583 seconds.
+	[tst_x,tst_y]=dumpfeatures(tst_w,tst_h);
+	Elapsed time is 571.966855 seconds.
+	save dumpfeatures.mat -v7.3
+
+	Name          Size                       Bytes  Class     Attributes
+	dev_h         1x1700                    511336  cell
+	dev_w         1x1700                  32284000  cell
+	dev_x      1768x72551               1026161344  double
+	dev_y         1x72551                   580408  double
+	trn_h         1x39832                 12061408  cell
+	trn_w         1x39832                764483584  cell
+	trn_x      1768x1720842            24339589248  double
+	trn_y         1x1720842               13766736  double
+	tst_h         1x7676                   2328680  cell
+	tst_w         1x7676                 147756512  cell
+	tst_x      1768x332821              4707420224  double
+	tst_y         1x332821                 2662568  double
+
+	* featselect.m: take an optional starting cell array of features
+	argument.
+
+	* featureindices.m: modified to output actual index vector in
+	addition to an index hash and the total number of features.
+
+	* polydegree.m: try 8 words (n0,s0,s1,n1,n0l1,s0r1,s0l1,s1r1) and
+	all their aux features (e.g. n0l,n0r,n0+,n0-) on x5k with all
+	kernels.  Compare to earlier results we got with x5k.  Order 6 gives
+	best last-error, 8/9 give best avg-error but none are as good as
+	order 3 with its optimized smaller 9 feature set.  6.18 is still the
+	best we get with x5k.
+
+	degree	last	avg	nsv	time
+	1	18.34	13.34	36732	3890.22
+	2	14.56	8.21	24299	2698.12
+	3	12.73	7.10	21440	2454.09
+	4	11.90	6.90	20083	2310.41
+	5	9.00	6.75	19167	2223.89
+	6	7.97	6.83	18649	2169.10
+	7	8.67	6.89	18372	2152.53
+	8	8.44	6.73	18225	2127.00
+	9	8.13	6.73	18100	2115.84
+
+	>> dump5000
+	Using poly3 kernel on n0,s0,s1,n1,n0l1,s0r1,s0l1,s1r1,s0r
+	train	last	avg	nsv	time
+	207603	7.81	6.18	17318	1939.12
+
+2014-07-12  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* testparser.m: shows that 5.4% static error rate corresponds to 15%
+	parse error rate.
+	- This model is from 5K words, more should decrease the static rate.
+	- This model did not train with dynamic oracle, that should decrease
+	the difference.
+	- This model was only trained for one epoch.
+
+	>> path('dogma',path);
+	>> load conllWSJToken_wikipedia2MUNK-50.mat
+	dev_h         1x1700                 511336  cell
+	dev_w         1x1700               32284000  cell
+	>> load dump5000-model.mat
+	model         1x1                 120667128  struct
+	>> feats = {'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'};
+	>> idx = [];
+	>> for i=1:length(feats) idx = [idx, fi(feats{i})]; end
+	idx           1x804                    6432  double
+	>> [dev_x,dev_y]=dumpfeatures(dev_w, dev_h);
+	Elapsed time is 143.275703 seconds.
+	dev_x      1768x72551            1026161344  double
+	dev_y         1x72551                580408  double
+	>> [a,b]=model_predict(dev_x(idx,:), model, 1);
+	>> numel(find(a ~= dev_y))/numel(dev_y)
+	0.0543
+	>> [nerr,ntot,xerr,xtot] = testparser(model, dev_w, dev_h, idx);
+	Elapsed time is 336.569856 seconds.
+	ntot=40117 % number of words
+	nerr=6072 (0.1514) % number of wrong heads
+	xtot=76834 % number of parser transitions
+	xerr=4443 (0.0578) % number of suboptimal transitions
+
+	* cluster: figure out how to use the cluster.
+	man sge_intro for a summary.
+	qhost to see status of hosts.
+	qstat to see status of jobs.
+	qsub to submit a job.
+	/mnt/kufs/progs/matlab/R2013a/bin/matlab is the binary.
+	/mnt/kufs/scratch/dyuret is the scratch space.
+	ssh biyofiz-4-3 if available.
+
+	* multithreading: figure out how to set number of processors.
+
+	MATLAB supports three kinds of parallelism: multithreaded, distributed
+	computing, and explicit parallelism.
+
+	Note:   maxNumCompThreads will be removed in a future version. You
+	can set the -singleCompThread option when starting MATLAB to limit
+	MATLAB to a single computational thread. By default, MATLAB makes
+	use of the multithreading capabilities of the computer on which it
+	is running.
+
+	https://newton.utk.edu/bin/view/Main/MatlabParallelization
+
+	taskset -pc pid: retrieve a processes’s CPU affinity
+
+	* why: are ural and balina so much slower than altay?  Because we
+	haven't setup the step parameter, so they don't print out anything!
+
+	* sparsify5000d.log: running the optimal params to conclusion in x5k.
+
+	>> m6 = model_sparsify(model, x_tr, y_tr, p);
+	Using averaged solution beta2.
+	epsilon=0.1 margin=1 eta=0.5
+	train: 207603, test: 10000, classes: 3, nsv: 17318
+	Computing initial scores...
+	Elapsed time is 150.042002 seconds.
+	Scaled epsilon = 1.92221e+07, margin = 1.92221e+08
+	Scaled eta = 37984.1
+	time	iter	nsv	err_tr	err_te	maxdiff
+	0	0	17318	7268	618	(original model)
+	1200	5761	1000	17968	919	2.160987e+08
+	2317	11131	2000	13775	787	1.797998e+08
+	3399	16322	3000	11897	712	1.529027e+08
+	4419	21225	4000	10571	675	1.201366e+08
+	5323	25561	5000	9688	657	1.051552e+08
+	5743	27577	5500	9361	649	8.962474e+07
+	6378	30627	6300	8808	636	7.853851e+07
+	6942	33341	7100	8433	628	6.410252e+07
+	7748	37203	8500	7831	614	5.001900e+07
+	8254	39639	9600	7513	607	3.902603e+07
+	9119	43789	12200	7012	601	2.695608e+07
+	9219	44272	12555	6963	610	1.911820e+07
+
+	* model-sparsify-parameters: So what are the ideal parameters for
+	sparsify.  Some samples so far (all results for x5k, y5k, at
+	nsv=1000): epsilon/margin scale: 1.92221e+08 (mean positive margin)
+	eta scale: 75968.2 (mean absolute beta)
+
+	However note that the eta scaling changed in the updated version
+	of 2014-07-16.
+
+	eta	epsilon	margin	err_tr	err_te	time	iter	maxdiff
+	(original nsv=17318)	7268	618	-	-	-
+	0.5	0.1	1.0	17968	919	1199	5761	2.160987e+08
+	0.5	0.05	1.0	17756	923	1287	6180	2.217087e+08
+	0.25	0.1	1.0	17654	941	2241	10783	2.158356e+08
+	0.75	0.1	1.0	18008	960	869	4176	2.350121e+08
+	0.5	0.25	1.0	17634	968	1019	4887	2.084023e+08
+	0.5	0.5	1.0	17815	977	729	3498	2.06433e+08
+	0.5	0.1	1.25	18402	983	1269	6094	2.333505e+08
+	0.5	0.1	0.75	18815	986	1090	5239	2.052092e+08
+	0.5	0.5	0.75	18342	1000	532	2550	1.650722e+08
+	0.5	0.5	1.5	19641	1030	908	4360	2.389662e+08
+	0.5	0.5	2.0	20894	1081	959	4605	2.456402e+08
+	0.5	0.25	2.0	21075	1102	1171	5626	2.489516e+08
+	0.5	0.25	0.5	23241	-	-	3120	1.35809e+08
+	0.5	0.1	0.2	38032	-	-	2605	7.10636e+07
+	0.5	0.05	0.1	54547	2638	491	2413	5.24318e+07
+
+	* dogma/model_sparsify.m: done: epsilon and eta should be input
+	parameters not model fields (should not touch the original model).
+	Is it a good idea to cap the margins at 2*epsilon?  Those two
+	should be independent (done).  The new signature is:
+	function m = model_sparsify(model,x_tr,y_tr,p)
+	with optional parameters in p: margin, epsilon, eta, average,
+	x_te, y_te.  done: compare results with older log files.
+
+	* sparsify5000c.log:
+	x_tr             804x207603            1335302496  double
+	y_tr               1x207603               1660824  double
+	p =
+	x_te: [804x10000 double]
+	y_te: [1x10000 double]
+	epsilon: 0.2500
+	margin: 2
+	>> m5 = model_sparsify(model, x_tr, y_tr, p);
+	Using averaged solution beta2.
+	epsilon=0.25 margin=2 eta=0.5
+	train: 207603, test: 10000, classes: 3, nsv: 17318
+	Computing initial scores...
+	Elapsed time is 150.562805 seconds.
+	Scaled epsilon = 4.80553e+07, margin = 3.84442e+08
+	Scaled eta = 37984.1
+	time	iter	nsv	err_tr	err_te	maxdiff
+	0	0	17318	7268	618	0
+	128	614	100	49243	2334	4.266032e+08
+	3740	17950	4000	10988	696	1.170816e+08
+	3995	19173	4400	10607	679	1.097213e+08
+	4176	20039	4700	10372	666	1.019421e+08
+	4294	20605	4900	10122	656	9.877697e+07
+	4348	20865	5000	10126	649	9.834636e+07
+	5018	24079	6500	9310	639	6.960811e+07
+	5616	26946	8589	8685	632	4.795281e+07
+
+	* dogma/model_sparsify.m: should also take a test set so we can
+	see how out of sample performance evolves.
+	Done (sparsify5000b.log), but epsilon and the margin cap are tied
+	which should be fixed.
+
+	time	iter	nsv	err_tr	err_te	max(h-c)
+	0	0	17318	7268	618	0
+	3717	17878	7300	7325	631	3.15407e+07
+	3760	18077	7400	7193	624	2.9221e+07
+	4203	20135	8300	6696	621	2.62548e+07
+	4239	20299	8400	6630	615	2.69433e+07
+	6213	29002	13377	5899	599	9.47589e+06
+
+2014-07-11  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* sparsify5000.m: Saved as sparsify5000.log and
+	sparsify5000-models.mat.
+
+	epsilon	iter	nsv	train	test	secs	notes
+	0.5	12666	5821	10889	683	2708	m
+	0.25	23329	10413	8286	604	4848	m2
+	0.10	30826	13534	6387	590	6360	m3
+	--	--	17318	7268	618	1939	model (original)
+
+	* dogma/model_sparsify.m: First results.  We scale eta with
+	mean(abs(beta)) and epsilon with mean(margin(margin>0)).  To see
+	the effect of eta on performance and convergence, we take a
+	snapshot at 300 sv on the dump1000 model.  eta=0.5 does seem like
+	a good time performance trade-off.
+
+	Initial nsv=3999 error=1453/34217
+	eta	iter	nsv	err	max(h-c)
+	2.0	393	300	6007	2.81e+07
+	1.0	535	300	5058	2.58e+07
+	0.5	858	300	4835	2.51e+07
+	0.25	1461	300	4773	2.42e+07
+	0.10	3158	300	4680	2.32e+07
+
+	Running to conclusion with eta=0.5 we get
+	iter	nsv	err	max(h-c)
+	4754	2446	2089	1.07428e+07
+
+	Evaluating this model on the test set (10K) we get 882 errors vs
+	838 with the original model:
+	
+	[x5k,y5k]=dumpfeatures(trn_w(1:5000),trn_h(1:5000));
+	x_te = x5k(idx,1:10000);
+	y_te = y5k(1:10000);
+	x_tr = x5k(idx,10001:end);
+	y_tr = y5k(10001:end);
+	>> m = model_sparsify(x_tr, y_tr, model1bak, 1);
+	   m.SV: [804x2446 double]
+	   model1bak.SV: [804x3999 double]
+	>> p = model_predict(x_te, m, 0);
+	>> numel(find(p ~= y_te))
+	ans = 882
+	>> p0 = model_predict(x_te, model1bak, 1);
+	>> numel(find(p0 ~= y_te))
+	ans = 838
+
+	* sparsify5000.m: Time to try sparsifying big model.  The original
+	model took 1740 secs to train on 207603 instances with err=7268,
+	nsv=17318, test_error=618/10K.
+
+	Instances: 207603, classes: 3, nsv: 17318
+	Initial nsv=17318 error=7268/207603 test_error=618/10K
+
+
+2014-07-10  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* dogma/model_sparsify.m: Implementing cotter13.
+	- Need to figure out scaling.  Both beta and x magnitudes effect
+	scale.  eta determines the size of beta updates and epsilon
+	determines when we quit by looking at margin differences.  Problem
+	is averaged perceptron does not give us a well defined margin.
+	Maybe we can get an idea of where the margin is by looking at the
+	SV activations.  Or simply assume take max margin as 1.  epsilon
+	would then be 1/2 max margin.
+
+	f = w.φ(x) = Σ bi φ(xi).φ(x)  where bi = ai.yi
+
+	The paper suggests stopping when f > 1/2, but assumes K(x,x)<=1
+	and svm margin = 1.  We will scale eta using mean_beta and epsilon
+	using mean_margin.
+
+	* test_models.mat: Saved a few test models to test model_sparsify:
+	model is multiclass, model2 is binary, both trained on x_tr and
+	y_tr (multi), y_tr2 (binary).
+
+	* perceptron.m: Things to try:
+	+ Dump gold sequences and first get a good model for classification.
+	+ Kernel: poly degree, gauss, etc.
+	+ Features: which words, distances, children etc.
+	+ Effect of kernel on features.
+	+ Effect of data size performance.
+	+ Effect of data size on features.
+	+ Next reduce SV's using cotter13.
+
+	* featselect-poly3-n2000.out: Effect of data size on feature
+	selection.  Going from 1000 to 2000 training sentences.  Resulting
+	features are identical to previous experiment but featselect stops
+	at 5 features, previously it went to 10.  We need more experiments
+	to understand what is going on.
+
+	n	feat	last	avg	nsv	time
+	2	s0	17.81	13.16	13202	60.08	n0,s0
+	3	s1	12.40	9.42	10348	67.12	n0,s0,s1
+	4	n0l1	11.56	8.52	9304	97.72	n0,n0l1,s0,s1
+	5	s0r1r	10.73	7.82	8994	93.17	n0,n0l1,s0,s0r1r,s1
+
+2014-07-09  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* dump5000.m: Effect of data size on performance.
+
+	>> load conllWSJToken_wikipedia2MUNK-50.mat
+	>> [x,y]=dumpfeatures(trn_w(1:5000),trn_h(1:5000));
+	Elapsed time is 343.961048 seconds.
+	>> dump5000
+	Using poly3 kernel on n0,s0,s1,n1,n0l1,s0r1,s0l1,s1r1,s0r
+	train	last	avg	nsv	time
+	10000	12.75	11.24	1469	11.33
+	20000	11.10	9.54	2599	21.30
+	30000	9.84	8.65	3564	45.20
+	40000	9.80	8.18	4511	83.13
+	50000	9.98	7.75	5376	145.05
+	60000	9.31	7.58	6237	207.82
+	70000	10.17	7.48	7080	275.49
+	80000	9.40	7.22	8032	392.28
+	90000	9.01	7.00	8859	389.71
+	100000	9.43	6.92	9618	479.01
+	110000	8.72	6.89	10304	579.18
+	120000	8.72	6.77	10995	688.76
+	130000	8.80	6.78	11696	795.67
+	140000	8.66	6.75	12435	923.55
+	150000	8.48	6.66	13120	1046.87
+	160000	7.85	6.54	13914	1190.26
+	170000	8.29	6.45	14611	1333.57
+	180000	8.14	6.30	15322	1481.91
+	190000	7.81	6.25	16100	1643.82
+	200000	8.40	6.23	16832	1800.59
+	207603	7.81	6.18	17318	1939.12
+
+	* dump1000b.m: Rerun the poly kernel experiment with the basic
+	poly3 feature set:  Best result 7.65->8.38 probably due to removal
+	of easy (single choice) instances.  Poly6 no longer has an
+	advantage.  Seems each poly degree requires own feature
+	optimization.  But the optimal feature set could also change based
+	on data size.  It will change yet again with dynamic oracle.
+
+	Loading dump1000b dataset
+	Elapsed time is 3.208295 seconds.
+	Splitting features
+	Using poly kernel on n0,s0,s1,n1,n0l1,s0r1,s0l1,s1r1,s0r
+	Elapsed time is 0.411737 seconds.
+	degree	last	avg	nsv	time
+	1	21.33	14.63	6905	83.23
+	2	11.65	8.93	4470	26.64
+	3	9.63	8.38	3999	29.65
+	4	10.37	8.58	3948	24.89
+	5	10.01	9.02	3949	26.10
+	6	10.48	9.30	4084	28.22
+	7	10.62	9.72	4182	30.28
+	8	10.73	9.94	4286	33.43
+	9	11.29	10.37	4436	35.86
+
+	* note: rbf kernel does not do as good with poly3 optimized
+	features, although we have not optimized gamma=0.1.
+	last	avg	nsv	time	feats
+	11.32	9.75	4836	457.16	n0,n0l1,n1,s0,s0l1,s0r,s0r1,s1,s1r1
+
+	* featselect-poly3b.out: Is this set still optimal for
+	poly3 (done)?  A small improvement is possible by adding
+	s1r2+ (8.16) but locally that's it.  Starting featselect from
+	scratch to make sure: we have four new features after #4, the
+	final result improves from 8.38 to 8.14.
+
+	n	feat	last	avg	nsv	time
+	1	n0	48.90	48.37	15094	42.20
+	2	s0	18.66	14.47	6231	20.88
+	3	s1	12.97	10.75	5205	20.02
+	4	n0l1	12.75	10.01	4755	20.32
+	5	s0r1r	12.25	9.17	4595	18.69
+	6	s1-	11.79	9.15	4391	17.30
+	7	n1	11.21	9.02	4023	19.06	# +s0s1-s1- gives 8.60 here
+	8	s0s1	10.52	8.67	4064	18.23	# +s0r-s1- gives 8.55 here
+	9	s0r	10.91	8.43	4064	18.44
+	10	s1r1r	10.07	8.14	3995	19.23
+
+	* dumpfeatures.m (1.2): Checked in the version for experiments
+	below as version 1.1.  Version 1.2 does not output transitions for
+	which there is a single valid move.
+
+	>> load conllWSJToken_wikipedia2MUNK-50.mat
+	>> [x,y]=dumpfeatures(trn_w(1:1000),trn_h(1:1000));
+	Elapsed time is 68.892985 seconds.
+	x          1768x44217            625405248  double
+	y             1x44217               353736  double
+	>> save dump1000b.mat x y;
+
+	* ArcHybrid.m (1.2): Checked in the version for the experiments
+	below as 1.1.  Version 1.2 adds an exists bit in addition to a
+	not-exists bit.
+
+	* featselect-poly3.out: Experiment to see if kernel makes a
+	difference in feature selection.  Here is the order of features
+	with a poly3 kernel.  There is definitely effect in both
+	directions.  Poly 3 improves much faster with fewer features
+	compared to poly 6 tops at 9 features (7.65).  Poly3 uses almost
+	exclusively word features.
+
+	length	feat1	score1	feat2	score2
+	1	n0	47.87
+	2	s0	13.89
+	3	s1	10.62	s1r	11.39
+	4	n0l1	9.54	s0r	9.66
+	5	s0r	9.01	s0r1	9.12
+	6	s1r1	8.59	s0r2	8.60
+	7	n1	8.35	s1r2r	8.62	+n1+s0r1-s1r1	8.49	+n1+s0r1-s0r	8.51	+n1+s0r1-n0l1	8.56
+	8	s0r1	7.86	s1r2l	8.08
+	9	s0l1	7.65	s0s1	7.67
+
+	* featselect-poly6.out: Here is the order of features selected and the
+	closest alternatives: (compare to 9.57 for all 66 features).
+	Feature selection seems to be worth 2% points.
+	$ perl -lane 'print if scalar(split(/,/,$F[4]))==8' featselect4.out | sort -g -k2,2 | head
+
+	length	feat1	score1	feat2	score2
+	1	n0	47.90	n2x	38.54
+	2	s0	13.68	?
+	3	s1	11.22	s1r	11.67
+	4	s0r1	9.95	s0r1r	10.02
+	5	n0l1x	9.30	s1r2x	9.39
+	6	n0r	9.24	s1r	9.33
+	7	s0r1x	9.08	s1r1x	9.08
+	8	s1x	8.88	n0l1	8.89	+s1x+n0l1-n0l1x	8.82
+	9	n0l1	8.73	s1r1x	8.75	+n0l1+n1-n0l1x	8.28	+n0l1+n1-s1x	8.56
+	10	n1	8.26	s1r2x	8.50	+n1+s1r1r-n0l1x	8.19	+n1+s1r1r-n0l1	8.36	+n1+s1r1r-n0r	8.43	+n1+s1r1r-s1x	8.44
+	11	s1r1r	7.86	s1r	8.02
+	12	s0l1x	7.73	n0l2r	7.77	+s0l1x+s0r-s0r1x	7.77
+	13	s0r	7.68	s1r1	7.72	+s0r+s0x-s0l1x	7.64
+	14	s0x	7.58	s0s1	7.59	s1r	7.62	s0r2r	7.63
+
+2014-07-08  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* featselect3.out: Confirmed that s1 is the third feature picked
+	when started with n0,s0.
+
+	* featselect2.out: Started from n0,s0,s1 (11.22), search stopped at
+	n0,s0,s1,s0r1,n0l1x,n0r (9.24) due to a bug, restarting.  BTW n0r
+	should always have the zero bit set (except when there is no n0, in
+	which case n0x is set).  So n0r and n0x have the same information.
+	But their results look different.  Maybe we should have an exists
+	bit instead of (or in addition to) a not exists bit (done).  Why
+	should it matter?  6-degree poly?  Other curiosities: n0,s0 pair
+	seems to do well, s1 not so necessary.  Start a new search from
+	n0,s0 (done, picks s1).  Also curious about the interaction of
+	kernel vs feature, rerun feature selection with other kernels to
+	see (done).  Do not output instances where parser has a single
+	option (done).
+
+	So far no counts, no distances, no children other than s0r1 and
+	n0l1 picked.
+
+	* featselect1.out: Just did a single feature select for test.  n2,
+	n1 related features did best probably because they can see the end
+	of sentence.  Now need a search algorithm.
+
+	* featselect.m: experimenting with feature selection using
+	dump1000 dataset and poly 6 kernel.
+
+	last	avg	nsv	time	feats
+	10.77	9.57	4848	189.93	all
+	12.57	11.22	5530	19.89	n0,s0,s1
+
+	* feature-vector: current feature vector consists of the following
+	dimensions.  ni refer to buffer words, si stack words, 0 is
+	closest to stack|buffer boundary.  l1 refers to leftmost child, l2
+	second leftmost child, similarly for r1, r2.  Each word has 100
+	dims of vector + 9 dims of binary features indicating how many
+	left/right children word has and whether it is missing:
+
+	[l0 l1 l2 l3+ r0 r1 r2 r3+ missing]
+
+	Last two sets of features are binary indicators for the n0-s0
+	distance and s0-s1 distance, the two arc candidates.
+
+	DONE: should scan Zhang08, Nivre11, parser.py, redshift for more
+	possible features.  They ZN11 is a superset.  Only uses labels in
+	addition to stuff we have.
+
+	0001:0109: n0
+	0110:0218: n1
+	0219:0327: n2
+	0328:0436: s0
+	0437:0545: s1
+	0546:0654: s2
+	0655:0763: s0l1
+	0764:0872: s0l2
+	0873:0981: s0r1
+	0982:1090: s0r2
+	1091:1199: s1l1
+	1200:1308: s1l2
+	1309:1417: s1r1
+	1418:1526: s1r2
+	1527:1635: n0l1
+	1635:1744: n0l2
+	1745:1748: n0-s0 dist bits: 1,2,3,4+
+	1749:1752: s0-s1 dist bits: 1,2,3,4+
+
+	* kernel-summary: poly kernel degree [4..7] and rbf kernel
+	gamma=[0.07..0.11] give best results.  Poly kernel about 5x faster
+	than rbf with no significant performance difference (well 9.22 vs
+	9.57 may be a bit significant,
+
+	* rbf-kernel: 5x slower with 37K trset, compared to poly-kernel,
+	confirming same minimum as 10K:
+	gamma	last	avg	nsv	time
+	0.06	12.86	9.84	5095	1078.2
+	0.07	13.26	9.72	4963	1050.6
+	0.08	11.53	9.22	4970	1062.3
+	0.09	11.52	9.52	4908	1041.2
+	0.10	10.34	9.62	4883	1035.9
+	0.12	11.05	10.12	4875	1039.9
+
+	* rbf-kernel: with reduced 10K training set
+	gamma	last	avg	nsv	time
+	0.01	29.63	20.96	2400	130.91
+	0.02	17.79	17.28	2138	120.58
+	0.05	15.50	14.40	1786	98.79
+	0.06	14.54	14.08	1776	98.05
+	0.07	14.48	13.55	1713	93.73
+	0.08	15.70	13.52	1727	95.51
+	0.09	14.25	13.61	1723	95.25
+	0.10	14.74	13.62	1705	94.89
+	0.11	15.51	13.63	1744	94.63
+	0.12	14.41	13.92	1723	97.52
+	0.15	14.85	14.43	1780	99.66
+	0.20	15.95	14.94	1881	103.71
+	0.50	19.02	19.26	2244	122.13
+	1.00	21.79	21.67	2421	132.29
+	10.0	23.93	23.75	2565	139.51
+
+	* poly-kernel:
+	degree	last	avg	nsv	time
+	1	19.92	14.89	7117	263.07
+	2	13.33	11.09	5691	208.75
+	3	11.56	9.93	5212	207.43
+	4	10.93	9.76	4933	194.89
+	5	11.67	9.82	4895	190.71
+	6	10.77	9.57	4848	189.93
+	7	10.83	9.78	4933	196.31
+	8	11.68	10.18	5035	201.17
+	9	11.44	10.28	5038	203.50
+
+	* dump1000.m, k_perceptron_multi_train: Using first 10000 as test
+	and 37716 as train (1 epoch) using all 1752 features.  At 3
+	minutes and 90+ accuracy we can use this to do feature and kernel
+	optimization.
+
+	#36 SV:13.51(4862)	AER:13.51
+	Number of support vectors last solution:4933
+	Number of support vectors averaged solution:4933
+	Testing last solution...Done!
+	10.93% of errors on the test set.
+	Testing averaged solution...Done!
+	9.76% of errors on the test set.
+	Elapsed time is 194.888029 seconds.
+
+	* dump1000.mat: Saved features for first 1000 sentences:
+	>> [x,y]=dumpfeatures(trn_w(1:1000),trn_h(1:1000));
+	x          1752x46716            654771456  double
+	y             1x46716               373728  double
+	>> save dump1000 x y
+	238705982 Jul  8  2014 dump1000.mat
+
+	* dumpfeatures.m: The transition sequence is NOT unique.  SLR and
+	RSL can always be interchanged!  So there are cases where
+	oracle_cost has multiple zeros.  Prefer shift first?
+
+	ns=22 nw=9 nx=1011 sptr=2 wptr=4
+	stack=1  3
+	cost=0  0  1
+	heads=
+	1  2  3  4  5  6  7  8  9
+	6  1  1  5  1  0  8  6  6
+	0  1  0  0  0  0  0  0  0
+
+	We do not always have a zero cost move.  When the gold tree is
+	projective all moves have positive cost:
+
+	ns=106 nw=15 nx=5490 sptr=3 wptr=8
+	stack=2  4  7
+	cost=1  1  2
+	heads=
+	1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+	2   0   2   2   7   7   4   4   8   7  10  14  14  11   2
+	2  0  2  0  7  7  0  0  0  0  0  0  0  0  0
+
+	The number of transitions for an n word sentence is 2n-2.
+
+2014-07-07  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* ArcHybrid.m (valid_moves): Some code optimization.
+	Constructor: 3886 sentences/sec
+	Shift: 6141 w/s
+	Shift+Right: 2680 w/s
+	Shift+Left: 3014 w/s
+	2xmove,2xhonnibal/w: 592 w/s
+	2xmove,2xoracle/w: 1480 w/s
+	2xmove,2xoracle,2xhonnibal/w: 468 w/s
+
+	* ArcHybrid.m (update_features): Moved feature calculation in
+	class, so feature vector does not need allocating.  This slowed
+	down the code from 25 secs to 35 secs.  Creating and filling a new
+	feature vector seems faster.  Keep feature calc out!?  Moving
+	oracle_cost out did not make much difference.
+
+	* honnibalFeatures.m:
+	% Notes:
+	% - We replace word-form and part-of-speech with word vector.
+	% - We use polynomial kernel to represent feature combinations.
+	% - In both left and right moves, s0 will be the child and popped
+	% - There is no distance info for the two link candidates n0-s0, s0-s1
+	% -- We should add them.
+	% - We need indicator variables of when words do not exist.
+	% -- Yes.
+	% - There is no indication of sentence boundary (first/last word)
+	% -- Missing flags should take care of this.
+	% - There is no indication of root?
+	% -- In general words that get heads get popped.
+	% - Does n0 not have right children?
+	% -- No.
+	% - How about children of s1?  It is also a candidate (for RIGHT).
+	% -- We should add them.
+	% - Are children in the ldeps, rdeps lists ordered?
+	% -- Yes, furthest children at the end.
+	% - We should do some feature selection, are these all necessary?
+	% - There is no in-between word features.
+	% - Compare with graph based features of Zhang&Clark08
+	% - Compare with feature engineering in Zhang&Nivre11
+
+2014-07-06  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* DONE:
+	+ We should debug honnibalFeatures before writing more code...
+	+ Write oracle -- done but check in case.
+	+ Write averaged perceptron.
+	+ Test with raw features.
+	+ Write outer product or kernel. (using dogma).
+
+	* honnibalFeatures.m: Implemented features based on honnibal's
+	blog entry which probably comes from:
+	Goldberg, Yoav; Nivre, Joakim
+	Training Deterministic Parsers with Non-Deterministic Oracles
+	TACL 2013
+
+	I added children of s1 as well and the distances n0-s0, s0-s1
+	because those are the two current link candidates.  Each word also
+	gets a nonexistent flag and left/right child count flags.  Total
+	number of features is 109 per word, i.e. 16*109+8=1752.
+
+	Timing for all shift/left transition followed by honnibalFeatures:
+	35.5 secs for 1000 sentences 23358 words = 658 w/s.
+
+	* ArcHybrid.m: Need to implement parse state using oop, otherwise
+	parse transitions copy object data.  Takes 15 secs to create
+	initial parse states 39832 training sentences.  146 secs if we
+	initialize 39832 sentences and then shift through each of the
+	950028 words.  283 seconds if we shift/left all words.  318
+	seconds if we shift/right all words.  So parsing is more than 3000
+	w/s.  Next we should look at extracting features, training etc.
+
+2014-07-05  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* parser.py (Parser.train_one): gold_moves comes back empty when
+	sentence non projective.  Modified script to ignore those cases by
+	setting best = guess.  Training is roughly 100 words / sec for the
+	15 iterations specified in code.  Training on WSJ-02-21 and
+	evaluation on WSJ-22 gives 0.9034.  Commands in Makefile.
+
+	* saveData.m: Convert conll data to matlab format for faster
+	load.  Reduces load speed from several minutes to 11 seconds.
+	Converted conllWSJToken_wikipedia2MUNK-50.mat.
+
+	* loadCONLL.m: Load conll data to cell arrays.
+
