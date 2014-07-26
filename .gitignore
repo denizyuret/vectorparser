@@ -1,5 +1,6 @@
 *~
-*.mexa
+*.mexa64
+matlab.sh
 logs
 unused
 trash
