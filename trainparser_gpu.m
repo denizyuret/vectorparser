@@ -127,6 +127,7 @@ if training
   model.SV = gather(svtr)';
   model.beta = gather(betatr)';
   model.beta2 = gather(betatr2)';
+  model = compactify(model);
 end
 
 toc;
