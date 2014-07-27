@@ -2,16 +2,20 @@
 
 	* TODO:
 
-	x sparsification 
-	? dynamic oracle
-	+ multi-epoch
-	? features
+	x sparsification: isn't necessary, compactify is enough.
+	+ multi-epoch: ~10-12 static epochs seem sufficient
+	  - 5 epochs for fv808
+++b43	+ features: fv808 converges faster but same static performance.
+++i10	? dynamic oracle: it starts working after epoch 2
+++b42,40? embeddings: so far conllToken_wikipedia2MUNK-50 seems best.
 	? arctype
 	? beam-search
 	? kernel-type
-	? num-encoding
-	? embeddings
-
+	? number-encoding
+	- free: i11,i13,b40
+	- change emacs so git works.
+	- results on conll07
+	
 	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
 	-- Beam search parser: read paper.  read redshift.  minibatch?
 	-- we can start by writing a beam decoder to parse with existing models.  no training.
@@ -30,6 +34,7 @@
 
 	- experiment with different number encodings for distance and
 	children.
+	-- experiment with in-between features?
 	
 	- write matlab gpu tutorial on blog
 
@@ -38,50 +43,133 @@
 	the test data comes from (could be different domain). (TODO)
 
 
+	* run_dynamic_oracle.m:
+				TEST				TRAIN
+++i10	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	m10	536294	21252	3.40	3.76	 9.89	-
+	m10c	202888	-	3.40	3.76	 9.89	7.64
+	m10d	230798	27415	4.07	3.84	10.15	7.84	2.84	 7.90	6.18
+	m10d2	251746	30510	4.06	3.67	 9.68	7.50	2.58	 7.21	5.67
+	m10d3	268378	?	4.07	3.59	 9.46	7.31	2.35	 6.60	5.22
+	
+
 	* run_embeddings.m: restarted again on after solving the issues
 	below. Results:
 
 	Compare the following to m1 with 0.0401 (aer:6.48)
 	from conllWSJToken_wikipedia2MUNK-50:
 	
-	score:0.042067	conllToken_rcv1UNK (aer:6.82)
-	score:0.0409643	conllToken_wikipedia2MUNK-25 (aer:6.56)
 	score:0.0401373	conllToken_wikipedia2MUNK-50 (aer:6.47)  -- this is m1
-	score:0.0596959	conllWSJToken_cw25 (aer:9.74)
-	score:0.0626732	conllWSJToken_cw25scaled (aer:10.27)
+	score:0.0409643	conllToken_wikipedia2MUNK-25 (aer:6.56)
+	score:0.042067	conllToken_rcv1UNK (aer:6.82)
+	score:0.0477044	conllWSJToken_huang-0.1 (aer:7.30)
 	score:0.0516464	conllWSJToken_cw50scaled (aer:8.62)
 	score:0.0523769	conllWSJToken_hlbl50scaled (aer:8.78)
+	score:0.0596959	conllWSJToken_cw25 (aer:9.74)
+	score:0.0626732	conllWSJToken_cw25scaled (aer:10.27)
+	score:0.0796681	conllWSJToken_manaal48 (aer:11.76 sv:13.16)
 	score:0.0829072	conllWSJToken_hpca50scaled01 (aer:12.36 sv:13.54)
-	score:0.0477044	conllWSJToken_huang-0.1 (aer:7.30)
-	++b42: fixed memory errors, running...
+	score:0.0929829	conllWSJToken_manaal48scaled01 (aer:12.05 sv:15.55)
+	conllWSJToken_murphy50: memory error, saved in logs
+	conllWSJToken_mikolovGoogleNews300: memory error, saved in logs
+	
+	++b42, ++b40: fixed some memory errors, running...
 
 	
+	* run_multi_epoch2.m: on ++b43.
+	
+	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
+	m_trn		15841	101517	3.78	4.25	11.02		old fulltrain+static model
+	m_trn01		52817	251480	3.89	3.94	10.15		old fulltrain+static+dynamic
+	m1	6.47	321	111431	4.01	4.47	11.75		one epoch batchsize=1250 fv804
+	mx1	6.09	314	104757	3.75	4.26	11.18	8.72	fv808 feature-set batch=1000	
+	m2	5.94	6105	183901	3.64	4.09	10.80		second epoch batchsize=1000
+	mx2	4.89	727	133856	3.50	3.95	10.36	8.05	all mx are fv808 batch=1000	
+	m3	5.09	8781	245190	3.50	3.99	10.37		third epoch batchsize=1000
+	mx3	4.11	860	150207	3.38	3.80	 9.96	7.71	
+	m4	4.58	11049	299268	3.44	3.91	10.17	
+	mx4	3.54	930	161208	3.36	3.80	 9.88	7.69
+	m5	4.21	12990	347577	3.42	3.90	10.17	
+	mx5	3.21	963	169135	3.34	3.76	 9.83	7.60	best epoch for fv808
+	m6	3.92	15004	391424	3.42	3.89	10.13	
+	mx6	2.92	1000	175089	3.35	3.77	 9.86	7.63	
+	m7	3.69	16784	431962	3.43	3.83	10.02	
+	mx7	2.69	1019	179795	3.35	3.77	 9.90	7.64
+	m8	3.49	18120	469130	3.42	3.82	10.00	
+	mx8	2.50	1030	183630	3.36	3.81	 9.95	7.69
+	m9	3.33	19897	503651	3.41	3.79	 9.99   
+	mx9	2.35	1047	186983	3.35	3.83	10.01	7.72	first epoch where fv808 is worse than fv804
+	m10x	3.18	21252	536294	3.40	3.76	 9.89	
+	m10	3.18	?	204438	3.40	3.76	 9.89	
+	mx10	2.22	1051	189857	3.34	3.83	10.01	7.72
+	m11x	3.05	22599	566656	3.39	3.75	 9.85		out of memory, compactify
+	m11	3.01	1182	207516	3.39	3.76	 9.89	7.64	new gpu version, diff due to reduced batchsize towards the end
+	mx11	2.11	1062	192309	3.35	3.87	10.11	7.81
+	m12x	2.90	1196	210024	3.41	3.76	 9.94		compactified, run on gpu
+	m12	2.86	1197	210313	3.39	3.74	 9.86	7.61	best epoch for fv804
+	mx12	2.01	1070	194373	3.35	3.86	10.09	7.78
+	m13	2.70	1215	212685	3.39	3.76	 9.94	7.68
+	mx13	1.92	1081	196166	3.36	3.86	10.09	7.77
+	m14	2.56	1233	214830	3.40	3.78	 9.98	7.72
+	mx14	1.84	1087	197736	3.36	3.85	10.08	7.77
+	m15	2.44	1239	216702	3.41	3.80	10.05	7.76
+	mx15	1.76	1095	199189	3.37	3.85	10.06	7.76
+	m16	2.34	1234	218294	3.41	3.79	10.02	7.74
+	mx16	1.69	1097	200424	3.37	3.83	10.04	7.76
+	m17	2.25	1234	219771	3.41	3.80	10.05	7.75
+	mx17	1.63	1100	201609	3.37	3.85	10.11	7.81
+	m18	2.17	1226	221062	3.41	3.82	10.07	7.76
+	mx18	++b43
+	m19	2.10	1230	222344	3.42	3.84	10.11	7.78
+	m20	2.04	1241	223532	3.43	3.82	10.08	7.77	b40
+	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
+
+
+	* featselect_gpu.m: Trying the best feature vector:
+	fv808 = [
+	%n0 s0 s1 n1 n0l1 s0r1 s1r1l s0l1 s0r1l s2
+	  0 -1 -2  1  0   -1   -2    -1   -1    -3;
+          0  0  0  0 -1    1    1    -1    1     0;
+	  0  0  0  0  0    0   -2     0   -2     0;
+	];
+	
+	First confirm it does give the same result as featselect:
+	dyuret@yunus:~/vectorparser[0]$ grep 'n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l,s2' logs/0726-biyofiz-4-3b.log
+	5.09	3.71	102805	427.76	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l,s2
+	>> newFeatureVectors
+	trn1=loadCoNLL('embedded/conllWSJToken_wikipedia2MUNK-50/00/wsj_0001.dp');
+	save logs/trn1 trn1
+	hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3)
+	model_bak = model_init(@compute_kernel,hp);
+	model_bak.step = 200;
+	model_bak.batchsize = 500;
+	[trn1x, trn1y] = dumpfeatures2(trn1, fv808);
+	[dev1x, dev1y] = dumpfeatures2(dev1, fv808);
+	tic;gpuDevice(1);
+	model_perceptron = k_perceptron_multi_train_gpu(trn1x,trn1y,model_bak);
+	pred_perceptron_last = model_predict_gpu(dev1x,model_perceptron,0);
+	pred_perceptron_av = model_predict_gpu(dev1x,model_perceptron,1);
+	telapsed = toc();
+	err_last = numel(find(pred_perceptron_last~= dev1y))/numel(dev1y)*100;
+	err_av = numel(find(pred_perceptron_av~=dev1y))/numel(dev1y)*100;
+	nsv = size(model_perceptron.beta, 2);
+	fprintf('%.2f\t%.2f\t%d\t%.2f\t%s\n', ...
+          err_last, err_av, nsv, telapsed, fkey);
+	5.09	3.71	102805	404.16	Confirmed!
+	
+	After confirming this is the right feature set, rerun the
+	multi-epoch (don't forget to compactify after every epoch, or
+	modify k_perceptron to do multi-epoch and print stats, or output a
+	sequence of models).
+
 	* run_multi_epoch.m: When training the second epoch (starting
 	with 100K sv) the same relation does not hold, bigger batches are
 	faster.  The max speed is about 10x slower than the beginning.  It
 	takes 20-25 secs to do 10K.  So one epoch starting at 100K sv
 	should take about an hour or two.  Looking at multi-epoch static
-	oracle performance:
+	oracle performance.
 
-	model	nsv	aer	time	gtrans	ptrans	phead	notes
-	m_trn	101517		15841	3.78	4.25	11.02	old fulltrain+static model
-	m_trn01	251480		52817	3.89	3.94	10.15	old fulltrain+static+dynamic
-	m1	111431	6.47	321	4.01	4.47	11.75	one epoch batchsize=1250
-	m2	183901	5.94	6105	3.64	4.09	10.80	second epoch batchsize=1000
-	m3	245190	5.09	8781	3.50	3.99	10.37	third epoch batchsize=1000
-	m4	299268	4.58	11049	3.44	3.91	10.17	fourth epoch batchsize=1000
-	m5	347577	4.21	12990	3.42	3.90	10.17	fifth epoch batchsize=1000
-	m6	391424	3.92	15004	3.42	3.89	10.13	sixth epoch batchsize=1000
-	m7	431962	3.69	16784	3.43	3.83	10.02	seventh epoch batchsize=1000
-	m8	469130	3.49	18120	3.42	3.82	10.00	
-	m9	503651	3.33	19897	3.41	3.79	 9.99   
-	m10	536294	3.18	21252	3.40	3.76	 9.89	
-	m11	566656	3.05	22599	3.39	3.75	 9.85	out of memory, compactify
-	m12	210024	2.90	1196	3.41	3.76	 9.94	compactified, run on gpu
-	m13	++b40
-	model	nsv	aer	time	gtrans	ptrans	phead	notes
-
-	* featselect_gpu.m: ++b43 we can do feature selection with the
+	* featselect_gpu.m: we can do feature selection with the
 	full data!  (using batchsize=500)
 
 	3	8.56	6.01	165880	424.36	n0,s0,s1
@@ -91,6 +179,7 @@
 	7	5.46	3.93	108832	416.48	n0,n0l1,n1,s0,s0r1,s1,(s1r1l)
 	8	5.44	3.88	104300	411.61	n0,n0l1,n1,s0,s0l1,s0r1,s1,(s1r1)  -- previous (5k) best8
 	8	5.27	3.82	104968	992.87	n0,n0l1,n1,s0,(s0l1),s0r1,s1,s1r1l
+	9	5.29	3.86	105390	399.62	n0,n0l1,n1,s0,s0l1,(s0r),s0r1,s1,s1r1  -- previous (5k) best9
 	9	5.13	3.76	104270	398.77	n0,n0l1,n1,s0,s0l1,s0r1,(s0r1l),s1,s1r1l
 	10	5.09	3.71	102805	427.76	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l,(s2)
 	11	5.27	3.70	103133	430.94	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,(s1l1r),s1r1l,s2
@@ -109,15 +198,21 @@
 	>> m10c = compactify(m10)
 	>> trn1=loadCoNLL('embedded/conllWSJToken_wikipedia2MUNK-50/00/wsj_0001.dp');
 	>> newFeatureVectors;
-	>> [r10cd, m10cd] = trainparser_gpu(m10c, trn1, fv804);
-	Elapsed time is 27415.730252 seconds.
-	model	nsv	aer	time	gtrans	ptrans	phead	notes
-	m10	536294	3.18	21252	3.40	3.76	 9.89	
-	m10c	204438	3.18	21252	3.40	3.76	 9.89	compactified
-	m10cd	256065	2.84	27415	4.07	3.84	10.15	dynamic oracle
-	++i10 >> [r10cd2, m10cd2] = trainparser_gpu(m10cd, trn1, fv804); % second epoch
+	>> [rt10d, m10d] = trainparser_gpu(m10c, trn1, fv804);
+	>> [at10d,~]=model_predict_gpu(trn_x(idx,:), m10d, 1);
+	>> r10d = trainparser_gpu(m10d, dev1, fv804);  % check same as t10d
+	>> [a10d,~]=model_predict_gpu(dev_x(idx,:), m10d, 1);
+	>> [rt10d2, m10d2] = trainparser_gpu(m10d, trn1, fv804); % second epoch
+	>> [rt10d3, m10d3] = trainparser_gpu(m10d2, trn1, fv804); % third epoch
 
-	
+	DONE: compactify does not work after trainparser_gpu.  It is
+	hopeless to try to do this in a multi-epoch experiment with a
+	dynamic oracle because the sequence of instances keep changing.
+	We need to modify compactify and model_sparsify to not look at
+	model.S.  Fixed compactify and added it to the end of
+	trainparser_gpu.  Still need to fix model_sparsify (TODO) and
+	k_perceptron_multi_train_gpu (compactify not part of dogma?).
+
 2014-07-26  Deniz Yuret  <dyuret@ku.edu.tr>
 	
 	* k_perceptron_multi_train_gpu.m: check to see if during
