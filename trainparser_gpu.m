@@ -32,7 +32,7 @@ if training
   end
 end
 
-tic; fprintf('Loading model on GPU.\n');
+fprintf('Loading model on GPU.\n');
 gpuDevice(1);
 if ~isempty(model.SV)
   assert(~isempty(model.beta));
@@ -46,7 +46,7 @@ else
 end
 average = (isfield(model,'beta2') && ~isempty(model.beta2) && ~training);
 
-toc;tic;fprintf('Processing sentences...\n');
+fprintf('Processing sentences...\n');
 for s1=corpus
   s = s1{1};
   h = s.head;
@@ -130,5 +130,4 @@ if training
   model = compactify(model);
 end
 
-toc;
 end
