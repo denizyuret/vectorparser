@@ -8,7 +8,7 @@
 function f = features(p, s, feats)
 
 ndim = size(s.wvec,1);                  % word vector dimensionality
-imax = 2000;                            % maximum number of features
+imax = 10000;                           % maximum number of features
 f = zeros(1,imax);                      % feature vector
 i = 0;                                  % index into feature vector
 
@@ -94,7 +94,7 @@ for feat = feats                        % 16.10us/iter
    otherwise
     error('Unknown feature %d.\n', feat(3));
   end % switch feat(3)
-
+  assert(i <= imax, 'max feature vector length exceeded, need to increase imax');
 end % for feat = feats
 
 f = f(1:i);
