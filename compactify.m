@@ -1,34 +1,27 @@
 function model = compactify(model)
 
-newbeta = [];
-newbeta2 = [];
-newSV = [];
-newS = [];
+% [C, ia, ic] = unique(A,'rows')
+% Find the unique rows C(u,d) of A(n,d) and the index vectors ia(u,1) and ic(n,1), such that ...
+% C = A(ia,:) and A = C(ic,:).
 
-fprintf('Discovering redundant SV.\n');
-idx = [];tic;
-for i=1:numel(model.S)
-  if (mod(i, 1000) == 0) fprintf('.'); end
-  si = model.S(i);
-  if (si <= numel(idx) && idx(si) ~= 0)
-    xi = idx(si);
-    assert(all(model.SV(:,i) == newSV(:,xi)), '%d: %d~=%d\n', si, ...
-           i, oldidx(si));
-    newbeta(:,xi) = newbeta(:,xi) + model.beta(:,i);
-    newbeta2(:,xi) = newbeta2(:,xi) + model.beta2(:,i);
-  else
-    newS(end+1) = si;
-    idx(si) = numel(newS);
-    oldidx(si) = i;
-    newSV(:,end+1) = model.SV(:,i);
-    newbeta(:,end+1) = model.beta(:,i);
-    newbeta2(:,end+1) = model.beta2(:,i);
-  end
+tic;fprintf('Finding unique SV in %d...\n', size(model.SV, 2));
+[~, ia, ic] = unique(model.SV', 'rows');
+
+toc;fprintf('Saving %d unique SV.\n', numel(ia));
+b2 = isfield(model, 'beta2');
+newbeta  = zeros(model.n_cla, numel(ia));
+if b2 newbeta2 = zeros(model.n_cla, numel(ia)); end
+assert(numel(ic) == size(model.beta, 2));
+
+for oldi=1:numel(ic)
+  newi = ic(oldi);
+  newbeta(:,newi) = newbeta(:,newi) + model.beta(:,oldi);
+  if b2 newbeta2(:,newi) = newbeta2(:,newi) + model.beta2(:,oldi); end
 end
-fprintf('\n');
-model.S = newS;
-model.SV = newSV;
-model.beta = newbeta;
-model.beta2 = newbeta2;
 
+model.SV = model.SV(:,ia);
+model.beta = newbeta;
+if b2 model.beta2 = newbeta2; end
+
+toc;
 end
