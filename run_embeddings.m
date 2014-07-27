@@ -13,7 +13,21 @@ em = dir(root);
 for i=1:numel(em)
   emi = em(i).name;                     % e.g. conllToken_rcv1UNK
   if strcmp(emi(1),'.') continue; end
-  if any(strcmp(emi, {'conll08_wikipedia2MUNK-25', 'conllToken_cw25scaled', 'conllToken_rcv1UNK', 'conllToken_rnn80', 'conllToken_wikipedia2MUNK-25', 'conllToken_wikipedia2MUNK-50', 'conllWSJToken_cw25', 'conllWSJToken_cw25scaled', 'conllWSJToken_cw50scaled', 'conllWSJToken_hlbl50scaled', 'conllWSJToken_huang-0.1'}))
+  if any(strcmp(emi, {'conll08_wikipedia2MUNK-25', 
+                      'conllToken_cw25scaled', 
+                      'conllToken_rcv1UNK', 
+                      'conllToken_rnn80', 
+                      'conllToken_wikipedia2MUNK-25', 
+                      'conllToken_wikipedia2MUNK-50', 
+                      'conllWSJToken_cw25', 
+                      'conllWSJToken_cw25scaled', 
+                      'conllWSJToken_cw50scaled', 
+                      'conllWSJToken_hlbl50scaled', 
+                      'conllWSJToken_huang-0.1',
+                      'conllWSJToken_manaal48',
+                      'conllWSJToken_manaal48scaled01',
+                      'conllWSJToken_hpca50scaled01'
+                     }))
     fprintf('Skipping %s\n', emi);
     continue; 
   end
