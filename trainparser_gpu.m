@@ -26,8 +26,7 @@ if training
   if isfield(model,'n_cla')==0
     model.n_cla=archybrid.NMOVE;
   end
-  if isfield(model,'iter')==0
-    model.iter=0;
+  if isfield(model,'beta')==0
     model.beta=[];
     model.beta2=[];
   end
@@ -54,7 +53,6 @@ for s1=corpus
   n = numel(h);
   p = archybrid(n);
   while ((p.sptr > 1) || (p.wptr <= p.nword))
-    if training model.iter = model.iter + 1; end
     c = p.oracle_cost(h);               % 1019us
     assert(any(isfinite(c)));           % 915us
     f = features(p, s, feats);          % 1153us
@@ -84,7 +82,6 @@ for s1=corpus
     if c(move) > mincost
       r.xerr = r.xerr + 1; 
       if training
-        model.S(end+1)=model.iter;
         if isempty(svtr)
           svtr = gpuArray(f);
           betatr = zeros(1, model.n_cla, 'gpuArray');
