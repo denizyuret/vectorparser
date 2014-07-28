@@ -35,17 +35,13 @@ p.transition(p.SHIFT);
 end % ArcHybrid
 
 
-function add_arc(p, h, d)
-p.head(d) = h;
-if d < h
-  p.lcnt(h) = p.lcnt(h) + 1;
-  p.ldep(h, p.lcnt(h)) = d;
-else
-  p.rcnt(h) = p.rcnt(h) + 1;
-  p.rdep(h, p.rcnt(h)) = d;
-end % if
-end % add_arc
-
+% In the archybrid system:
+% A token starts life without any arcs in the buffer.
+% It becomes n0 after a number of shifts.
+% n0 acquires ldeps using lefts.
+% It becomes s0 using shift.
+% s0 acquires rdeps using shift+right.
+% Finally gets a head with left or right.
 
 function transition(p, op)
 switch op
@@ -90,14 +86,29 @@ if (p.sptr >= 1)
     c(p.LEFT) = c(p.LEFT) + (s0h == p.stack(p.sptr-1));
   end
 end
+v = valid_moves(p);
+assert(all(isfinite(c(v))) && all(isinf(c(~v))),...
+       '[%s] [%s]', num2str(v), num2str(c));
 end % oracle_cost
 
 
 function v = valid_moves(p)
 v(p.SHIFT) = (p.wptr <= p.nword);
 v(p.RIGHT) = (p.sptr >= 2);
-v(p.LEFT)  = (p.sptr >= 1);
+v(p.LEFT)  = ((p.sptr >= 1) && (p.wptr <= p.nword));
 end % valid_moves
+
+function add_arc(p, h, d)
+p.head(d) = h;
+if d < h
+  p.lcnt(h) = p.lcnt(h) + 1;
+  p.ldep(h, p.lcnt(h)) = d;
+else
+  p.rcnt(h) = p.rcnt(h) + 1;
+  p.rdep(h, p.rcnt(h)) = d;
+end % if
+end % add_arc
+
 
 end % methods
 end % classdef
