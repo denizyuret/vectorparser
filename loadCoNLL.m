@@ -36,4 +36,5 @@ while ischar(line)
   line = fgetl(fid);
 end
 if (i > 0) c{end+1} = s; end  % in case final newline missing
+fclose(fid);
 end
