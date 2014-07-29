@@ -2,12 +2,24 @@
 
 	* eval_conll.m: ++b43 this is not giving the same result as
 	below.  testing vectorparser.m.  OK, all whead numbers were wrong!
+	- Confirm that total cost is equal to total head error.
+	- It is not, more debugging of archybrid.oracle_cost is needed.
 
 	* vectorparser.m: trainparser, testparser, dumpfeatures etc do
 	very similar things.  We'll combine them all in this program.
-
-	* arceager.m: testing on ++bf43.  should modify trainparser to
-	also do dumpfeatures so we can test.  (TODO).
+	
+	- Confirmed works correctly for dump, however all moves are
+	dumped, not just the multi-choice ones.  (TODO): test if this
+	makes a big difference in static oracle training, if it does find
+	a way to filter the multi-choice instances.
+	
+	[m,d] = vectorparser(m0, dev1, 'update', 0, 'predict', 0);
+	[x0,y0]=dumpfeatures2(dev1, fv808, 1);
+	all(d.x(:) == x0(:)) => 1
+	all(d.y(:) == y0(:)) => 1
+	
+	* arceager.m: should modify trainparser to also do dumpfeatures so
+	we can test.  (TODO)
 
 	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.
 				TEST				TRAIN
@@ -16,7 +28,7 @@
 	mx5d1	204369	22472	4.07	3.78	10.02		3.02	8.37	
 	mx5d2	232151	?	4.02	3.63	9.59		2.73	7.60	
 	mx5d3	254535	?	3.99	3.49	9.23		2.45	6.88	
-	mx5d4
+	mx5d4	(TODO: recompute whead)
 	
 	* run_dynamic_oracle.m:
 				TEST				TRAIN
@@ -28,7 +40,7 @@
 	m10d3	268378	?	4.07	3.59	 9.46		2.35	6.60	
 	m10d4	282674	31102	4.07	3.56	 9.39		2.21	6.23	
 	m10d5	303011	?	4.05	3.55	 9.33		2.06	5.84	
-	m10d6
+	m10d6   (TODO: recompute whead)
 
 ++b42	* run_embeddings.m: restarted again on after solving the issues
 	below. 	Compare the following to m1 with 0.0401 (aer:6.48)
@@ -39,21 +51,30 @@
 	score:0.0396549	conllWSJToken_wikipedia2MUNK-100 (sv:6.44)
 	score:0.0401373	conllToken_wikipedia2MUNK-50 (sv:6.48)  -- this is m1
 	score:0.0409643	conllToken_wikipedia2MUNK-25 (sv:6.56)
+	score:0.0409781	conll_bansal100 (sv:5.99)
 	score:0.0414881	conllWSJToken_rcv1UNK50 (sv:6.72)
 	score:0.042067	conllToken_rcv1UNK (sv:6.82)
 	score:0.042067	conllWSJToken_rcv1UNK (sv:6.82)
 	score:0.042067	conllWSJToken_rcv1UNK25 (sv:6.82)
 	score:0.0464087	conllWSJToken_dep-100 (sv:6.07)
 	score:0.0477044	conllWSJToken_huang-0.1 (sv:7.30)
+	score:0.0483108	conll_4scode+f50 (sv:8.00)
 	score:0.0485589	conll_2scode+f100 (sv:7.96)
 	score:0.0487381	conll_3scode+f100 (sv:7.93)
+	score:0.048876	conll_6scode+f50 (sv:8.01)
 	score:0.0488897	conll_4scode+f100 (sv:7.93)
+	score:0.0489173	conll_6scode+f100 (sv:7.98)
+	score:0.0489311	conll_5scode+f100 (sv:7.96)
 	score:0.049	conllWSJToken_dep-WSJ (sv:6.41)
 	score:0.049	conll_10scode+f50 (sv:7.96)
+	score:0.0490276	conll_7scode+f50 (sv:8.02)
 	score:0.0491792	conll_2scode+f50 (sv:8.00)
 	score:0.049193	conll_1scode+f100 (sv:7.97)
 	score:0.0492619	conll_1scode+f50 (sv:7.99)
+	score:0.0494135	conll_9scode+f50 (sv:8.00)
 	score:0.0494686	conll_3scode+f50 (sv:8.01)
+	score:0.0494686	conll_5scode+f50 (sv:8.02)
+	score:0.0495927	conll_8scode+f50 (sv:8.04)
 	score:0.0502267	conll_3scode+f25 (sv:8.05)
 	score:0.0516464	conllWSJToken_cw50scaled (sv:8.62)
 	score:0.0519772	conllWSJToken_ungar2-0.1 (sv:8.56)
@@ -73,12 +94,12 @@
 	score:0.0829072	conllWSJToken_hpca50scaled01 (sv:13.54)
 	score:0.0929829	conllWSJToken_manaal48scaled01 (sv:15.55)
 	score:0.104547	conllWSJToken_rnn80 (sv:16.37)
+	score:0.99 conllWSJToken_levy300 (memory error)
 	score:0.99 conllWSJToken_mikolovGoogleNews300 (memory error, saved in logs)
 	score:0.99 conllWSJToken_murphy50 (memory error, saved in logs)
 	score:0.99 conllWSJToken_murphy50scaled01 (memory error, saved in logs)
 	score:0.99 conllWSJToken_wikipedia2MUNK-25 (stuck during dumpfeatures, saved in logs)
 	score:0.99 conll_10scode+f50 (read error)
-	score:0.99 conllWSJToken_levy300 (memory error)
 
 2014-07-27  Deniz Yuret  <dyuret@ku.edu.tr>
 
