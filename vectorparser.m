@@ -20,11 +20,7 @@ for snum=1:numel(corpus)
     valid = p.valid_moves();
     if ~any(valid) break; end
 
-    if p.wptr <= p.nword n0=s.form{p.wptr}; else n0='NONE'; end
-    if p.sptr >= 1 s0=s.form{p.stack(p.sptr)}; else s0='NONE'; end
-    % fprintf('%s(%d) | %s(%d)', s0, p.sptr, n0, p.nword-p.wptr);
-
-    if opts.compute_bestmove
+    if opts.compute_costs
       cost = p.oracle_cost(h); 		% 1019us
       [mincost, bestmove] = min(cost);
     end
@@ -34,19 +30,19 @@ for snum=1:numel(corpus)
       ftr = f';                         % f is a row vector, ftr column vector
     end
 
-    if opts.compute_maxmove
+    if opts.compute_scores
       % Same matrix operation has different costs on gpu:
-      % scores = gather(b + beta * (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree); % 17310us
-      % scores = gather(b + sum(bsxfun(@times, beta, (hp.gamma * (f * sv) + hp.coef0).^hp.degree))); % 11364us
+      % score = gather(b + beta * (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree); % 17310us
+      % score = gather(b + sum(bsxfun(@times, beta, (hp.gamma * (f * sv) + hp.coef0).^hp.degree))); % 11364us
       if isempty(svtr)
-        scores = zeros(1, model.n_cla);
+        score = zeros(1, model.n_cla);
       elseif opts.average
-        scores = model.b2 + gather(sum(bsxfun(@times, betatr2, (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree))); % 7531us
+        score = model.b2 + gather(sum(bsxfun(@times, betatr2, (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree))); % 7531us
       else
-        scores = model.b + gather(sum(bsxfun(@times, betatr, (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree))); % 7531us
+        score = model.b + gather(sum(bsxfun(@times, betatr, (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree))); % 7531us
       end
-      scores(cost==inf) = -inf;         % 928us
-      [~,maxmove] = max(scores);        % 925us
+      score(cost==inf) = -inf;         % 928us
+      [maxscore, maxmove] = max(score); % 925us
     end
 
     if opts.update
@@ -64,23 +60,13 @@ for snum=1:numel(corpus)
       betatr2 = betatr2 + betatr;
     end % if opts.update
 
-    if opts.dump
-      dump.x(:,end+1) = ftr;
-      dump.y(end+1) = bestmove;
-      if opts.compute_maxmove
-        dump.z(end+1) = maxmove;
-      end
-    end
-
     if opts.predict
       p.transition(maxmove);                 % 1019us
-      assert(valid(maxmove));
-      % fprintf(' %d\n', maxmove);
     else
       p.transition(bestmove);
-      assert(valid(bestmove), '%s %s', num2str(valid), num2str(cost));
-      % fprintf(' %d\n', bestmove);
     end
+
+    if opts.dump update_dump(); end
 
   end % while 1
 
@@ -129,16 +115,8 @@ if ~isfield(opts, 'update')
   opts.update = true;   % update: train the model (default), otherwise model is not updated
 end
 
-opts.dump = (nargout_save >= 2);
-if opts.dump
-  fprintf('Dump mode.\n');
-  dump.x = [];
-  dump.y = [];
-  dump.z = [];
-  dump.pred = {};
-end
-
 if opts.update % Initialize model by defaults if necessary
+  fprintf('Updating model.\n');
   if ~isfield(model,'parser')
     fprintf('Using default parser archybrid.\n');
     model.parser = @archybrid;
@@ -163,9 +141,10 @@ if opts.update % Initialize model by defaults if necessary
   end
 end
 
-opts.compute_bestmove = opts.update || opts.dump || ~opts.predict;
+opts.dump = (nargout_save >= 2);
+opts.compute_costs = opts.update || opts.dump || ~opts.predict;
 opts.compute_features = opts.update || opts.dump || opts.predict;
-opts.compute_maxmove  = opts.update || opts.predict;
+opts.compute_scores  = opts.update || opts.predict;
 
 assert(isfield(model,'parser'), 'Please specify model.parser.');
 
@@ -173,7 +152,7 @@ if opts.compute_features
   assert(isfield(model,'feats'), 'Please specify model.feats.');
 end
 
-if opts.compute_maxmove
+if opts.compute_scores
   assert(isfield(model,'n_cla'), 'Please specify model.n_cla.');
   assert(isfield(model,'beta'), 'Please specify model.beta.');
   assert(isfield(model,'beta2'), 'Please specify model.beta2.');
@@ -191,7 +170,7 @@ if opts.compute_maxmove
   end
 
   if ~isempty(model.SV)
-    assert(~isempty(model.beta) && size(model.beta) == size(model.beta2));
+    assert(~isempty(model.beta) && all(size(model.beta) == size(model.beta2)));
     svtr = model.SV';
     betatr = model.beta';
     betatr2 = model.beta2';
@@ -213,8 +192,59 @@ if opts.compute_maxmove
     betatr2 = gpuArray(betatr2);
   end
 
-end % if compute_maxmove
+end % if opts.compute_scores
+
+if opts.predict
+  fprintf('Using predicted moves.\n');
+else
+  fprintf('Using gold moves.\n');
+end % if opts.predict
+
+if opts.dump
+  fprintf('Dumping results.\n');
+  if opts.compute_features
+    dump.x = [];
+  end
+  if opts.compute_costs
+    dump.y = [];
+    dump.ycost = [];
+    if opts.compute_scores
+      dump.yscore = [];
+    end
+  end
+  if opts.compute_scores
+    dump.z = [];
+    dump.zscore = [];
+    if opts.compute_costs
+      dump.zcost = [];
+    end
+  end
+  if opts.predict
+    dump.pred = {};
+  end
+end % if opts.dump
 
 end % vectorparser_init
+
+
+function update_dump()
+if opts.compute_features
+  dump.x(:,end+1) = ftr;
+end
+if opts.compute_costs
+  dump.y(end+1) = bestmove;
+  dump.ycost(end+1) = cost(bestmove);
+  if opts.compute_scores
+    dump.yscore(end+1) = score(bestmove);
+  end
+end
+if opts.compute_scores
+  dump.z(end+1) = maxmove;
+  dump.zscore(end+1) = score(maxmove);
+  if opts.compute_costs
+    dump.zcost(end+1) = cost(maxmove);
+  end
+end
+end % update_dump
 
 end % vectorparser
