@@ -121,7 +121,7 @@ fprintf('\n');
 
 r.xpct = r.xerr/r.xtot;
 r.npct = r.nerr/r.ntot;
-r.wpct = r.werr/r.ntot;
+r.wpct = r.werr/r.wtot;
 
 if training
   model.SV = gather(svtr)';

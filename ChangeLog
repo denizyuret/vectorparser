@@ -1,3 +1,85 @@
+2014-07-28  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* eval_conll.m: ++b43 this is not giving the same result as
+	below.  testing vectorparser.m.  OK, all whead numbers were wrong!
+
+	* vectorparser.m: trainparser, testparser, dumpfeatures etc do
+	very similar things.  We'll combine them all in this program.
+
+	* arceager.m: testing on ++bf43.  should modify trainparser to
+	also do dumpfeatures so we can test.  (TODO).
+
+	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.
+				TEST				TRAIN
+++i11	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	mx5	169135	963	3.34	3.76	9.83		-	-	
+	mx5d1	204369	22472	4.07	3.78	10.02		3.02	8.37	
+	mx5d2	232151	?	4.02	3.63	9.59		2.73	7.60	
+	mx5d3	254535	?	3.99	3.49	9.23		2.45	6.88	
+	mx5d4
+	
+	* run_dynamic_oracle.m:
+				TEST				TRAIN
+++i10	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	m10	536294	21252	3.40	3.76	 9.89	
+	m10c	202888	-	3.40	3.76	 9.89	
+	m10d	230798	27415	4.07	3.84	10.15		2.84	7.90	
+	m10d2	251746	30510	4.06	3.67	 9.68		2.58	7.21	
+	m10d3	268378	?	4.07	3.59	 9.46		2.35	6.60	
+	m10d4	282674	31102	4.07	3.56	 9.39		2.21	6.23	
+	m10d5	303011	?	4.05	3.55	 9.33		2.06	5.84	
+	m10d6
+
+++b42	* run_embeddings.m: restarted again on after solving the issues
+	below. 	Compare the following to m1 with 0.0401 (aer:6.48)
+	from conllWSJToken_wikipedia2MUNK-50:
+
+	score:0.0370498	conllWSJToken_bansal100 (sv:5.58)
+	score:0.0395859	conllWSJToken_wikipedia2MUNK-200 (sv:6.28)
+	score:0.0396549	conllWSJToken_wikipedia2MUNK-100 (sv:6.44)
+	score:0.0401373	conllToken_wikipedia2MUNK-50 (sv:6.48)  -- this is m1
+	score:0.0409643	conllToken_wikipedia2MUNK-25 (sv:6.56)
+	score:0.0414881	conllWSJToken_rcv1UNK50 (sv:6.72)
+	score:0.042067	conllToken_rcv1UNK (sv:6.82)
+	score:0.042067	conllWSJToken_rcv1UNK (sv:6.82)
+	score:0.042067	conllWSJToken_rcv1UNK25 (sv:6.82)
+	score:0.0464087	conllWSJToken_dep-100 (sv:6.07)
+	score:0.0477044	conllWSJToken_huang-0.1 (sv:7.30)
+	score:0.0485589	conll_2scode+f100 (sv:7.96)
+	score:0.0487381	conll_3scode+f100 (sv:7.93)
+	score:0.0488897	conll_4scode+f100 (sv:7.93)
+	score:0.049	conllWSJToken_dep-WSJ (sv:6.41)
+	score:0.049	conll_10scode+f50 (sv:7.96)
+	score:0.0491792	conll_2scode+f50 (sv:8.00)
+	score:0.049193	conll_1scode+f100 (sv:7.97)
+	score:0.0492619	conll_1scode+f50 (sv:7.99)
+	score:0.0494686	conll_3scode+f50 (sv:8.01)
+	score:0.0502267	conll_3scode+f25 (sv:8.05)
+	score:0.0516464	conllWSJToken_cw50scaled (sv:8.62)
+	score:0.0519772	conllWSJToken_ungar2-0.1 (sv:8.56)
+	score:0.0523769	conllWSJToken_hlbl50scaled (sv:8.78)
+	score:0.0532729	conllWSJToken_mikolovWiki-0.1 (sv:8.05)
+	score:0.0596959	conllWSJToken_cw25 (sv:9.74)
+	score:0.0603713	conllWSJToken_stratos50k5000scaled01 (sv:9.84)
+	score:0.0610054	conllWSJToken_gsng1M (sv:9.83)
+	score:0.0611018	conllWSJToken_mikolovRCV50scaled01 (sv:10.18)
+	score:0.0626732	conllWSJToken_cw25scaled (sv:10.27)
+	score:0.063128	conllWSJToken_gsngAE (sv:10.33)
+	score:0.0661604	conllWSJToken_gsngALL (sv:10.56)
+	score:0.068793	conllWSJToken_yogamata52scaled01 (sv:10.57)
+	score:0.0733691	conllWSJToken_yogamata52 (sv:11.03)
+	score:0.0763187	conllWSJToken_stratos50k200scaled01 (sv:12.57)
+	score:0.0796681	conllWSJToken_manaal48 (sv:13.16)
+	score:0.0829072	conllWSJToken_hpca50scaled01 (sv:13.54)
+	score:0.0929829	conllWSJToken_manaal48scaled01 (sv:15.55)
+	score:0.104547	conllWSJToken_rnn80 (sv:16.37)
+	score:0.99 conllWSJToken_mikolovGoogleNews300 (memory error, saved in logs)
+	score:0.99 conllWSJToken_murphy50 (memory error, saved in logs)
+	score:0.99 conllWSJToken_murphy50scaled01 (memory error, saved in logs)
+	score:0.99 conllWSJToken_wikipedia2MUNK-25 (stuck during dumpfeatures, saved in logs)
+	score:0.99 conll_10scode+f50 (read error)
+	score:0.99 conllWSJToken_levy300 (memory error)
+
 2014-07-27  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* TODO:
@@ -7,14 +89,13 @@
 	  - 5 epochs for fv808
 	+ features: fv808 converges faster but same static performance.
 ++i10,11? dynamic oracle: it starts working after epoch 2
-	  - running on screen -x yunus
-++b42,40? embeddings: so far conllToken_wikipedia2MUNK-50 seems best.
-	? arctype
+	  - running on screen -x yunus, others now on yunus2
+++b42	? embeddings: so far bansal seems best.
+++b43	? arctype
 	? beam-search
 	? kernel-type
 	? number-encoding
-	- free: i13,b43
-	- change emacs so git works.
+	- free: b40
 	- results on conll07
 	
 	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
@@ -28,7 +109,7 @@
 
 	- archybrid.m,dumpfeatures2.m: temporary new versions to replace
 	the old when scripts finish.  need to keep these separate until
-	featselect etc. is updated.
+	featselect etc. is updated.  or replace featselect with trainparser.
 	
 	- rbf kernel with gpu?
 	-- Optimize and try rbf kernel calculation and fselect.
@@ -36,7 +117,7 @@
 	- experiment with different number encodings for distance and
 	children.
 	-- experiment with in-between features?
-	
+
 	- write matlab gpu tutorial on blog
 
 	- goldberg-nivre-2013: gives results for conll07 english using
@@ -44,108 +125,54 @@
 	the test data comes from (could be different domain). (TODO)
 
 
-	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.
-				TEST				TRAIN
-++i11	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
-	mx5	169135	963	3.34	3.76	9.83	7.60	-	-	-
-	mx5d1	204369	22472	4.07	3.78	10.02	7.78	3.02	8.37	6.57
-	mx5d2	
-	
-	* run_dynamic_oracle.m:
-				TEST				TRAIN
-++i10	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
-	m10	536294	21252	3.40	3.76	 9.89	-
-	m10c	202888	-	3.40	3.76	 9.89	7.64
-	m10d	230798	27415	4.07	3.84	10.15	7.84	2.84	 7.90	6.18
-	m10d2	251746	30510	4.06	3.67	 9.68	7.50	2.58	 7.21	5.67
-	m10d3	268378	?	4.07	3.59	 9.46	7.31	2.35	 6.60	5.22
-	m10d4	282674	31102	4.07	3.56	 9.39	7.23	2.21	 6.23	4.93
-	m10d5
-
-	* run_embeddings.m: restarted again on after solving the issues
-	below. Results:
-
-	Compare the following to m1 with 0.0401 (aer:6.48)
-	from conllWSJToken_wikipedia2MUNK-50:
-	
-	score:0.0395859	conllWSJToken_wikipedia2MUNK-200 (sv:6.28)
-	score:0.0396549	conllWSJToken_wikipedia2MUNK-100 (sv:6.44)
-	score:0.0401373	conllToken_wikipedia2MUNK-50 (aer:6.47)  -- this is m1
-	score:0.0409643	conllToken_wikipedia2MUNK-25 (aer:6.56)
-	score:0.0414881	conllWSJToken_rcv1UNK50 (sv:6.72)
-	score:0.042067	conllToken_rcv1UNK (aer:6.82)
-	score:0.042067	conllWSJToken_rcv1UNK (sv:6.82)
-	score:0.042067	conllWSJToken_rcv1UNK25 (sv:6.82)
-	score:0.0477044	conllWSJToken_huang-0.1 (aer:7.30)
-	score:0.0516464	conllWSJToken_cw50scaled (aer:8.62)
-	score:0.0519772	conllWSJToken_ungar2-0.1
-	score:0.0523769	conllWSJToken_hlbl50scaled (aer:8.78)
-	score:0.0532729	conllWSJToken_mikolovWiki-0.1
-	score:0.0596959	conllWSJToken_cw25 (aer:9.74)
-	score:0.0603713	conllWSJToken_stratos50k5000scaled01
-	score:0.0611018	conllWSJToken_mikolovRCV50scaled01 (sv:10.18)
-	score:0.0626732	conllWSJToken_cw25scaled (aer:10.27)
-	score:0.0763187	conllWSJToken_stratos50k200scaled01 (sv:12.57)
-	score:0.0796681	conllWSJToken_manaal48 (aer:11.76 sv:13.16)
-	score:0.0829072	conllWSJToken_hpca50scaled01 (aer:12.36 sv:13.54)
-	score:0.0929829	conllWSJToken_manaal48scaled01 (aer:12.05 sv:15.55)
-	score:0.104547	conllWSJToken_rnn80 (sv:16.37)
-	score:0.99 conllWSJToken_mikolovGoogleNews300 (memory error, saved in logs)
-	score:0.99 conllWSJToken_murphy50 (memory error, saved in logs)
-	score:0.99 conllWSJToken_murphy50scaled01 (memory error, saved in logs)
-	score:0.99 conllWSJToken_wikipedia2MUNK-25	(stuck during dumpfeatures, saved in logs)
-	
-	++b42, ++b40: fixed some memory errors, running...
-
-	
 	* run_multi_epoch2.m:
 	
 	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
 	m_trn		15841	101517	3.78	4.25	11.02		old fulltrain+static model
 	m_trn01		52817	251480	3.89	3.94	10.15		old fulltrain+static+dynamic
 	m1	6.47	321	111431	4.01	4.47	11.75		one epoch batchsize=1250 fv804
-	mx1	6.09	314	104757	3.75	4.26	11.18	8.72	fv808 feature-set batch=1000	
+	mx1	6.09	314	104757	3.75	4.26	11.18		fv808 feature-set batch=1000	
 	m2	5.94	6105	183901	3.64	4.09	10.80		second epoch batchsize=1000
-	mx2	4.89	727	133856	3.50	3.95	10.36	8.05	all mx are fv808 batch=1000	
+	mx2	4.89	727	133856	3.50	3.95	10.36		all mx are fv808 batch=1000	
 	m3	5.09	8781	245190	3.50	3.99	10.37		third epoch batchsize=1000
-	mx3	4.11	860	150207	3.38	3.80	 9.96	7.71	
+	mx3	4.11	860	150207	3.38	3.80	 9.96		
 	m4	4.58	11049	299268	3.44	3.91	10.17	
-	mx4	3.54	930	161208	3.36	3.80	 9.88	7.69
+	mx4	3.54	930	161208	3.36	3.80	 9.88	
 	m5	4.21	12990	347577	3.42	3.90	10.17	
-	mx5	3.21	963	169135	3.34	3.76	 9.83	7.60	best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
+	mx5	3.21	963	169135	3.34	3.76	 9.83		best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
 	m6	3.92	15004	391424	3.42	3.89	10.13	
-	mx6	2.92	1000	175089	3.35	3.77	 9.86	7.63	
+	mx6	2.92	1000	175089	3.35	3.77	 9.86		
 	m7	3.69	16784	431962	3.43	3.83	10.02	
-	mx7	2.69	1019	179795	3.35	3.77	 9.90	7.64
+	mx7	2.69	1019	179795	3.35	3.77	 9.90	
 	m8	3.49	18120	469130	3.42	3.82	10.00	
-	mx8	2.50	1030	183630	3.36	3.81	 9.95	7.69
+	mx8	2.50	1030	183630	3.36	3.81	 9.95	
 	m9	3.33	19897	503651	3.41	3.79	 9.99   
-	mx9	2.35	1047	186983	3.35	3.83	10.01	7.72	first epoch where fv808 is worse than fv804
+	mx9	2.35	1047	186983	3.35	3.83	10.01		first epoch where fv808 is worse than fv804
 	m10x	3.18	21252	536294	3.40	3.76	 9.89	
 	m10	3.18	?	204438	3.40	3.76	 9.89	
-	mx10	2.22	1051	189857	3.34	3.83	10.01	7.72
+	mx10	2.22	1051	189857	3.34	3.83	10.01	
 	m11x	3.05	22599	566656	3.39	3.75	 9.85		out of memory, compactify
-	m11	3.01	1182	207516	3.39	3.76	 9.89	7.64	new gpu version, diff due to reduced batchsize towards the end
-	mx11	2.11	1062	192309	3.35	3.87	10.11	7.81
+	m11	3.01	1182	207516	3.39	3.76	 9.89		new gpu version, diff due to reduced batchsize towards the end
+	mx11	2.11	1062	192309	3.35	3.87	10.11	
 	m12x	2.90	1196	210024	3.41	3.76	 9.94		compactified, run on gpu
-	m12	2.86	1197	210313	3.39	3.74	 9.86	7.61	best epoch for fv804: ptrans:3.74
-	mx12	2.01	1070	194373	3.35	3.86	10.09	7.78
-	m13	2.70	1215	212685	3.39	3.76	 9.94	7.68
-	mx13	1.92	1081	196166	3.36	3.86	10.09	7.77
-	m14	2.56	1233	214830	3.40	3.78	 9.98	7.72
-	mx14	1.84	1087	197736	3.36	3.85	10.08	7.77
-	m15	2.44	1239	216702	3.41	3.80	10.05	7.76
-	mx15	1.76	1095	199189	3.37	3.85	10.06	7.76
-	m16	2.34	1234	218294	3.41	3.79	10.02	7.74
-	mx16	1.69	1097	200424	3.37	3.83	10.04	7.76
-	m17	2.25	1234	219771	3.41	3.80	10.05	7.75
-	mx17	1.63	1100	201609	3.37	3.85	10.11	7.81
-	m18	2.17	1226	221062	3.41	3.82	10.07	7.76
-	mx18	1.57	1105	202676	3.38	3.84	10.07	7.77	b43
-	m19	2.10	1230	222344	3.42	3.84	10.11	7.78
-	mx19	1.52	1107	203550	3.37	3.85	10.10	7.79
-	m20	2.04	1241	223532	3.43	3.82	10.08	7.77	b40
-	mx20	1.47	1112	204417	3.39	3.89	10.19	7.84	
+	m12	2.86	1197	210313	3.39	3.74	 9.86		best epoch for fv804: ptrans:3.74
+	mx12	2.01	1070	194373	3.35	3.86	10.09	
+	m13	2.70	1215	212685	3.39	3.76	 9.94	
+	mx13	1.92	1081	196166	3.36	3.86	10.09	
+	m14	2.56	1233	214830	3.40	3.78	 9.98	
+	mx14	1.84	1087	197736	3.36	3.85	10.08	
+	m15	2.44	1239	216702	3.41	3.80	10.05	
+	mx15	1.76	1095	199189	3.37	3.85	10.06	
+	m16	2.34	1234	218294	3.41	3.79	10.02	
+	mx16	1.69	1097	200424	3.37	3.83	10.04	
+	m17	2.25	1234	219771	3.41	3.80	10.05	
+	mx17	1.63	1100	201609	3.37	3.85	10.11	
+	m18	2.17	1226	221062	3.41	3.82	10.07	
+	mx18	1.57	1105	202676	3.38	3.84	10.07		b43
+	m19	2.10	1230	222344	3.42	3.84	10.11	
+	mx19	1.52	1107	203550	3.37	3.85	10.10	
+	m20	2.04	1241	223532	3.43	3.82	10.08		b40
+	mx20	1.47	1112	204417	3.39	3.89	10.19		
 	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
 
 
