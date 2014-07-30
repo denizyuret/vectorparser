@@ -122,7 +122,7 @@ if opts.update % Initialize model by defaults if necessary
     model.parser = @archybrid;
   end
   if ~isfield(model,'n_cla')
-    p = feval(model.parser, 0);
+    p = feval(model.parser, 1);
     model.n_cla=p.NMOVE;
   end
   if ~isfield(model,'beta')
@@ -207,17 +207,11 @@ if opts.dump
   end
   if opts.compute_costs
     dump.y = [];
-    dump.ycost = [];
-    if opts.compute_scores
-      dump.yscore = [];
-    end
+    dump.cost = [];
   end
   if opts.compute_scores
     dump.z = [];
-    dump.zscore = [];
-    if opts.compute_costs
-      dump.zcost = [];
-    end
+    dump.score = [];
   end
   if opts.predict
     dump.pred = {};
@@ -233,17 +227,11 @@ if opts.compute_features
 end
 if opts.compute_costs
   dump.y(end+1) = bestmove;
-  dump.ycost(end+1) = cost(bestmove);
-  if opts.compute_scores
-    dump.yscore(end+1) = score(bestmove);
-  end
+  dump.cost(:,end+1) = cost;
 end
 if opts.compute_scores
   dump.z(end+1) = maxmove;
-  dump.zscore(end+1) = score(maxmove);
-  if opts.compute_costs
-    dump.zcost(end+1) = cost(maxmove);
-  end
+  dump.score(:,end+1) = score;
 end
 end % update_dump
 
