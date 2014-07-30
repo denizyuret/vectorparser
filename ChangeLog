@@ -1,107 +1,4 @@
-2014-07-28  Deniz Yuret  <dyuret@ku.edu.tr>
-
-	* eval_conll.m: ++b43 this is not giving the same result as
-	below.  testing vectorparser.m.  OK, all whead numbers were wrong!
-	- Confirm that total cost is equal to total head error.
-	- It is not, more debugging of archybrid.oracle_cost is needed.
-
-	* vectorparser.m: trainparser, testparser, dumpfeatures etc do
-	very similar things.  We'll combine them all in this program.
-	
-	- Confirmed works correctly for dump, however all moves are
-	dumped, not just the multi-choice ones.  (TODO): test if this
-	makes a big difference in static oracle training, if it does find
-	a way to filter the multi-choice instances.
-	
-	[m,d] = vectorparser(m0, dev1, 'update', 0, 'predict', 0);
-	[x0,y0]=dumpfeatures2(dev1, fv808, 1);
-	all(d.x(:) == x0(:)) => 1
-	all(d.y(:) == y0(:)) => 1
-	
-	* arceager.m: should modify trainparser to also do dumpfeatures so
-	we can test.  (TODO)
-
-	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.
-				TEST				TRAIN
-++i11	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
-	mx5	169135	963	3.34	3.76	9.83		-	-	
-	mx5d1	204369	22472	4.07	3.78	10.02		3.02	8.37	
-	mx5d2	232151	?	4.02	3.63	9.59		2.73	7.60	
-	mx5d3	254535	?	3.99	3.49	9.23		2.45	6.88	
-	mx5d4	(TODO: recompute whead)
-	
-	* run_dynamic_oracle.m:
-				TEST				TRAIN
-++i10	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
-	m10	536294	21252	3.40	3.76	 9.89	
-	m10c	202888	-	3.40	3.76	 9.89	
-	m10d	230798	27415	4.07	3.84	10.15		2.84	7.90	
-	m10d2	251746	30510	4.06	3.67	 9.68		2.58	7.21	
-	m10d3	268378	?	4.07	3.59	 9.46		2.35	6.60	
-	m10d4	282674	31102	4.07	3.56	 9.39		2.21	6.23	
-	m10d5	303011	?	4.05	3.55	 9.33		2.06	5.84	
-	m10d6   (TODO: recompute whead)
-
-++b42	* run_embeddings.m: restarted again on after solving the issues
-	below. 	Compare the following to m1 with 0.0401 (aer:6.48)
-	from conllWSJToken_wikipedia2MUNK-50:
-
-	score:0.0370498	conllWSJToken_bansal100 (sv:5.58)
-	score:0.0395859	conllWSJToken_wikipedia2MUNK-200 (sv:6.28)
-	score:0.0396549	conllWSJToken_wikipedia2MUNK-100 (sv:6.44)
-	score:0.0401373	conllToken_wikipedia2MUNK-50 (sv:6.48)  -- this is m1
-	score:0.0409643	conllToken_wikipedia2MUNK-25 (sv:6.56)
-	score:0.0409781	conll_bansal100 (sv:5.99)
-	score:0.0414881	conllWSJToken_rcv1UNK50 (sv:6.72)
-	score:0.042067	conllToken_rcv1UNK (sv:6.82)
-	score:0.042067	conllWSJToken_rcv1UNK (sv:6.82)
-	score:0.042067	conllWSJToken_rcv1UNK25 (sv:6.82)
-	score:0.0464087	conllWSJToken_dep-100 (sv:6.07)
-	score:0.0477044	conllWSJToken_huang-0.1 (sv:7.30)
-	score:0.0483108	conll_4scode+f50 (sv:8.00)
-	score:0.0485589	conll_2scode+f100 (sv:7.96)
-	score:0.0487381	conll_3scode+f100 (sv:7.93)
-	score:0.048876	conll_6scode+f50 (sv:8.01)
-	score:0.0488897	conll_4scode+f100 (sv:7.93)
-	score:0.0489173	conll_6scode+f100 (sv:7.98)
-	score:0.0489311	conll_5scode+f100 (sv:7.96)
-	score:0.049	conllWSJToken_dep-WSJ (sv:6.41)
-	score:0.049	conll_10scode+f50 (sv:7.96)
-	score:0.0490276	conll_7scode+f50 (sv:8.02)
-	score:0.0491792	conll_2scode+f50 (sv:8.00)
-	score:0.049193	conll_1scode+f100 (sv:7.97)
-	score:0.0492619	conll_1scode+f50 (sv:7.99)
-	score:0.0494135	conll_9scode+f50 (sv:8.00)
-	score:0.0494686	conll_3scode+f50 (sv:8.01)
-	score:0.0494686	conll_5scode+f50 (sv:8.02)
-	score:0.0495927	conll_8scode+f50 (sv:8.04)
-	score:0.0502267	conll_3scode+f25 (sv:8.05)
-	score:0.0516464	conllWSJToken_cw50scaled (sv:8.62)
-	score:0.0519772	conllWSJToken_ungar2-0.1 (sv:8.56)
-	score:0.0523769	conllWSJToken_hlbl50scaled (sv:8.78)
-	score:0.0532729	conllWSJToken_mikolovWiki-0.1 (sv:8.05)
-	score:0.0596959	conllWSJToken_cw25 (sv:9.74)
-	score:0.0603713	conllWSJToken_stratos50k5000scaled01 (sv:9.84)
-	score:0.0610054	conllWSJToken_gsng1M (sv:9.83)
-	score:0.0611018	conllWSJToken_mikolovRCV50scaled01 (sv:10.18)
-	score:0.0626732	conllWSJToken_cw25scaled (sv:10.27)
-	score:0.063128	conllWSJToken_gsngAE (sv:10.33)
-	score:0.0661604	conllWSJToken_gsngALL (sv:10.56)
-	score:0.068793	conllWSJToken_yogamata52scaled01 (sv:10.57)
-	score:0.0733691	conllWSJToken_yogamata52 (sv:11.03)
-	score:0.0763187	conllWSJToken_stratos50k200scaled01 (sv:12.57)
-	score:0.0796681	conllWSJToken_manaal48 (sv:13.16)
-	score:0.0829072	conllWSJToken_hpca50scaled01 (sv:13.54)
-	score:0.0929829	conllWSJToken_manaal48scaled01 (sv:15.55)
-	score:0.104547	conllWSJToken_rnn80 (sv:16.37)
-	score:0.99 conllWSJToken_levy300 (memory error)
-	score:0.99 conllWSJToken_mikolovGoogleNews300 (memory error, saved in logs)
-	score:0.99 conllWSJToken_murphy50 (memory error, saved in logs)
-	score:0.99 conllWSJToken_murphy50scaled01 (memory error, saved in logs)
-	score:0.99 conllWSJToken_wikipedia2MUNK-25 (stuck during dumpfeatures, saved in logs)
-	score:0.99 conll_10scode+f50 (read error)
-
-2014-07-27  Deniz Yuret  <dyuret@ku.edu.tr>
+2014-07-30  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* TODO:
 
@@ -111,8 +8,8 @@
 	+ features: fv808 converges faster but same static performance.
 ++i10,11? dynamic oracle: it starts working after epoch 2
 	  - running on screen -x yunus, others now on yunus2
-++b42	? embeddings: so far bansal seems best.
-++b43	? arctype
+	? embeddings: so far bansal seems best.
+	? arctype
 	? beam-search
 	? kernel-type
 	? number-encoding
@@ -146,6 +43,263 @@
 	the test data comes from (could be different domain). (TODO)
 
 
+2014-07-28  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* eval_conll.m: this is not giving the same result as
+	below.  testing vectorparser.m.  
+	- OK, all whead numbers were wrong! Fixed trainparser_gpu.
+	- ptrans were different, fixed eval_conll.m
+	- Confirm that total cost is equal to total head error.
+	- It is not, more debugging of archybrid.oracle_cost is needed.
+	- Done, total cost is equal to total head error.
+	- TODO: do not use old ArcHybrid.m any more.
+
+	* archybrid.m:
+	- However now ptrans does not match old results exactly either!
+	- Neither does the number of transitions?
+  	  Why: only multi-choice transitions were used and their number changed with new archybrid.
+	  Confirm: dev1 has 1700 sents, 40117 words, 2n-2=76834 transitions.
+
+	  old dev_x: (1768,72551)
+	  [x0,y0] = dumpfeatures(dev_w, dev_h); % (1768,72551): uses old ArcHybrid.m, only multi-choice transitions
+	  [x1,y1] = dumpfeatures(dev_w, dev_h, 1); % (1768,76834): all transitions with ArcHybrid.m
+	  [x2,y2] = dumpfeatures2(dev1, fv1768); % (1768,72555): uses new archybrid.m
+	  [x3,y3] = dumpfeatures2(dev1, fv1768, 1); % (1768,76834): all transitions
+	  m0.parser = @archybrid; m0.feats=fv1768;
+	  [~,d4] = vectorparser(m0, dev1, 'update', 0, 'predict', 0); % (1768,76834): all transitions
+	  check multi-choice transition count: 72555 confirmed.
+	  numel(find(sum(isinf(d4.cost)) < 2)) => 72555
+
+	* vectorparser.m: trainparser, testparser, dumpfeatures etc do
+	very similar things.  We'll combine them all in this program.
+	
+	- Confirmed works correctly for dump, however all moves are
+	dumped, not just the multi-choice ones.  
+	
+	[m,d] = vectorparser(m0, dev1, 'update', 0, 'predict', 0);
+	[x0,y0]=dumpfeatures2(dev1, fv808, 1);
+	all(d.x(:) == x0(:)) => 1
+	all(d.y(:) == y0(:)) => 1
+
+	- Confirm for test.
+
+	r=trainparser_gpu(mx5d1, dev1, fv808)
+	[mz5,dz5]=vectorparser(mx5d1, dev1, 'update', 0);
+	eval_conll(dev1, dz5)  % gives the same results
+
+	- Confirm for train.
+
+	mx5d1.parser = @archybrid; mx5d1.feats=fv808;
+	[mz5d2,dz5d2] = vectorparser(mx5d1, trn1)
+	[rt5d2, mx5d2] = trainparser_gpu(mx5d1, trn1, fv808)
+	all(mx5d2.SV(:)==mz5d2.SV(:)) => 1
+	all(mx5d2.beta(:)==mz5d2.beta(:)) => 1
+	all(mx5d2.beta2(:)==mz5d2.beta2(:)) => 1
+
+	- test if saving single-choice moves in dump makes a big
+	difference in static oracle training, if it does find a way to
+	filter the multi-choice instances.
+
+	hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3);
+	m0=model_init(@compute_kernel,hp);
+	m0.parser=@archybrid; m0.feats=fv808;
+	[~,trndump] = vectorparser(m0, trn1, 'update', 0, 'predict', 0);
+	mz1 = k_perceptron_multi_train_gpu(trndump.x, trndump.y, m0);
+	[~,devdump] = vectorparser(m0, dev1, 'update', 0, 'predict', 0);
+	az1 = model_predict_gpu(devdump.x, mz1, 1);
+	numel(find(az1 ~= devdump.y))/numel(devdump.y) => 0.0363=2786/76834
+	Compare to mx1 which had 0.0375=2723/72551 or 0.0354=2723/76834
+	
+	So it does help a bit in first epoch (0.1%) to filter single-choice moves before training.
+	Saved dump data as trnhybrid.mat and devhybrid.mat.
+	
+	TODO- Dump, train, test, and confirm for arceager.
+
+	TODO- Remove trainparser, testparser, dumpfeatures variants.
+
+	TODO- Start featselect with arceager.
+	
+	* arceager.m: should modify trainparser to also do dumpfeatures so
+	we can test.  Checking oracle_cost.  Now checking archybrid oracle
+	cost.  They both passed the test.  TODO: create two versions of
+	arceager for testing, my version and the GoldbergNivre version.
+	First try with a standard feature set, then do feature
+	optimization.
+	
+	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.  best at 7 epochs.
+				TEST				TRAIN
+++i11	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	mx5	169135	963	3.34	3.76	9.83	8.63	-	-	
+	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
+	mx5d2	232151	?	4.02	3.63	9.59	8.47	2.73	7.60	6.77
+	mx5d3	254535	?	3.99	3.49	9.23	8.16	2.45	6.88	6.13
+	mx5d4	273226	?	4.00	3.47	9.20	8.12	2.23	6.28	5.61
+	mx5d5	289077	?	3.99	3.39	9.02	7.98	2.02	5.73	5.11
+	mx5d6	302335	?	3.99	3.39	8.96	7.92	1.83	5.24	4.67
+	mx5d7	314292	?	4.00	3.37	8.90	7.88	1.71	4.92	4.40
+	mx5d8	324433	?	4.02	3.42	9.05	8.00	1.56	4.54	4.06
+	mx5d9
+	mx5d10
+	
+	* run_dynamic_oracle.m: --i10 best results in 9 dynamic oracle epochs.  However this is with fv804, fv808 is better.
+				TEST				TRAIN
+	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	m10	536294	21252	3.40	3.76	 9.89	
+	m10c	202888	-	3.40	3.76	 9.89	8.68
+	m10d	230798	27415	4.07	3.84	10.15		2.84	7.90	
+	m10d2	251746	30510	4.06	3.67	 9.68		2.58	7.21	
+	m10d3	268378	?	4.07	3.59	 9.46		2.35	6.60	5.89
+	m10d4	282674	31102	4.07	3.56	 9.39	8.22	2.21	6.23	5.57
+	m10d5	303011	?	4.05	3.55	 9.33	8.19	2.06	5.84	5.22
+	m10d6   305964	?	4.03	3.50	 9.18	8.06	1.93	5.51	4.93
+	m10d7	315482	?	4.05	3.48	 9.15	8.05	1.82	5.20	4.69
+	m10d8	324031	?	4.06	3.49	 9.16	8.05	1.73	4.98	4.49
+	m10d9	331568	?	4.04	3.46	 9.12	8.03	1.62	4.69	4.23
+	m10d10	338353	?	4.06	3.47	 9.16	8.08	1.54	4.45	4.03
+
+	* run_embeddings.m: restarted again on after solving the issues
+	below.  Compare the following to m1 with 0.0401 (aer:6.48) from
+	conllWSJToken_wikipedia2MUNK-50.  sv is number of support vectors
+	at the end of one epoch.  n is the training set size, 1720842 when
+	(or 1720986 after Jul-29) not specified.
+	
+	score:0.0370498	conllWSJToken_bansal100 (sv:5.58)
+	score:0.0395859	conllWSJToken_wikipedia2MUNK-200 (sv:6.28)
+	score:0.0396549	conllWSJToken_wikipedia2MUNK-100 (sv:6.44)
+	score:0.0401373	conllToken_wikipedia2MUNK-50 (sv:6.48)  -- this is m1
+	score:0.0404659	conllWSJToken_wikipedia2MUNK-50
+	score:0.0409643	conllToken_wikipedia2MUNK-25 (sv:6.56)
+	score:0.0410309	conllWSJToken_wikipedia2MUNK-25
+	score:0.0414881	conllWSJToken_rcv1UNK50 (sv:6.72)
+	score:0.042067	conllToken_rcv1UNK (sv:6.82)
+	score:0.042067	conllWSJToken_rcv1UNK (sv:6.82)
+	score:0.042067	conllWSJToken_rcv1UNK25 (sv:6.82)
+	score:0.0464087	conllWSJToken_dep-100 (sv:6.07)
+	score:0.0477044	conllWSJToken_huang-0.1 (sv:7.30)
+	score:0.049	conllWSJToken_dep-WSJ (sv:6.41)
+	score:0.0516464	conllWSJToken_cw50scaled (sv:8.62)
+	score:0.0519772	conllWSJToken_ungar2-0.1 (sv:8.56)
+	score:0.0523769	conllWSJToken_hlbl50scaled (sv:8.78)
+	score:0.0532729	conllWSJToken_mikolovWiki-0.1 (sv:8.05)
+	score:0.0596959	conllWSJToken_cw25 (sv:9.74)
+	score:0.0603713	conllWSJToken_stratos50k5000scaled01 (sv:9.84)
+	score:0.0610054	conllWSJToken_gsng1M (sv:9.83)
+	score:0.0611018	conllWSJToken_mikolovRCV50scaled01 (sv:10.18)
+	score:0.0626732	conllWSJToken_cw25scaled (sv:10.27)
+	score:0.063128	conllWSJToken_gsngAE (sv:10.33)
+	score:0.0661604	conllWSJToken_gsngALL (sv:10.56)
+	score:0.068793	conllWSJToken_yogamata52scaled01 (sv:10.57)
+	score:0.0733691	conllWSJToken_yogamata52 (sv:11.03)
+	score:0.0763187	conllWSJToken_stratos50k200scaled01 (sv:12.57)
+	score:0.0796681	conllWSJToken_manaal48 (sv:13.16)
+	score:0.0829072	conllWSJToken_hpca50scaled01 (sv:13.54)
+	score:0.0929829	conllWSJToken_manaal48scaled01 (sv:15.55)
+	score:0.104547	conllWSJToken_rnn80 (sv:16.37)
+	
+	score:0.0409781	conll_bansal100 (sv:5.99)
+	score:0.04591	conll_wikipedia2MUNK-200
+	score:0.0461581	conll_wikipedia2MUNK-50
+	score:0.0463373	conll_wikipedia2MUNK-100
+	score:0.0469161	conll_rcv1UNK200
+	score:0.0474563	conll_cw100scaled (sv:7.44)
+	score:0.0477431	conll_wikipedia2MUNK-25
+	score:0.0477844	conll_rcv1UNK100
+	score:0.0479085	conll_rcv1UNK50
+	score:0.0483108	conll_4scode+f50 (sv:8.00)
+	score:0.0485589	conll_2scode+f100 (sv:7.96)
+	score:0.0487381	conll_3scode+f100 (sv:7.93)
+	score:0.048876	conll_6scode+f50 (sv:8.01)
+	score:0.0488897	conll_4scode+f100 (sv:7.93)
+	score:0.0489173	conll_6scode+f100 (sv:7.98)
+	score:0.0489311	conll_5scode+f100 (sv:7.96)
+	score:0.0489973	conll_rcv1UNK
+	score:0.049	conll_10scode+f50 (sv:7.96)
+	score:0.0490276	conll_7scode+f50 (sv:8.02)
+	score:0.0491792	conll_2scode+f50 (sv:8.00)
+	score:0.049193	conll_1scode+f100 (sv:7.97)
+	score:0.0492619	conll_1scode+f50 (sv:7.99)
+	score:0.0494135	conll_9scode+f50 (sv:8.00)
+	score:0.0494686	conll_3scode+f50 (sv:8.01)
+	score:0.0494686	conll_5scode+f50 (sv:8.02)
+	score:0.0495927	conll_8scode+f50 (sv:8.04)
+	score:0.0505685	conll_hlbl100scaled
+	score:0.0513266	conll_ungar2
+	score:0.0519634	conll_cw50scaled (sv:8.52)
+	score:0.0523603	conll_ungar2-0.1
+	score:0.0529391	conll_stratos100k5000scaled01
+	score:0.0531597	conll_wsj-dep
+	score:0.0545685	conll_dep-100 (sv:6.72)
+	score:0.0549544	conll_dep-WSJ (sv:7.34)
+	score:0.0589346	conll_mikolov50
+	score:0.0598994	conll_hlbl50scaled
+	score:0.0621597	conll_mikolovReuters50
+	score:0.0630591	conll_cw25scaled (sv:10.30)
+	score:0.0645579	conll_hlbl
+	score:0.0658811	conll_stratos100k200scaled01
+	score:0.0667255	conll_dep100+wiki25 (sv:10.89)
+	score:0.0679622	conll_mikolovWikipedia50
+	score:0.0746882	conll_huang-0.1
+	score:0.0803253	conll_hpca100scaled01
+	score:0.0834953	conll_gsngAE
+	score:0.0899869	conll_manaal48
+	score:0.0907036	conll_mikolovWikipedia25
+	score:0.0923024	conll_yogamata52
+	score:0.0934188	conll_gsngALL 
+	score:0.0940666	conll_gsng1M
+	score:0.112555	conll_dep100+mik (sv:17.72)
+	score:0.118269	conll_rnn80
+	
+	score:0.0396251	conll_wiki50+wiki50 (n:1891402)
+	score:0.0399145	conll_wiki25+wiki25 (n:1891402)
+	score:0.0414444	conll_rcv1UNK25+rcv1UNK+25 (n:1891402/1891272)
+	score:0.0502267	conll_3scode+f25 (sv:8.05 n:1891272)
+	score:0.0524734	conll_cw (sv:8.21 n:1891272)
+	score:0.0583452	conll_cw25+cw25 (sv:9.44 n:1891272)
+	score:0.0586484	conll_cw25 (sv:9.35 n:1891272)
+	score:0.0687203	conll_mikW25+mikW25 (n:1891402 after Jul-29)
+
+	score:0.0523636	conll07Token_english (sv:8.39 n:808163)
+	score:0.0613307	conll07English_wikipedia2MUNK-50 (sv:9.90 n:808163)
+	
+	score:0.0865817	conll07Token_czech (sv:13.04 n:757433)
+	score:0.0978749	conll07Czech_czechSKETCH50 (sv:15.10 n:757433)
+
+	score:0.0773805	conll_german+german (sv:12.77 n:1254045)
+	score:0.0898668	conll_german2+german2 (n:1261947new)
+	score:0.0944709	conll_german (sv:15.02 n:1254045)
+	score:0.0998288	conll_german2 (sv:14.43 n:1254045)
+
+	score:0.124902	conll_hungarian (n:301537)
+	score:0.126377	conll_hungarian+f (n:301537)
+	
+	score:0.146755	conll_polish (n:107202)
+	score:0.15181	conll_polish+f (n:107202)
+	
+	score:0.132375	conll_swedish (n:131239)
+	score:0.13461	conll_swedish+f (n:131239)
+	
+	score:0.172941	conll_turkishSKETCH-25 (n:87228)
+	
+	score:0.99 conllWSJToken_levy300 (memory error: ++523 ++i21, out-of-memory in dumpfeatures,++125)
+	score:0.99 conll_levy300 (memory error at 1664772 remerge: ++526 ++i22, license error,++120)
+	score:0.99 conllWSJToken_mikolovGoogleNews300 (memory error, saved in logs: ++529 ++i10, out-of-memory in dumpfeatures,++117)
+	score:0.99 conllWSJToken_murphy50 (memory error, saved in logs, debugging ++b42, ++532 ++i23, stuck assertion failed 128,++112,b40)
+	score:0.99 conllWSJToken_murphy50scaled01 (memory error, saved in logs, ++535 ++i30, time?, ++109,b43)
+	score:0.99 conll_murphy50 (crashed ilac-3-1 (853), resubmitting on 2-0, again ++564 ++i20, time?, ++104,b42)
+	score:0.99 conll_murphy50scaled01 (++619 ++i13, time?, ++101,b41)
+
+	
+	score:0.99 conll_french has two test files
+	score:0.99 conll_french+f has two test files
+	
+	score:0.99 conll08_wikipedia2MUNK-25 is empty
+	score:0.99 conllToken_cw25scaled is empty
+	score:0.99 conllToken_rnn80 is empty
+
+	TODO: debug conllWSJToken_dep-100 (good train bad test)
+
+2014-07-27  Deniz Yuret  <dyuret@ku.edu.tr>
+
 	* run_multi_epoch2.m:
 	
 	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
@@ -160,7 +314,7 @@
 	m4	4.58	11049	299268	3.44	3.91	10.17	
 	mx4	3.54	930	161208	3.36	3.80	 9.88	
 	m5	4.21	12990	347577	3.42	3.90	10.17	
-	mx5	3.21	963	169135	3.34	3.76	 9.83		best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
+	mx5	3.21	963	169135	3.34	3.76	 9.83	8.63	best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
 	m6	3.92	15004	391424	3.42	3.89	10.13	
 	mx6	2.92	1000	175089	3.35	3.77	 9.86		
 	m7	3.69	16784	431962	3.43	3.83	10.02	
@@ -176,7 +330,7 @@
 	m11	3.01	1182	207516	3.39	3.76	 9.89		new gpu version, diff due to reduced batchsize towards the end
 	mx11	2.11	1062	192309	3.35	3.87	10.11	
 	m12x	2.90	1196	210024	3.41	3.76	 9.94		compactified, run on gpu
-	m12	2.86	1197	210313	3.39	3.74	 9.86		best epoch for fv804: ptrans:3.74
+	m12	2.86	1197	210313	3.39	3.74	 9.86	8.64	best epoch for fv804: ptrans:3.74
 	mx12	2.01	1070	194373	3.35	3.86	10.09	
 	m13	2.70	1215	212685	3.39	3.76	 9.94	
 	mx13	1.92	1081	196166	3.36	3.86	10.09	
