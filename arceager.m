@@ -44,26 +44,20 @@ end % arceager
 % REDUCE[(σ|s, β, A)] = (σ, β, A)
 
 function transition(p, op)
+v = valid_moves(p);
+assert(v(op));
 switch op
- case p.SHIFT                   % same as archybrid
+ case p.SHIFT                   % move n0 to s; same as archybrid
   p.sptr = p.sptr + 1;		
   p.stack(p.sptr) = p.wptr;
   p.wptr = p.wptr + 1;
- case p.RIGHT                   % (s,w) followed by a shift
+ case p.RIGHT                   % (s0,n0) followed by a shift
   p.add_arc(p.stack(p.sptr), p.wptr);
   p.sptr = p.sptr + 1;
   p.stack(p.sptr) = p.wptr;
   p.wptr = p.wptr + 1;
- case p.LEFT                    % (w,s) followed by reduce; same as archybrid
-
-  % p.wptr can be nword+1 for root!  Our convention is root=0.  We
-  % also start all p.head==0.  This conflates words with no head
-  % yet and words with root head.  However the second case is only
-  % possible with LEFT and results in the word being popped, so in
-  % effect all words in stack+buffer with head==0 have no head and
-  % all words off of stack+buffer have root head.
-
-  if (p.wptr <= p.nword)
+ case p.LEFT                    % (n0,s0) followed by reduce; same as archybrid
+  if (p.wptr <= p.nword)        % otherwise leave the head as ROOT=0
     p.add_arc(p.wptr, p.stack(p.sptr)); 
   end
   p.sptr = p.sptr - 1;
@@ -76,47 +70,26 @@ end % transition
 
 
 % There is a precondition on the RIGHT and SHIFT transitions to be
-% legal only when b ~= ROOT , and for LEFT , RIGHT and REDUCE to be
-% legal only when the stack is non-empty. Moreover, LEFT is only legal
-% when s does not have a parent in A, and REDUCE when s does have a
-% parent in A.  The parser terminates when p.wptr == p.nword+1 and
-% p.sptr == 0.
+% legal only when b ~= ROOT (p.wptr <= p.nword), and for LEFT, RIGHT
+% and REDUCE to be legal only when the stack is non-empty (p.sptr >=
+% 1). Moreover, LEFT is only legal when s does not have a parent in A,
+% and REDUCE when s does have a parent in A.
 
 function v = valid_moves(p)
-v(p.SHIFT)  = (p.wptr <= p.nword);
-v(p.RIGHT)  = ((p.sptr >= 1) && (p.wptr <= p.nword));
-v(p.LEFT)   = ((p.sptr >= 1) && (p.head(p.stack(p.sptr)) == 0));
+v(p.SHIFT)  = ((p.wptr < p.nword) || ((p.wptr == p.nword) && (p.sptr == 0)));
+v(p.RIGHT)  = ((p.sptr >= 1) && ((p.wptr < p.nword) || ((p.wptr == p.nword) && (sum(p.head(p.stack(1:p.sptr)) == 0) == 1))));
+v(p.LEFT)   = ((p.sptr >= 1) && (p.wptr <= p.nword) && (p.head(p.stack(p.sptr)) == 0));
 v(p.REDUCE) = ((p.sptr >= 1) && (p.head(p.stack(p.sptr)) ~= 0));
 end % valid_moves
 
 
-% In the arc-eager system:
-% A token starts life without any arcs in the buffer.
-% It becomes n0 after a number of shift+right.
-% n0 acquires ldeps using left+reduce.
-% It becomes s0 using shift (s0s) if right-head.
-% It becomes s0 using right (s0r) if left-head.
-% s0 acquires rdeps using right+reduce.
-% s0r ends with reduce.
-% s0s ends with left.
-%
-% i.e. left deps are acquired first while in buffer.
-% then rdeps are acquired while in stack.
-% head is acquired in stack before or after the rdeps.
-% before if left-head, after if right-head.
+% oracle_cost counts gold arcs that become impossible after a move.
+% In the arc-eager system: A token starts life without any arcs in the
+% buffer.  It moves to the head of the buffer (n0) with shift+right
+% moves.  Left deps are acquired first while in buffer.  Then rdeps
+% are acquired while in stack.  Head is acquired in stack before (if
+% left-head) or after (if right-head) the rdeps.
 
-% In the arc-eager system, an arc (h,d) is reachable from a
-% configuration c if one of the following conditions hold: 
-% (1) (h,d) is already derived ((h,d) ∈ A_c); 
-% (2) h and d are in the buffer; 
-% (3) h is on the stack and d is in the buffer; 
-% (4) d is on the stack and is not assigned a head and h is in the buffer.
-
-% Oracle counts gold arcs that become impossible after a move:
-% 1. SHIFT moves n0 to s: [(n0,s) & head(s)==0] + [gold(n0) in s]
-% 2. RIGHT adds (s0,n0) : [(n0,s) & head(s)==0] + [gold(n0) ~= s0]
-% 3. LEFT  adds (n0,s0) : (s0,b) + (b\n0,s0)
-% 4. REDUCE pops s0     : (s0,b)
 
 function c = oracle_cost(p, gold)
 
@@ -124,23 +97,35 @@ assert(numel(gold) == p.nword); % gold is the correct head vector.
 c = Inf(1, p.NMOVE);            % cost for illegal moves is inf.
 
 if (p.sptr >= 1)
-  s0 = p.stack(p.sptr);
+
   n0 = p.wptr;
+  s0 = p.stack(p.sptr);
+  s = p.stack(1:p.sptr);
+  ss = p.stack(1:p.sptr-1);
   s0b = sum(gold(n0:end) == s0);
-  if (p.head(s0) == 0)
-    c(p.LEFT) = s0b + (gold(s0) > p.wptr) + (gold(s0) == 0);
-  else
+  n0s = sum((gold(s)==n0) & (p.head(s)==0));
+
+  if (n0 < p.nword)
+    % SHIFT moves n0 to s: n0 gets no more ldeps or lhead
+    c(p.SHIFT) = n0s + sum(s == gold(n0));
+  end
+  if ((n0 < p.nword) || ((n0 == p.nword) && (sum(p.head(s) == 0) == 1)))
+    % RIGHT adds (s0,n0): n0 gets no more ldeps, rhead, 0head, or lhead<s0
+    c(p.RIGHT) = n0s + (gold(n0) > n0) + (gold(n0) == 0) + sum(ss == gold(n0));
+  end
+  if ((p.head(s0) == 0) && (n0 <= p.nword))
+    % LEFT  adds (n0,s0): s0 gets no more rdeps, rhead>n0 or 0head
+    c(p.LEFT) = s0b + (gold(s0) > n0) + (gold(s0) == 0);
+  end
+  if (p.head(s0) ~= 0)
+    % REDUCE pops s0: s0 gets no more rdeps
     c(p.REDUCE) = s0b;
   end
-  if (n0 <= p.nword)
-    s = p.stack(1:p.sptr);
-    n0s = sum((gold(s)==n0) & (p.head(s)==0));
-    c(p.SHIFT) = n0s + sum(s == gold(n0));
-    c(p.RIGHT) = n0s + (gold(n0) ~= s0);
-  end
-elseif p.wptr <= p.nword
-  c(p.SHIFT) = 0;
-end
+elseif (p.wptr <= p.nword)
+  % SHIFT is the only legal move when stack empty
+  c(p.SHIFT) = 0; 
+
+end % if (p.sptr >= 1)
 
 v = valid_moves(p);
 assert(all(isfinite(c(v))) && all(isinf(c(~v))));
