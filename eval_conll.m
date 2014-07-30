@@ -5,7 +5,9 @@ function r = eval_conll(corpus, dump)
 % should confirm total zcost == total head error
 
 r.move_tot = numel(dump.y);
-r.move_err = sum(dump.ycost < dump.zcost);
+ycost = dump.cost(sub2ind(size(dump.cost), dump.y, 1:numel(dump.y)));
+zcost = dump.cost(sub2ind(size(dump.cost), dump.z, 1:numel(dump.z)));
+r.move_err = sum(ycost < zcost);
 r.move_pct = r.move_err / r.move_tot;
 
 r.sent_cnt = 0; r.sent_err = 0;
@@ -31,7 +33,7 @@ for i=1:numel(corpus)
   move1 = nmove + 1;
   move2 = nmove + 2*nword - 2;
   nmove = move2;
-  movecost = sum(dump.zcost(move1:move2));
+  movecost = sum(zcost(move1:move2));
   assert(movecost == head_err, ...
          'Discrepancy in sentence %d: %d ~= %d moves(%d,%d)', ...
          i, movecost, head_err, move1, move2);
@@ -48,6 +50,7 @@ for i=1:numel(corpus)
 
 end
 assert(nmove == numel(dump.z));
+assert(r.head_err == sum(zcost));
 
 r.sent_pct = r.sent_err / r.sent_cnt;
 r.head_pct = r.head_err / r.head_cnt;
