@@ -3,6 +3,7 @@
 *_dbg.m
 run_*.m
 foo*
+matlab.sh
 logs
 unused
 trash
