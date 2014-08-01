@@ -1,4 +1,4 @@
-% ArcHybrid.m, Deniz Yuret, July 7, 2014: Transition based greedy arc-hybrid parser based on:
+% archybrid.m, Deniz Yuret, July 7, 2014: Transition based greedy arc-hybrid parser based on:
 % http://honnibal.wordpress.com/2013/12/18/a-simple-fast-algorithm-for-natural-language-dependency-parsing
 % Goldberg, Yoav; Nivre, Joakim. Training Deterministic Parsers with Non-Deterministic Oracles. TACL 2013.
 
@@ -32,7 +32,7 @@ p.ldep = zeros(n, n); p.lcnt = zeros(1, n);
 p.rdep = zeros(n, n); p.rcnt = zeros(1, n);
 p.head = zeros(1, n);
 p.transition(p.SHIFT);
-end % ArcHybrid
+end % archybrid
 
 
 % In the archybrid system:
