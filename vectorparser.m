@@ -1,10 +1,10 @@
 % Usage:
 %
-% model = vectorparser(model, corpus);  %% training
-% [model, dump] = vectorparser(model, corpus, 'update', 0)); %% testing
-% [model, dump] = vectorparser(model, corpus, 'update', 0, 'predict', 0); %% dump features
+% [dump, model] = vectorparser(model, corpus);  %% training
+% dump = vectorparser(model, corpus, 'update', 0)); %% testing
+% dump = vectorparser(model, corpus, 'update', 0, 'predict', 0); %% dump features
 
-function [model, dump] = vectorparser(model, corpus, varargin)
+function [dump, model] = vectorparser(model, corpus, varargin)
 
 nargout_save = nargout;
 vectorparser_init();
