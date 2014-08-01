@@ -1,3 +1,17 @@
+fv102 = [];
+for a=-2:1
+  for b=-1:1
+    if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
+    if ((a > 0)  && (b < 0)) continue; end   % no ldeps for a>0
+    for c=-8:8
+      if ((a > 0) && ismember(c, [2,-2,3,-3,5,-5,6,-6,7,-7,8,-8])) continue; end      % no deps/dist/in-between for a>0
+      if ((a == 0) && (b == 0) && ismember(c, [2,3,-3,5,6,7,-7,8,-8])) continue; end  % no rdeps/dist/in-between for a=0
+      if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8])) continue; end  % no dist/in-between for deps
+      fv102 = [fv102, [a;b;c]];
+    end
+  end
+end
+
 fv1768 = [
 %n0            n1             n2             s0             s1             s2             s0l1           s0l2           s0r1           s0r2           s1l1           s1l2           s1r1           s1r2           n0l1           n0l2          n0s0 s0s1
 0  0  0  0  0  1  1  1  1  1  2  2  2  2  2 -1 -1 -1 -1 -1 -2 -2 -2 -2 -2 -3 -3 -3 -3 -3 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2  0  0  0  0  0  0  0  0  0  0 -1   -2;
