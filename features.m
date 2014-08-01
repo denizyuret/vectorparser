@@ -1,8 +1,8 @@
 function [f, fidx] = features(p, s, feats)
 
 % Given a parser state p and a sentence s returns a feature vector
-% feats is a 3xn matrix that determines which features to extract
-% Each column of feats consists of the following three values:
+% feats is a nx3 matrix whose rows determine which features to extract
+% Each row of feats consists of the following three values:
 % 1. anchor word: 0:n0, 1:n1, 2:n2, ..., -1:s0, -2:s1, -3:s2, ...
 % 2. target word: 0:self, 1:rightmost child, 2:second rightmost, -1:leftmost, -2:second leftmost ...
 % 3. feature: One of the features listed below.
@@ -27,7 +27,7 @@ f = zeros(1,imax);                      % feature vector
 i = 0;                                  % index into feature vector
 fidx = [];                              % indices into feature vector
 
-for feat = feats                        % 16.10us/iter
+for feat = feats'                       % 16.10us/iter
 
   % identify the anchor a: 8.81us
   if feat(1) >= 0                       % buffer word
@@ -284,7 +284,7 @@ for feat = feats                        % 16.10us/iter
 end % for feat = feats
 
 assert(fidx(end) == i);
-assert(numel(fidx) == size(feats, 2));
+assert(numel(fidx) == size(feats, 1));
 f = f(1:i);
 
 end % features
