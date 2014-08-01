@@ -1,3 +1,18 @@
+fv130 = [];
+for a=-3:2
+  for b=-1:1
+    if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
+    if ((a > 0)  && (b < 0)) continue; end   % no ldeps for a>0
+    for c=-8:8
+      if ((a > 0) && ismember(c, [2,-2,3,-3,5,-5,6,-6,7,-7,8,-8])) continue; end      % no deps/dist/in-between for a>0
+      if ((a == 0) && (b == 0) && ismember(c, [2,3,-3,5,6,7,-7,8,-8])) continue; end  % no rdeps/dist/in-between for a=0
+      if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8])) continue; end  % no dist/in-between for deps
+      if ((c == 0) || (c == -3)) continue; end  % do not use the word+context combination, keep them separate
+      fv130 = [fv130; [a b c]];
+    end
+  end
+end
+
 fv102 = [];
 for a=-2:1
   for b=-1:1
