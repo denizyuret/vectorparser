@@ -1,10 +1,13 @@
-% Usage:
+% Usage: vectorparser takes a model, a corpus, and some options, and
+% outputs a model (untouched if update==0), and optionally a dump.
+% The dump can be given to eval_conll with the corpus to get some
+% statistics.
 %
-% [dump, model] = vectorparser(model, corpus);  %% training
-% dump = vectorparser(model, corpus, 'update', 0)); %% testing
-% dump = vectorparser(model, corpus, 'update', 0, 'predict', 0); %% dump features
+% model = vectorparser(model, corpus);  %% training, dump optional
+% [model,dump] = vectorparser(model, corpus, 'update', 0)); %% testing
+% [model,dump] = vectorparser(model, corpus, 'update', 0, 'predict', 0); %% dump features
 
-function [dump, model] = vectorparser(model, corpus, varargin)
+function [model, dump] = vectorparser(model, corpus, varargin)
 
 nargout_save = nargout;
 vectorparser_init();
