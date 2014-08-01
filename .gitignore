@@ -1,6 +1,7 @@
 *~
 *.mexa64
 *_dbg.m
+run_*.m
 foo*
 logs
 unused
