@@ -6,25 +6,26 @@
 	+ multi-epoch: ~10-12 static epochs seem sufficient
 	  - 5 epochs for fv808
 	+ features: fv808 converges faster but same static performance.
-++i10,11? dynamic oracle: it starts working after epoch 2
-	  - running on screen -x yunus, others now on yunus2
-	? embeddings: so far bansal seems best.
+	+ dynamic oracle: it starts working after epoch 2, best at 5-10 epochs
+	+ embeddings: bansal seems best.
 	? arctype
 	? beam-search
 	? kernel-type
 	? number-encoding
 	- free: b40
-	- results on conll07
+	
+	- results on conll07.  check the source of the test corpus.
+	
+	- Try ArcEager.  -- should be easy 1-epoch, needs code
+	-- need feature optimization again!
+	-- Nivre says it is important not to put the root on the left?
+	-- multipe versions of archybrid, arceager (one root-child vs many, see readings in Nivre's mail)
 	
 	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
 	-- Beam search parser: read paper.  read redshift.  minibatch?
 	-- we can start by writing a beam decoder to parse with existing models.  no training.
 	-- how often does the gold sequence have a total score better than greedy sequence?
 	
-	- Try ArcEager.  -- should be easy 1-epoch, needs code
-	-- need feature optimization again!
-	-- Nivre says it is important not to put the root on the left?
-
 	- archybrid.m,dumpfeatures2.m: temporary new versions to replace
 	the old when scripts finish.  need to keep these separate until
 	featselect etc. is updated.  or replace featselect with trainparser.
@@ -38,6 +39,8 @@
 
 	- write matlab gpu tutorial on blog
 
+	- try separating the type and context parts of token vectors.
+	
 	- goldberg-nivre-2013: gives results for conll07 english using
 	greedy parsers.  training is 02-11 (half my size), look at where
 	the test data comes from (could be different domain). (TODO)
@@ -127,8 +130,8 @@
 	optimization.
 	
 	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.  best at 7 epochs.
-				TEST				TRAIN
-++i11	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	--i11			TEST				TRAIN
+	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
 	mx5	169135	963	3.34	3.76	9.83	8.63	-	-	
 	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
 	mx5d2	232151	?	4.02	3.63	9.59	8.47	2.73	7.60	6.77
@@ -138,8 +141,8 @@
 	mx5d6	302335	?	3.99	3.39	8.96	7.92	1.83	5.24	4.67
 	mx5d7	314292	?	4.00	3.37	8.90	7.88	1.71	4.92	4.40
 	mx5d8	324433	?	4.02	3.42	9.05	8.00	1.56	4.54	4.06
-	mx5d9
-	mx5d10
+	mx5d9	333380	?	4.04	3.41	9.02	7.98	1.46	4.25	3.80
+	mx5d10	341257	?	4.04	3.41	9.00	7.94	1.36	4.00	3.59
 	
 	* run_dynamic_oracle.m: --i10 best results in 9 dynamic oracle epochs.  However this is with fv804, fv808 is better.
 				TEST				TRAIN
@@ -248,6 +251,8 @@
 	score:0.0940666	conll_gsng1M
 	score:0.112555	conll_dep100+mik (sv:17.72)
 	score:0.118269	conll_rnn80
+	score:0.405623	conll_murphy50
+	score:0.401681	conll_murphy50scaled01
 	
 	score:0.0396251	conll_wiki50+wiki50 (n:1891402)
 	score:0.0399145	conll_wiki25+wiki25 (n:1891402)
@@ -280,14 +285,11 @@
 	
 	score:0.172941	conll_turkishSKETCH-25 (n:87228)
 	
-	score:0.99 conllWSJToken_levy300 (memory error: ++523 ++i21, out-of-memory in dumpfeatures,++125)
-	score:0.99 conll_levy300 (memory error at 1664772 remerge: ++526 ++i22, license error,++120)
-	score:0.99 conllWSJToken_mikolovGoogleNews300 (memory error, saved in logs: ++529 ++i10, out-of-memory in dumpfeatures,++117)
-	score:0.99 conllWSJToken_murphy50 (memory error, saved in logs, debugging ++b42, ++532 ++i23, stuck assertion failed 128,++112,b40)
-	score:0.99 conllWSJToken_murphy50scaled01 (memory error, saved in logs, ++535 ++i30, time?, ++109,b43)
-	score:0.99 conll_murphy50 (crashed ilac-3-1 (853), resubmitting on 2-0, again ++564 ++i20, time?, ++104,b42)
-	score:0.99 conll_murphy50scaled01 (++619 ++i13, time?, ++101,b41)
-
+	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
+	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
+	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
+	score:0.99 conllWSJToken_murphy50 (out of memory at 1182126, sv:494871, nk:85, g:9.4e7)
+	score:0.99 conllWSJToken_murphy50scaled01 (out of memory at 1289463, sv:494698, nk:85, g:9.4e7)
 	
 	score:0.99 conll_french has two test files
 	score:0.99 conll_french+f has two test files
