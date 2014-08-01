@@ -1,6 +1,7 @@
 % arceager.m, Deniz Yuret, July 28, 2014: Transition based greedy arc-eager parser based on:
 % http://honnibal.wordpress.com/2013/12/18/a-simple-fast-algorithm-for-natural-language-dependency-parsing
 % Goldberg, Yoav; Nivre, Joakim. Training Deterministic Parsers with Non-Deterministic Oracles. TACL 2013.
+% Modified valid_moves to output a single root-child.
 
 classdef arceager < handle
 
