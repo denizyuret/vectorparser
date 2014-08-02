@@ -25,72 +25,66 @@ function model = perceptron(X,Y,model)
 % model.beta2 are the averaged (rather summed) parameters.
 %
 % model.batchsize gives the mini-batch size (default=1000).
-% model.epochs gives the number of epochs (default=1).
+%
 
 
 [nd,nx,nc,ns,gpu,gdev] = perceptron_init();
 fprintf('inst\tnsv\tbatch\ttime\tmem\n');
-tic;
 
 
-for epoch=1:model.epochs                % We should shuffle here?
+svtr = model.SV';
+svtr2 = zeros(0, nd);
+if gpu gpu_load_model(); end
 
-  fprintf('Epoch %d\n', epoch);
-  svtr = model.SV';
-  svtr2 = zeros(0, nd);
-  if gpu gpu_load_model(); end
+i = 0; j = 0; 
+j_step = model.step;
 
-  i = 0; j = 0; 
-  j_step = model.step;
+while j < nx                          % 26986us/iter for batchsize=500
 
-  while j < nx                          % 26986us/iter for batchsize=500
+  i = j + 1;
+  nk = real_batchsize();
+  j = min(nx, i + nk - 1);            % will process minibatch X(:,i:j)
+  nk = j - i + 1;                     % in case j==nx
 
-    i = j + 1;
-    nk = real_batchsize();
-    j = min(nx, i + nk - 1);            % will process minibatch X(:,i:j)
-    nk = j - i + 1;                     % in case j==nx
+  score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
+  costij = Y(:,i:j);                  % costij(nc,nk): costs for X(:,i:j)
+                                      % score(isinf(costij)) = -inf;        % do not punish for impossible answers
+  [maxscore, maxscore_i] = max(score); % compare the cost of maxscore answers
+  [mincost, mincost_i] = min(costij); % to the mincost answers
+  mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
+  updates = find(mycost > mincost);
 
-    score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
-    costij = Y(:,i:j);                  % costij(nc,nk): costs for X(:,i:j)
-    % score(isinf(costij)) = -inf;        % do not punish for impossible answers
-    [maxscore, maxscore_i] = max(score); % compare the cost of maxscore answers
-    [mincost, mincost_i] = min(costij); % to the mincost answers
-    mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
-    updates = find(mycost > mincost);
+  if ~isempty(updates)                % 33587us
+    nu = numel(updates);
+    ns = ns + nu;
 
-    if ~isempty(updates)                % 33587us
-      nu = numel(updates);
-      ns = ns + nu;
+    check_sv_blocks(nu);
+    updates_i = updates+i-1;          % updates uses (1,nk) indexing, updates_i uses (i,j) indexing
+    svtr2 = [ svtr2; X(:,updates_i)' ];
 
-      check_sv_blocks(nu);
-      updates_i = updates+i-1;          % updates uses (1,nk) indexing, updates_i uses (i,j) indexing
-      svtr2 = [ svtr2; X(:,updates_i)' ];
+    newbeta = zeros(nc, nu);
+    newbeta(sub2ind(size(newbeta), mincost_i(updates), 1:nu)) = 1;
+    newbeta(sub2ind(size(newbeta), maxscore_i(updates), 1:nu)) = -1;
 
-      newbeta = zeros(nc, nu);
-      newbeta(sub2ind(size(newbeta), mincost_i(updates), 1:nu)) = 1;
-      newbeta(sub2ind(size(newbeta), maxscore_i(updates), 1:nu)) = -1;
+    model.beta2 = model.beta2 + model.beta;
+    model.beta2 = [model.beta2 newbeta];
+    model.beta = [model.beta newbeta];    % 972us
 
-      model.beta2 = model.beta2 + model.beta;
-      model.beta2 = [model.beta2 newbeta];
-      model.beta = [model.beta newbeta];    % 972us
+  end % if ~isempty(updates)
 
-    end % if ~isempty(updates)
+  if j >= j_step
+    fprintf('%d\t%d\t%d\t%.2f\t%.2e\n', j, ns, nk, toc, gmem);
+    j_step = j_step + model.step;
+  end
 
-    if j >= j_step
-      fprintf('%d\t%d\t%d\t%.2f\t%.2e\n', j, ns, nk, toc, gmem);
-      j_step = j_step + model.step;
-    end
+end % while j < nx
 
-  end % while j < nx
-
-  fprintf('%d\t%d\t%d\t%.2f\t%.2e\n', j, ns, nk, toc, gmem);
-  model.beta = gather(model.beta);
-  model.beta2 = gather(model.beta2);
-  model.SV = [ gather(svtr)', gather(svtr2)' ];
-  clear svtr svtr2
-  model = compactify(model);
-
-end % for epoch=1:model.epochs
+fprintf('%d\t%d\t%d\t%.2f\t%.2e\n', j, ns, nk, toc, gmem);
+model.beta = gather(model.beta);
+model.beta2 = gather(model.beta2);
+model.SV = [ gather(svtr)', gather(svtr2)' ];
+clear svtr svtr2
+model = compactify(model);
 
 
 
@@ -146,11 +140,6 @@ fprintf('Using X batchsize=%d\n', model.batchsize);
 % Stupid matlab copies on write, so we need to keep sv in two blocks
 model.sv_block_size = floor(1e8/nd);
 fprintf('Using SV blocksize=%d\n', model.sv_block_size);
-
-% Default number of epochs = 1
-if isfield(model,'epochs')==0
-  model.epochs = 1;
-end
 
 % See if we have a gpu
 gpu = gpuDeviceCount(); 
