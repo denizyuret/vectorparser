@@ -1,4 +1,4 @@
-function model = perceptron(model,X,cost)
+function model = perceptron(X,Y,model)
 
 % perceptron: written by Deniz Yuret, August 2, 2014.
 % Multi-class, mini-batch, cost based, gpu enabled perceptron.
@@ -6,9 +6,12 @@ function model = perceptron(model,X,cost)
 %
 % X(nd,nx) has an instance in each column.
 %
-% cost(nc,nx) has the cost of each class for each instance.
+% Y(nc,nx) has the cost of each class for each instance.
 % - all mincost classes are considered correct.
 % - all cost=inf classes are considered invalid regardless of their score.
+%
+% If Y is a vector, it is taken to be the vector of correct answers
+% and automatically converted to a 0-1 cost matrix.
 %
 % model can be a blank model or the result of a previous epoch, in
 % which case it will have non-empty SV(nd,ns), beta(nc,ns) and
@@ -48,8 +51,8 @@ for epoch=1:model.epochs                % We should shuffle here?
     nk = j - i + 1;                     % in case j==nx
 
     score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
-    costij = cost(:,i:j);               % costij(nc,nk): costs for X(:,i:j)
-    score(isinf(costij)) = -inf;        % do not punish for impossible answers
+    costij = Y(:,i:j);                  % costij(nc,nk): costs for X(:,i:j)
+    % score(isinf(costij)) = -inf;        % do not punish for impossible answers
     [maxscore, maxscore_i] = max(score); % compare the cost of maxscore answers
     [mincost, mincost_i] = min(costij); % to the mincost answers
     mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
@@ -104,16 +107,15 @@ assert(strcmp(model.kerparam.type,'poly'), 'Only poly kernel models supported.\n
 % Get the size of the problem
 nd = size(X, 1);
 nx = size(X, 2);
-assert(nx == size(cost, 2));
-nc = size(cost, 1);
+assert(nx == size(Y, 2));
+nc = size(Y, 1);
 if nc == 1
   fprintf('Cost matrix is 1D, assuming these are correct answers.\n');
-  y = cost;
-  assert(all(y>=1));
-  nc = max(y);
+  assert(all(Y>=1));
+  nc = max(Y);
   cost = ones(nc, nx);
-  cost(sub2ind(size(cost), y, 1:nx)) = 0;
-  clear y;
+  cost(sub2ind(size(cost), Y, 1:nx)) = 0;
+  Y = cost;
 end
 if ~isfield(model,'SV') || isempty(model.SV)
   fprintf('Initializing empty model.\n');
