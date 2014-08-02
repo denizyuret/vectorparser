@@ -3,7 +3,7 @@
 % The dump can be given to eval_conll with the corpus to get some
 % statistics.
 %
-% model = vectorparser(model, corpus);  %% training, dump optional
+% model = vectorparser(model, corpus);  %% training mode, dump optional
 % [model,dump] = vectorparser(model, corpus, 'update', 0)); %% testing
 % [model,dump] = vectorparser(model, corpus, 'update', 0, 'predict', 0); %% dump features
 
@@ -88,6 +88,11 @@ if opts.update
   model = compactify(model);
 end
 
+if opts.dump && opts.compute_features
+  dump.feats = model.feats;
+  [~,dump.fidx] = features(p, s, model.feats);
+end
+
 
 function vectorparser_init()
 
@@ -140,7 +145,7 @@ if opts.update % Initialize model by defaults if necessary
           0 -1 -2  1  0   -1   -2    -1   -1    -3;
           0  0  0  0 -1    1    1    -1    1     0;
           0  0  0  0  0    0   -2     0   -2     0;
-        ];
+        ]';
   end
 end
 
@@ -153,12 +158,15 @@ assert(isfield(model,'parser'), 'Please specify model.parser.');
 
 if opts.compute_features
   assert(isfield(model,'feats'), 'Please specify model.feats.');
+  assert(size(model.feats, 2) == 3, 'The feats matrix needs 3 columns.');
 end
 
 if opts.compute_scores
   assert(isfield(model,'n_cla'), 'Please specify model.n_cla.');
   assert(isfield(model,'beta'), 'Please specify model.beta.');
   assert(isfield(model,'beta2'), 'Please specify model.beta2.');
+  assert(isfield(model,'b'), 'Please specify model.b.');
+  assert(isfield(model,'b2'), 'Please specify model.b2.');
   assert(isfield(model,'kerparam') && ...
          strcmp(model.kerparam.type,'poly'), ...
          'Please specify poly kernel in model.kerparam.\n');
