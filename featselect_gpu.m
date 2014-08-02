@@ -1,18 +1,21 @@
-function [best_feats, best_feats_err, cache] = featselect_gpu(m0, trn, dev, initfeats, cache)
+function featselect_gpu(m0, trn, dev, cachefile, initfeats)
 
 % Algorithm SFFS from P. Somol, P. Pudil, J. Novovicova, and
 % P. Paclik.  Adaptive floating search methods in feature
 % selection. Pattern Recognition Letters, 20(11–13):1157–1163, 1999.
 
-% Takes a model (specifying kernel type (kerparam), parser type
-% (parser); training and development sets (dump structures with
-% instance matrix (x), correct moves (y), list of features (feats),
-% and feature indices (fidx) from vectorparser), and optional starting
-% feature combination (initfeats) which should be an array of indices
-% into trn.fidx; and an optional cache of older results.  Returns the
-% best feature combination of each size, their error rates (averaged
-% model on dev set), and the new cache of results.  Feature
-% combinations are represented by sorted index arrays into trn.fidx.
+% Takes a model (m0), specifying kernel type (kerparam), parser type
+% (parser); training (trn) and development (dev) sets, dump structures
+% with instance matrix (x), correct moves (y), list of features
+% (feats), and feature indices (fidx) from vectorparser; a cachefile,
+% and optional starting feature combination (initfeats).  An internal
+% cache holds the dev errors of feature combinations.  The cachefile
+% is a .mat file that will be created if it doesn't exist, will be
+% read to initialize the cache if it does exist, and will be updated
+% with new results.  The feature combinations are represented as
+% feature matrix strings:
+%
+% fkey(f) = mat2str(sortrows(trn.feats(f,:)))
 
 % Typical usage:
 % m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
@@ -21,23 +24,21 @@ function [best_feats, best_feats_err, cache] = featselect_gpu(m0, trn, dev, init
 % [~,trndump] = vectorparser(m0, trn, 'update', 0, 'predict', 0);
 % [~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0);
 % m0.step = 200; m0.batchsize = 500;
-% [a,b,c] = featselect_gpu(m0,trndump,devdump);
+% featselect_gpu(m0,trndump,devdump,'foo.mat');
 
 
 nargin_save = nargin;
 featselect_init();
-start = initfeats;
-nstart = numel(start);
-nfeats = numel(trn.fidx);
 
 
 while nstart < nfeats
 
   if (nstart > 1)
     start_err = err(start);
-    if (start_err < best_feats_err(nstart))
-      best_feats{nstart} = start;
-      best_feats_err(nstart) = start_err;
+    if (start_err < besterror(nstart))
+      bestfeats{nstart} = fkey(start);
+      besterror(nstart) = start_err;
+      fprintf('# best(%d)\t%g\t%s\n', nstart, start_err, fkey(start));
     end
   end
 
@@ -55,12 +56,12 @@ while nstart < nfeats
         best_try_i = try_i;
       end %if
     end %for
-    if best_try_err < best_feats_err(nstart-1)
+    if best_try_err < besterror(nstart-1)
       nstart = nstart-1;
       start(best_try_i) = [];
-      best_feats{nstart} = start;
-      best_feats_err(nstart) = best_try_err;
-      fprintf('# best_try=%d best_try_err=%g\n', best_try_i, best_try_err);
+      bestfeats{nstart} = fkey(start);
+      besterror(nstart) = best_try_err;
+      fprintf('# best(%d)\t%g\t%s\n', nstart, best_try_err, fkey(start));
     else
       backtrack = 0;
     end
@@ -68,7 +69,7 @@ while nstart < nfeats
 
   best_try = 0;
   best_try_err = inf;
-  fprintf('# Trying children of %s\n', fkey(start));
+  fprintf('# trying children of %s\n', fkey(start));
   for feature_to_try=1:nfeats
     if ismember(feature_to_try, start) continue; end
     new_features = start;
@@ -80,23 +81,25 @@ while nstart < nfeats
     end
   end % for
   nstart = nstart + 1;
-  if (best_try_err >= best_feats_err(nstart))
-    start = best_feats{nstart};
-    fprintf('# best_try_err=%g best(k)=%g reverting to %s\n', best_try_err, best_feats_err(nstart), fkey(start));
-    continue;
+  if best_try_err < besterror(nstart)
+    start(end+1) = best_try;
+    assert(nstart == length(start));
+    bestfeats{nstart} = fkey(start);
+    besterror(nstart) = best_try_err;
+    fprintf('# best(%d)\t%g\t%s\n', nstart, best_try_err, fkey(start));
+  else
+    fprintf('# reverting(%d) from %g %s to %g %s\n', nstart, best_try_err, ...
+            fkey([start best_try]), besterror(nstart), fkey(bestfeats{nstart}));
+    start = bestfeats{nstart};
   end
-  start(end+1) = best_try;
-  assert(nstart == length(start));
-  best_feats{nstart} = start;
-  fprintf('# best_try_err=%g\n', best_try_err);
 
 end  % while nstart < nfeats
 
 
 %%%%%%%%%%%%%%%%%%%%%%
 function fk = fkey(f)
-% f is an array of indices into trn.fidx
-fk = mat2str(sort(f));
+% f is an array of indices into trn.fidx and rows of trn.feats
+fk = mat2str(sortrows(trn.feats(f,:)));
 end % fkey
 
 
@@ -125,15 +128,14 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   z0 = model_predict_gpu(x_te,m1,0);
   z1 = model_predict_gpu(x_te,m1,1);
   t1 = toc();
-  e0 = numel(find(z0 ~= dev.y))/numel(dev.y)*100;
-  e1 = numel(find(z1 ~=dev.y))/numel(dev.y)*100;
+  e0 = numel(find(z0 ~= dev.y))/numel(dev.y);
+  e1 = numel(find(z1 ~=dev.y))/numel(dev.y);
   nsv = size(m1.beta, 2);
-  fprintf('%.2f\t%.2f\t%d\t%.2f\t%s\n', ...
-          e0, e1, nsv, t1, fk);
+  fprintf('%g\t%g\t%d\t%g\t%s\n', e0, e1, nsv, t1, fk);
   cache(fk) = e1;
+  save(cachefile, 'cache');
 else
-  fprintf('%.2f\t%.2f\t%d\t%.2f\t%s\n', ...
-          nan, cache(fk), nan, 0, fk);
+  fprintf('%g\t%g\t%d\t%g\t%s\n', nan, cache(fk), nan, 0, fk);
 end % if ~isKey(cache, fk)
 s = cache(fk);
 end % err
@@ -142,38 +144,51 @@ end % err
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 function featselect_init()
 
-% The last two args are optional, here are the defaults:
-if nargin_save < 4
-  initfeats = [];
-end
-if nargin_save < 5
-  cache = containers.Map();
-end
-
 % Check to make sure model m0 and dumps trn and dev have all we want:
 assert(isfield(m0, 'parser'), 'Please specify the parser type m0.parser.\n');
 assert(isfield(m0, 'kerparam'), 'Please specify the kernel type m0.kerparam.\n');
+assert(strcmp(m0.kerparam.type,'poly'), 'Only poly kernels are supported.\n');
 assert(isfield(trn, 'fidx'), 'Please specify the feature indices trn.fidx.\n');
-assert(strcmp(m0.kerparam.type,'poly'));
+assert(isfield(trn, 'feats'), 'Please specify the feature matrix trn.feats.\n');
 assert(size(trn.x, 1) == trn.fidx(end));
+assert(size(trn.feats, 1) == numel(trn.fidx));
 assert(all(dev.fidx(:) == trn.fidx(:)));
-assert(size(dev.x, 1) == dev.fidx(end));
+assert(all(dev.feats(:) == trn.feats(:)));
+assert(size(dev.x, 1) == size(trn.x, 1));
 % m0.step = 200;
 % m0.batchsize = 500;
 
-% Initialize argout:
+% Init cache
+if exist(cachefile, 'file')
+  load(cachefile);
+  assert(exist('cache'), '%s does not contain a cache.\n', cachefile);
+else
+  cache = containers.Map();
+  save(cachefile, 'cache');
+end
+
+% Init bestfeats
 nfeats = numel(trn.fidx);
-best_feats = cell(1,nfeats);
-best_feats_err = inf(1,nfeats);
+bestfeats = cell(1,nfeats);
+besterror = inf(1,nfeats);
 cachekeys = keys(cache);
 for i=1:numel(cachekeys)
-  feats = eval(cachekeys{i});
-  fterr = cache(key);
-  nf = numel(feats);
-  if fterr < best_feats_err(nf)
-    best_feats_err(nf) = fterr;
-    best_feats{nf} = feats;
+  fstr = cachekeys{i};
+  ferr = cache(fstr);
+  flen = size(eval(fstr), 1);
+  if ferr < besterror(flen)
+    besterror(flen) = ferr;
+    bestfeats{flen} = fstr;
   end
+end
+
+% Initialize starting feature combination
+if nargin_save < 5
+  start = [];
+  nstart = 0;
+else
+  % here we need to go from feature matrix string to a vector of indices into fidx
+  error('initfeats not implemented yet');
 end
 
 fprintf('last\tavg\tnsv\ttime\tfeats\n');
