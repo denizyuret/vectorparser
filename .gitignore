@@ -1,7 +1,8 @@
 *~
 *.mexa64
 *_dbg.m
-run_*.m
+*.mat
+run_*
 foo*
 matlab.sh
 logs
