@@ -1,50 +1,297 @@
-2014-07-30  Deniz Yuret  <dyuret@ku.edu.tr>
+2014-08-02  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* perceptron.m: The cost version.  Not really comparable to the
+	old k_perceptron unfortunately: perceptron updates whenever the
+	cost of maxscore is higher than mincost.  k_perceptron updates
+	whenever the score of the correct (mincost) answer is <= any of
+	the other scores.  In particular, during the first batch all
+	scores are 0, so k_perceptron makes all support vectors.
+	perceptron only updates when maxscore class (which in this case
+	will be 1 by default) is not correct.  However confirmed that it
+	has better accuracy and equal speed on at least one dataset.
+
+	Training with Y vs training with cost: reduced nsv from 30553 to
+	27042 on bansal5k, the dev error went from 7.42 to 13.34??  We
+	should be careful using the cost for training until we understand
+	what is going on (TODO).  For now perceptron also accepts correct
+	answer vector.  Maybe we should not forgive picking inf cost
+	moves.  Yes, that is correct, deleting the line: 
+
+	score(isinf(costij)) = -inf;        % do not punish for impossible answers
+
+	recovered the normal score.
+
+	
+	* run_featselect_bansal5k.m: running on ++biyofiz.q.  Something
+	seems wrong with arceager.
+	+ check the featselect moves for arceager: backtracking seems ok.  except the first round multiple repeats.
+	+ put actual feature vectors in cache
+	+ write a cost based perceptron: do not punish when single move, or when multiple equiv moves.
+	- transition error / parse error ratio may be different for arceager.
+	- we may get different results with full training set.
+
+	
+	arceager13
+	58.91	40.94	116885	45.86	118	118:0 0 -4 (n0context)
+	49.49	41.42	115303	47.59	122	112:0 0 4  (n0word)
+
+	26.11	17.94	54965	30.46	[91 122]	91:-1 0 4 (s0word)
+	29.96	19.64	62091	33.30	[68 122]	68:-2 1 4 (s1r1word)
+
+	21.24	11.82	38319	23.74	[70 91 122]	70:-2 1 6 (s1r1r<=)
+	19.42	11.93	38351	23.87	[54 91 122]	54:-2 0 2 (s1r==)
+
+	17.87	8.40	29038	21.74	[70 91 122 126]
+	12.86	9.50	31566	22.70	[70 91 118 122]
+
+	17.00	7.38	25649	22.02	[70 91 113 122 126]
+	16.04	7.61	27005	20.90	[70 90 91 122 126]
+
+	14.24	6.91	24010	22.91	[70 91 103 113 122 126]
+	14.39	6.91	23907	22.85	[56 70 91 113 122 126]
+	
+	15.01	6.34	22272	23.44	[56 70 91 103 113 122 126]
+	17.55	6.43	22727	23.64	[50 70 91 103 113 122 126]
+	
+	9.30	6.12	21482	24.37	[56 70 85 91 103 113 122 126]
+	14.75	6.20	21861	23.22	[56 70 87 91 103 113 122 126]
+	
+	11.28	5.94	21359	25.78	[56 70 81 85 91 103 113 122 126]
+	9.80	5.94	21174	24.15	[56 70 85 89 91 103 113 122 126]
+
+	11.41	5.86	21103	24.11	[22 56 70 85 89 91 103 113 122 126]
+	8.38	5.86	20895	24.09	[24 56 70 85 89 91 103 113 122 126]
+
+	11.72	5.81	20950	25.80	[22 56 70 85 87 89 91 103 113 122 126]
+	14.60	5.81	20852	24.05	[22 56 70 85 89 91 103 107 113 122 126]
+
+	11.10	5.87	20979	24.11	[22 56 70 72 85 89 91 103 107 113 122 126]
+	10.12	5.88	21104	24.17	[22 56 62 70 85 89 91 103 107 113 122 126]
+	
+	
+	arceager
+	49.98	40.90	116865	47.73	118
+	47.64	41.43	115248	49.31	122
+
+	; picked 118:40.90, trying its children, 
+	; found [68 118]:22.00, backtracking
+	; found 118 again, trying children again ??
+	; reverting to [68 118], bactracking again ??
+	; trying children of [68 118]
+	; best [68 85 118]:15.72, backtracking
+	; trying children of [68 85 118]
+	; best [68 85 118 122]:11.45, backtracking
+	; discover [68 85 122]:14.05, backtracking
+	; discover [68 122]:19.72, backtracking
+	; trying children of [68 122]
+	; best [68 91 122]:12.68, backtracking
+	; discover [91 122]:17.96, backtracking
+	
+	27.46	17.96	55018	32.32	[91 122]
+	27.30	19.72	61941	34.95	[68 122]
+
+	; trying children of [91 122]
+	; discover [70 91 122]:11.72, backtracking
+	; trying children of [70 91 122]
+
+	16.56	11.72	38266	25.73	[70 91 122]
+	15.55	11.92	38461	25.57	[54 91 122]
+
+	16.56	8.50	29170	23.54	[70 91 122 126]
+	11.98	9.57	31660	24.41	[70 91 118 122]
+
+	16.79	7.44	25552	23.84	[70 91 113 122 126]
+	13.88	7.60	26662	24.26	[70 85 91 122 126]
+
+	16.68	6.78	23991	24.72	[70 91 103 113 122 126]
+	14.79	6.86	23566	24.51	[56 70 91 113 122 126]
+	
+	15.46	6.41	22596	25.44	[50 70 91 103 113 122 126]
+	12.14	6.42	22152	25.70	[56 70 91 103 113 122 126]
+	
+	17.58	6.17	21834	26.35	[50 70 85 91 103 113 122 126]
+	16.21	6.27	22121	25.02	[50 70 86 91 103 113 122 126]
+	
+	16.94	6.03	21472	26.22	[50 70 85 91 92 103 113 122 126]
+	17.86	6.07	21607	37.53	[50 70 85 91 103 113 115 122 126]
+
+	18.12	5.93	21229	27.45	[50 70 85 91 92 103 113 118 122 126]
+	14.98	5.95	21237	26.01	[50 65 70 85 91 92 103 113 122 126]
+
+	14.34	5.91	21128	27.55	[9 50 70 85 91 92 103 113 118 122 126]
+	9.45	5.95	21453	27.86	[13 50 70 85 91 92 103 113 118 122 126]
+	
+	
+	archybrid13
+	50.64	35.78	99622	38.58	118
+	38.44	36.43	97980	40.10	122
+
+	19.28	14.78	45887	25.68	[91 122]
+	23.41	18.44	55753	28.74	[91 118]
+
+	17.69	10.35	33269	22.95	[56 91 122]	56:-2 0 4  (s1word)
+	14.92	11.44	36057	24.14	[50 91 122]	50:-2 0 -4 (s1context)
+
+	15.30	8.47	28849	22.69	[56 91 122 126]	126:
+	13.76	8.65	28899	22.39	[56 91 118 122]	118:
+
+	13.25	7.34	24916	22.58	[56 91 113 122 126] 113:0 -1 4 (n0l1word)
+	15.01	7.41	26051	23.21	[56 91 95 122 126]   95:-1 0 8 (s0n0in-between-context)
+
+	13.94	6.67	23036	21.24	[56 89 91 113 122 126]
+	11.17	6.75	22898	22.96	[56 91 103 113 122 126]
+	
+	14.07	6.39	22106	20.83	[56 70 89 91 113 122 126]
+	11.46	6.40	22078	20.83	[56 59 89 91 113 122 126]
+	
+	11.28	6.06	21515	21.88	[56 70 85 89 91 113 122 126]
+	13.39	6.08	21077	23.12	[56 70 85 91 103 113 122 126]
+	
+	12.10	5.84	20733	24.40	[15 56 70 85 91 103 113 122 126]
+	14.26	5.93	20498	22.72	[56 70 85 89 91 103 113 122 126]
+	
+	12.99	5.66	20236	23.95	[15 56 70 85 89 91 103 113 122 126]
+	13.14	5.66	20346	22.57	[56 58 70 85 89 91 103 113 122 126]
+
+	9.09	5.56	19933	23.88	[15 56 70 85 89 91 103 105 113 122 126]
+	13.01	5.57	19861	25.09	[15 56 70 85 89 91 103 113 118 122 126]
+	
+	12.45	5.50	19611	24.86	[15 56 70 85 89 91 103 105 113 118 122 126]
+	9.44	5.52	19873	23.75	[15 56 70 85 89 91 103 105 106 113 122 126]
+	
+	archybrid
+	39.39	35.60	99810	47.46	118
+	41.18	36.39	97740	48.55	122
+
+	19.08	14.85	45654	25.91	[91 122]
+	22.59	18.39	55921	29.10	[91 118]
+
+	16.09	10.44	33295	23.36	[56 91 122]
+	15.08	11.31	36236	24.40	[50 91 122]
+
+	16.31	8.57	28799	23.10	[56 91 122 126]
+	12.24	8.67	28722	22.73	[56 91 118 122]
+
+	14.91	7.43	24953	23.04	[56 91 113 122 126]	113:0 -1 4 (n0l1word)
+	15.27	7.47	25442	23.36	[56 91 103 122 126]	103:-1 1 4 (s0r1word)
+
+	12.53	6.66	22790	23.34	[56 91 103 113 122 126]
+	12.03	6.80	23146	21.84	[56 89 91 113 122 126]
+
+	12.38	6.23	21747	22.55	[56 58 91 103 113 122 126]
+	13.40	6.23	22272	22.88	[47 56 91 103 113 122 126]
+
+	12.17	6.03	21349	22.42	[56 58 59 91 103 113 122 126]
+	8.65	6.03	21367	22.27	[56 58 91 103 106 113 122 126]
+	
+	8.39	5.84	20783	22.15	[56 58 59 91 94 103 113 122 126]
+	11.30	5.85	20734	21.96	[56 58 59 89 91 103 113 122 126]
+
+	12.57	5.71	20607	23.30	[56 58 59 91 94 103 113 118 122 126]
+	8.25	5.72	20280	27.58	[56 59 85 91 103 108 113 118 122 126]
+
+	10.30	5.54	19970	25.75	[56 59 85 91 94 103 108 113 118 122 126]
+	8.17	5.64	20400	23.24	[31 56 58 59 91 94 103 113 118 122 126]
+	
+	9.89	5.49	19733	25.53	[56 59 77 85 91 94 103 108 113 118 122 126]
+	9.70	5.50	20002	29.18	[42 56 59 85 91 94 103 108 113 118 122 126]
+
+	$ for i in *.out; do echo $i; grep -P '^\d+\.\d+\t' $i | awk 'NF==7' | sort -g -k2,2 | head -5; done	
+
+
+2014-08-01  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* TODO:
 
 	x sparsification: isn't necessary, compactify is enough.
-	+ multi-epoch: ~10-12 static epochs seem sufficient
-	  - 5 epochs for fv808
+	+ multi-epoch: ~10-12 static epochs seem sufficient, 5 epochs for fv808.
 	+ features: fv808 converges faster but same static performance.
 	+ dynamic oracle: it starts working after epoch 2, best at 5-10 epochs
 	+ embeddings: bansal seems best.
-	? arctype
+	. arctype
 	? beam-search
 	? kernel-type
-	? number-encoding
-	- free: b40
 	
-	- results on conll07.  check the source of the test corpus.
-	
-	- Try ArcEager.  -- should be easy 1-epoch, needs code
-	-- need feature optimization again!
-	-- Nivre says it is important not to put the root on the left?
-	-- multipe versions of archybrid, arceager (one root-child vs many, see readings in Nivre's mail)
+	- goldberg-nivre-2013: gives results for conll07 english using
+	greedy parsers.  training is 02-11 (half my size), look at where
+	the test data comes from (could be different domain). (TODO)
+
+	- results on conll07.  check the source of the test corpus: paper
+	claims subset of wsj23.  It seems to be wsj_2300 to part of
+	wsj_2308.
 	
 	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
 	-- Beam search parser: read paper.  read redshift.  minibatch?
 	-- we can start by writing a beam decoder to parse with existing models.  no training.
 	-- how often does the gold sequence have a total score better than greedy sequence?
 	
-	- archybrid.m,dumpfeatures2.m: temporary new versions to replace
-	the old when scripts finish.  need to keep these separate until
-	featselect etc. is updated.  or replace featselect with trainparser.
-	
 	- rbf kernel with gpu?
 	-- Optimize and try rbf kernel calculation and fselect.
-
-	- experiment with different number encodings for distance and
-	children.
-	-- experiment with in-between features?
+	-- Other kernel degrees with featselect.
 
 	- write matlab gpu tutorial on blog
 
-	- try separating the type and context parts of token vectors.
-	
-	- goldberg-nivre-2013: gives results for conll07 english using
-	greedy parsers.  training is 02-11 (half my size), look at where
-	the test data comes from (could be different domain). (TODO)
+	- trainparser_primal.m: broken, upgrade to use new code.
 
+	* features.m:
+	+ Separate word and context vectors.
+	+ Put >= and <= as well as == numeric encodings.
+	+ Average in-between feature.
+	+ Output feature names and indices.
+	+ The new fv102 defined in newFeatureVectors outputs 102 features in 2438 dims.
+	+ Update featselect to use the new arctypes:
+	+ use mat2str(sortrows(fv)) to get a string representation of feature vectors for caching.
+	+ for that to work change fv from 3xn to nx3.
+	+ actually that doesn't work, we need to use indices into fidx.
+	+ run_loadCoNLL on top two token and type (do we need type? we can just filter using fv!) on ++b40,42,43.
+	+ confirm that conll_bansal100 is identical to the first half of conllWSJToken_bansal100.
+	++ yes except for some 0 vectors (unknowns?) in conll_bansal100.
+	+ what if fidx is out of order and featselect is doing logical indexing?
+	++ fine, fidx is never out of order, f (index into fidx) might be but that is no problem.
+	x debug run on ++b41.
+	x Saved dump data as trnhybrid.mat and devhybrid.mat. (fv808 arceager), but need fidx!
+	x logs/trndump.mat includes the fv102 arceager dumps of trn1 and dev1 from conllToken_wikipedia2MUNK-50.
+	+ use fv130 which separates all tokens into word/context and includes s2/n2.
+	+ saving initial models:
+	+ save logs/model130 archybrid_130 archybrid13_130 arceager_130 arceager13_130
+	
+	* archybrid,archybrid13,arceager,arceager13: The xx13 versions are
+	replicating Goldberg and Nivre, allowing for multiple
+	root-children.  The non-13 versions allow for a single root-child.
+	All four make 2n-2 moves for each sentence, the first and the last
+	moves are not counted: The first move which always shifts the
+	first word is done during initialization, and the last move which
+	assigns a root head to the last word in stack is not performed
+	(the last word already has head=0).
+
+	- all four oracle_costs verified on dev1.
+
+	- extract all features for feature selection?  or use features
+	with different vectors every time?  using vectorparser is out of
+	the question, goes one move at a time, not mini-batch.  But then
+	we need featureindices, symbolic names etc.  How fast is
+	vectorparser in dump mode?  680 wps = 1400secs/ptb.  Too slow
+	given that training takes 300secs.  So featselect has to rely on
+	the full feature set and explicit indices with names.
+
+2014-07-30  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* DONE:
+	
+	+ Try ArcEager.  -- should be easy 1-epoch, needs code
+	++ need feature optimization again!
+	+ Nivre says it is important not to put the root on the left?
+	+ multipe versions of archybrid, arceager (one root-child vs many, see readings in Nivre's mail)
+	
+	+ archybrid.m,dumpfeatures2.m: temporary new versions to replace
+	the old when scripts finish.  need to keep these separate until
+	featselect etc. is updated.  or replace featselect with trainparser.
+	
+	+ experiment with different number encodings for distance and
+	children.
+	+ experiment with in-between features?
+	+ try separating the type and context parts of token vectors.
+	
 
 2014-07-28  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -55,7 +302,7 @@
 	- Confirm that total cost is equal to total head error.
 	- It is not, more debugging of archybrid.oracle_cost is needed.
 	- Done, total cost is equal to total head error.
-	- TODO: do not use old ArcHybrid.m any more.
+	- DONE: do not use old ArcHybrid.m any more.
 
 	* archybrid.m:
 	- However now ptrans does not match old results exactly either!
