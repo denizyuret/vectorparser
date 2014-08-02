@@ -219,14 +219,13 @@ for feat = feats'                       % 16.10us/iter
     if (b > 0)
       if feat(1) == -1 % s0n0 interval
         if (p.wptr <= p.nword) c = p.wptr;
-        else c = b+smax; end % root is far far away...
+        else c = b; end % no in-between with root
       else      % s(i)-s(i-1) interval
         cx = p.sptr + feat(1) + 2;
         c = p.stack(cx);
       end
-      assert(c > b);
       if c > b+1
-        avec = zeros(1,ndim);
+        avec = zeros(ndim,1);
         for bc=(b+1):(c-1)
           avec = avec + s.wvec(:,bc);
         end
@@ -240,14 +239,13 @@ for feat = feats'                       % 16.10us/iter
     if (b > 0)
       if feat(1) == -1 % s0n0 interval
         if (p.wptr <= p.nword) c = p.wptr;
-        else c = b+smax; end % root is far far away...
+        else c = b; end % no in-between with root
       else      % s(i)-s(i-1) interval
         cx = p.sptr + feat(1) + 2;
         c = p.stack(cx);
       end
-      assert(c > b);
       if c > b+1
-        avec = zeros(1,ndim2);
+        avec = zeros(ndim2,1);
         for bc=(b+1):(c-1)
           avec = avec + s.wvec(1:ndim2,bc);
         end
@@ -261,14 +259,13 @@ for feat = feats'                       % 16.10us/iter
     if (b > 0)
       if feat(1) == -1 % s0n0 interval
         if (p.wptr <= p.nword) c = p.wptr;
-        else c = b+smax; end % root is far far away...
+        else c = b; end % no in-between with root
       else      % s(i)-s(i-1) interval
         cx = p.sptr + feat(1) + 2;
         c = p.stack(cx);
       end
-      assert(c > b);
       if c > b+1
-        avec = zeros(1,ndim2);
+        avec = zeros(ndim2,1);
         for bc=(b+1):(c-1)
           avec = avec + s.wvec(ndim2+1:end,bc);
         end
