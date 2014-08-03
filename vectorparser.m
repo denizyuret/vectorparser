@@ -3,14 +3,13 @@
 % The dump can be given to eval_conll with the corpus to get some
 % statistics.
 %
-% model = vectorparser(model, corpus);  %% training mode, dump optional
+% model = vectorparser(model, corpus);  %% training mode, dump output optional
 % [model,dump] = vectorparser(model, corpus, 'update', 0)); %% testing
 % [model,dump] = vectorparser(model, corpus, 'update', 0, 'predict', 0); %% dump features
 
 function [model, dump] = vectorparser(model, corpus, varargin)
 
-nargout_save = nargout;
-vectorparser_init();
+vectorparser_init(nargout);
 fprintf('Processing sentences...\n');
 
 for snum=1:numel(corpus)
@@ -44,7 +43,7 @@ for snum=1:numel(corpus)
       else
         score = model.b + gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
       end
-      score(cost==inf) = -inf;         % 928us
+      % score(cost==inf) = -inf;        % very very bad idea!
       [maxscore, maxmove] = max(score); % 925us
     end
 
@@ -64,7 +63,10 @@ for snum=1:numel(corpus)
     end % if opts.update
 
     if opts.predict
-      p.transition(maxmove);                 % 1019us
+      vscore = score;
+      vscore(~valid) = -inf;
+      [~,vmove] = max(vscore);
+      p.transition(vmove);                 % 1019us
     else
       p.transition(bestmove);
     end
@@ -94,7 +96,7 @@ if opts.dump && opts.compute_features
 end
 
 
-function vectorparser_init()
+function vectorparser_init(nargout_save)
 
 opts = struct();      % opts is an (optional) struct of options.
 
@@ -196,7 +198,7 @@ if opts.compute_scores
   end
 
   if opts.gpu
-    assert(gpuDeviceCount(), 'No GPU detected.');
+    assert(gpuDeviceCount()>0, 'No GPU detected.');
     fprintf('Loading model on GPU.\n');
     gpuDevice(1);
     svtr = gpuArray(svtr);
