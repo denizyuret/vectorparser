@@ -4,11 +4,11 @@ function r = eval_conll(corpus, dump)
 % but moves of equal cost with gold move should be counted as correct
 % should confirm total zcost == total head error
 
-r.move_tot = numel(dump.y);
+r.move_cnt = numel(dump.y);
 ycost = dump.cost(sub2ind(size(dump.cost), dump.y, 1:numel(dump.y)));
 zcost = dump.cost(sub2ind(size(dump.cost), dump.z, 1:numel(dump.z)));
 r.move_err = sum(ycost < zcost);
-r.move_pct = r.move_err / r.move_tot;
+r.move_pct = r.move_err / r.move_cnt;
 
 r.sent_cnt = 0; r.sent_err = 0;
 r.head_cnt = 0; r.head_err = 0;
