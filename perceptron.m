@@ -26,12 +26,16 @@ function model = perceptron(X,Y,model)
 %
 % model.batchsize gives the mini-batch size (default=1000).
 %
+% model.step determines how often results are printed (default=10000).
+%
 
 
 [nd,nx,nc,ns,gpu,gdev] = perceptron_init();
 fprintf('inst\tnsv\tbatch\ttime\tmem\n');
 
 
+% Stupid matlab copies on write, so we need to keep sv in two blocks
+sv_block_size = 1e8/nd;
 svtr = model.SV';
 svtr2 = zeros(0, nd);
 if gpu gpu_load_model(); end
@@ -48,7 +52,7 @@ while j < nx                          % 26986us/iter for batchsize=500
 
   score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
   costij = Y(:,i:j);                  % costij(nc,nk): costs for X(:,i:j)
-                                      % score(isinf(costij)) = -inf;        % do not punish for impossible answers
+% score(isinf(costij)) = -inf;        % do not punish for impossible answers, turns out bad idea!
   [maxscore, maxscore_i] = max(score); % compare the cost of maxscore answers
   [mincost, mincost_i] = min(costij); % to the mincost answers
   mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
@@ -137,16 +141,16 @@ end
 model.batchsize_warning = 0;
 fprintf('Using X batchsize=%d\n', model.batchsize);
 
-% Stupid matlab copies on write, so we need to keep sv in two blocks
-model.sv_block_size = floor(1e8/nd);
-fprintf('Using SV blocksize=%d\n', model.sv_block_size);
-
 % See if we have a gpu
 gpu = gpuDeviceCount(); 
 if gpu
   gdev = gpuDevice;
 else
   gdev = [];
+end
+
+if ~isfield(model,'step')
+  model.step = 10000;
 end
 
 end % perceptron_init
@@ -174,6 +178,7 @@ end % new_sv_block
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function nk = real_batchsize()
+persistent batchsize_warning;
 if gpu
   nk = floor(0.9 * gmem / (2*ns+2*nd+5*nc+10));
   nk = min(nk, model.batchsize);
@@ -184,9 +189,9 @@ if gpu
   end
   assert(nk >= 1, 'g=%.2g nk=%d sv=%.2g beta=%.2g beta2=%.2g, no space left.\n', gmem, ...
          nk, numel(svtr), numel(model.beta), numel(model.beta2));
-  if (nk < model.batchsize && ~model.batchsize_warning)
+  if (nk < model.batchsize && ~batchsize_warning)
     fprintf('g=%.2g Going to batchsize <= %d due to memory limit.\n', gmem, nk);
-    model.batchsize_warning=1;
+    batchsize_warning=true;
   end
 else
   nk = model.batchsize;
@@ -196,8 +201,8 @@ end % real_batchsize
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function check_sv_blocks(nu)
-assert(nu < model.sv_block_size);
-if nu + size(svtr2, 1) > model.sv_block_size
+assert(nu < sv_block_size);
+if nu + size(svtr2, 1) > sv_block_size
   new_sv_block();
 end
 end % check_sv_blocks
@@ -215,7 +220,7 @@ end % gmem
 
 %%%%%%%%%%%%%%%%%%%%%%%%%
 function gpu_load_model()
-fprintf('Initializing gpu. m=%.2e...', gmem);
+fprintf('Initializing gpu. m=%.2e .. ', gmem);
 reset(gdev);
 model.beta = gpuArray(model.beta);
 model.beta2 = gpuArray(model.beta2);
