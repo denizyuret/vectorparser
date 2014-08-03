@@ -40,9 +40,9 @@ for snum=1:numel(corpus)
       if isempty(svtr)
         score = zeros(1, model.n_cla);
       elseif opts.average
-        score = model.b2 + gather(sum(bsxfun(@times, betatr2, (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree))); % 7531us
+        score = model.b2 + gather(sum(bsxfun(@times, betatr2, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
       else
-        score = model.b + gather(sum(bsxfun(@times, betatr, (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree))); % 7531us
+        score = model.b + gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
       end
       score(cost==inf) = -inf;         % 928us
       [maxscore, maxmove] = max(score); % 925us
