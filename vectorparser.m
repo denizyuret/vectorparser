@@ -196,6 +196,7 @@ if opts.compute_scores
   end
 
   if opts.gpu
+    assert(gpuDeviceCount(), 'No GPU detected.');
     fprintf('Loading model on GPU.\n');
     gpuDevice(1);
     svtr = gpuArray(svtr);
