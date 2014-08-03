@@ -29,7 +29,7 @@ function model = perceptron(X,Y,model)
 % model.step determines how often results are printed (default=10000).
 %
 
-
+tic;
 [nd,nx,nc,ns,gpu,gdev] = perceptron_init();
 fprintf('inst\tnsv\tbatch\ttime\tmem\n');
 
@@ -57,6 +57,7 @@ while j < nx                          % 26986us/iter for batchsize=500
   [mincost, mincost_i] = min(costij); % to the mincost answers
   mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
   updates = find(mycost > mincost);
+  model.beta2 = model.beta2 + model.beta;
 
   if ~isempty(updates)                % 33587us
     nu = numel(updates);
@@ -70,7 +71,6 @@ while j < nx                          % 26986us/iter for batchsize=500
     newbeta(sub2ind(size(newbeta), mincost_i(updates), 1:nu)) = 1;
     newbeta(sub2ind(size(newbeta), maxscore_i(updates), 1:nu)) = -1;
 
-    model.beta2 = model.beta2 + model.beta;
     model.beta2 = [model.beta2 newbeta];
     model.beta = [model.beta newbeta];    % 972us
 
