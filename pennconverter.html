@@ -1,0 +1,346 @@
+<!DOCTYPE html
+     PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+     "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<!-- 
+	This website is powered by TYPO3 - inspiring people to share!
+	TYPO3 is a free open source Content Management Framework initially created by Kasper Skaarhoj and licensed under GNU/GPL.
+	TYPO3 is copyright 1998-2013 of Kasper Skaarhoj. Extensions are copyright of their respective owners.
+	Information and contribution at http://typo3.org/
+-->
+
+<base href="http://nlp.cs.lth.se/" />
+
+
+<meta name="generator" content="TYPO3 4.7 CMS" />
+
+<link rel="stylesheet" type="text/css" href="typo3temp/stylesheet_91910b6548.css?1402650324" media="all" />
+
+
+
+<script src="fileadmin/template/scripts/jquery.js?1335947431" type="text/javascript"></script>
+<script src="fileadmin/template/scripts/jquery-ui.min.js?1335947163" type="text/javascript"></script>
+<script src="fileadmin/template/scripts/jquery.lightbox-0.5.js?1335956927" type="text/javascript"></script>
+
+
+<meta http-equiv="Content-Language" content="sv" />
+<meta name="robots" content="index, follow" />
+<link rel="stylesheet" type="text/css" href="/fileadmin/template/css/basic.css" />
+<link rel="stylesheet" type="text/css" href="/fileadmin/template/css/text_normal.css" />
+<link rel="stylesheet" type="text/css" href="/fileadmin/template/css/contrast_normal.css" />
+<script type="text/javascript" src="/fileadmin/template/common.js"></script>
+<link rel="stylesheet" type="text/css" href="/fileadmin/template/css/lth_01.css" />
+<title>nlp: The LTH Constituent-to-Dependency Conversion Tool for Penn-style Treebanks</title><meta name="keywords" content="" /><meta name="description" content="" />
+</head>
+<body>
+
+<div align="center">
+<div class="templateMain" style="width: 754px; background-color: #ffffff;" align="left"><!--###templateMain### begin -->
+<div style="width: 754px; height: 29px;" class="headToolbar"><!--###headToolbar### begin -->
+<div class="headToolbarMenu" style="float: left; margin-left: 5px; width: 410px;"><!--###headToolbarMenu### begin -->
+<div style="float:left;"><a href="/">Home</a>&nbsp;&nbsp;&#124;&nbsp;&nbsp;</div><div style="float:left;"><a href="/style_preferences">Style</a>&nbsp;&nbsp;&#124;&nbsp;&nbsp;</div><div style="float:left;"><a href="/site_map">Sitemap</a>&nbsp;&nbsp;&#124;&nbsp;&nbsp;</div><div style="float:left;background-image:url(/graphics/se.png);background-repeat:no-repeat;padding-left:20px;background-position:center left;"><a href="swedish/">Svenska</a>&nbsp;&nbsp;&#124;&nbsp;&nbsp;</div><div><a href="http://www.lu.se/english/">Lund University</a></div>
+<!--###headToolbarMenu### end --></div>
+<div class="headToolbarSearch"><!--###headToolbarSearch### begin -->
+<form action="/search/" method="post" name="searchform"><input name="s" value="1" type="hidden" /><input name="so" value="1" type="hidden" /><input type="hidden" name="i" value="en" /><input type="hidden" name="category" value="nlp" /><input name="q" type="text" value="" class="field" />&nbsp;<input name="x" type="submit" value="Search" class="button" /></form>
+<!--###headToolbarSearch### end --></div>
+<!--###headToolbar### end --></div>
+<div class="leftColBg"><!--###leftColBg### begin -->
+<div style="width: 573px; float: right;" class="rightTd"><!--###rightTd### begin -->
+<div class="columnTop"><!--###columnTop### begin -->
+<div class="image" align="left"><!--###image### begin --><img src="http://fileadmin.cs.lth.se/nlp/pictures/top_nlp.png" border="0" height="113" alt="top image" /><!--###image### end --></div>
+<!--###columnTop### end --></div>
+<div class="mainMenuSelected"><!--###mainMenuSelected### begin -->
+<div style="float: left; " class="menuItem "><a href="lt-home/"  >LT Home</a></div><div style="float: left; " class="menuItem "><a href="semantics/"  >Semantics</a></div><div style="float: left; " class="menuItem "><a href="demonstrations/"  >Demos</a></div><div style="float: left; " class="menuItem "><a href="carsim/"  >Carsim</a></div><div style="float: left; " class="menuItem "><a href="events/"  >Events</a></div><div style="float: left; " class="menuItemSelected"><a href="software/"  >Software</a></div><div style="float: left; " class="menuItem "><a href="members/"  >Members</a></div><div style="float: left; " class="menuItem menu_no_border"><a href="education/"  >Education</a></div>
+<!--###mainMenuSelected### end --></div>
+<!--###rightTd### end --></div>
+<div style="float: left; width: 178px;" class="leftTd"><!--###leftTd### begin -->
+<div class="menuLogo" id="LOGO"><a href="http://www.lth.se/english"><img src="/fileadmin/template/images/lth_eng.gif" alt="Lund university - faculty of engineering" border="0" height="113" width="178" /></a></div>
+<div class="menuSubHead"><!--###menuSubHead### begin -->
+<div class="menuDepartmentLink"><a href="/"><A HREF="http://www.cs.lth.se">Computer Science</A></a></div>
+<!--###menuSubHead### end --></div>
+<div class="menuSubPlate"><A HREF="http://nlp.cs.lth.se">NLP</A></div>
+<div class="menu"><!--###menu### begin -->
+<ul class="mainnav"><li class="none"><a href="software/semantic-parsing-propbank-nombank-frames/"  >Semantic parsing: PropBank--NomBank frames</a></li></ul><ul class="mainnav"><li class="none"><a href="software/semantic-parsing-framenet-frames/"  >The LTH System for Frame-Semantic Structure Extraction</a></li></ul><ul class="mainnav"><li class="isunderactive"><a href="software/treebank-converter/"  >Treebank Converter</a></li></ul>
+<!--###menu### end --></div>
+<div class="placeF"><!--###placeF### begin -->
+<div class="quickLaunch" style="padding-top: 10px;"><!--###quickLaunch### begin -->
+
+<!--###quickLaunch### end --></div>
+
+<!--###placeF### end --></div>
+<!--###leftTd### end --></div>
+<div style="float: right; width: 573px;" class="rightTd"><!--###rightTd### begin -->
+<div class="columnRight"><!--###columnRight### begin -->
+
+<div style="float: left; width: 573px; padding-bottom: 30px;" class="columnLeft">
+	<div class="placeA"><!--###placeA### begin -->
+		<div class="contentMain"><!--###contentMain### begin -->
+			<a name="content"></a>
+			<h1>The LTH Constituent-to-Dependency Conversion Tool for Penn-style Treebanks<br /><br /></h1>
+			<a title="html" name="c59321"></a>		<p>This is a tool to automatically convert the constituent format used
+			in the <a href="http://www.cis.upenn.edu/~treebank">Penn Treebank</a> into dependency trees. The tool was used to
+			prepare the English dependency treebanks in the <a
+href="http://depparse.uvt.nl/depparse-wiki/SharedTaskWebsite">2007</a>,
+			<a href="http://www.yr-bcn.es/conll2008">2008</a>, and <a href="http://ufal.mff.cuni.cz/conll2009-st">2009</a>
+			versions of the <a href="http://ifarm.nl/signll/conll">CoNLL</a> Shared Task.
+		</p>
+		<p><b><em>NOTE:</em></b> The tool has been <b>updated</b> so that the
+			default output (mostly) corresponds to the linguistic conventions used
+			in the CoNLL-2008 Shared Task.
+		</p>
+		<h2>Prerequisites</h2>
+		<ul>
+			<li>You need to have a Java virtual machine, version 1.5 or above.</li>
+			<li>If you are using the WSJ part of the Penn Treebank, we strongly recommend that you
+				patch it using the
+				<a href="http://www.cs.usyd.edu.au/~dvadas1/?Noun_Phrases">the NP
+					bracketing by David Vadas.
+				</a>
+			</li>
+		</ul>
+		<h2>Installation</h2>
+		<p>By downloading the tool, you agree to <a href="http://fileadmin.cs.lth.se/nlp/software/pennconverter/license.txt">this
+				license
+			</a>. There are no restrictions on usage except what is written
+			in the license, but we are happy if you
+			<a
+href="http://www.df.lth.se/~richardj/bibtex.cgi/johansson2007a">cite
+				our paper
+			</a> if
+			you use the program in your academic work.
+		</p>
+		<p>
+			The tool is available as a JAR executable <a
+href="http://fileadmin.cs.lth.se/nlp/software/pennconverter/pennconverter.jar">here</a> (last updated on August 7,
+			2008). No installation is needed -- just download the file.
+		</p>
+		<h2>Overview of Usage</h2>
+		<p>
+			The program was written to convert the WSJ part of Penn Treebank into
+			a dependency format. Since then, it has been extended so it can also
+			handle Brown, as distributed in Penn Treebank 3. It can <b>not</b>
+			handle the Switchboard or ATIS parts of the Treebank.
+			Also, it is <b>not</b> able to handle treebanks in other languages than
+			English.
+			If you are looking for a conversion tool for the Chinese Treebank, you
+			might want to consider
+			<a href="http://w3.msi.vxu.se/~nivre/research/Penn2Malt.html">
+				Penn2Malt
+			</a>.
+		</p>
+		<p>To apply the tool to a Penn-style treebank, do as follows:
+		</p>
+		<p><code>java -jar pennconverter.jar &lt; penn_treebank &gt; dep_treebank</code></p>
+		<p>
+			The resulting dependency treebank generally follows the
+			linguistic conventions used in the
+			<a href="http://www.yr-bcn.es/conll2008">
+				CoNLL-2008 Shared Task
+			</a>. The main differences are that
+			hyphenated words are not split and the annotation of some complex
+			named entities.
+			The output is encoded using the
+			<a href="http://nextens.uvt.nl/~conll/#dataformat">
+				CoNLL-X format
+			</a>.
+		</p>
+		<p>
+			By default, the tool assumes that the input has the <b>full</b> format
+			of the Penn Treebank, i.e. that it is correctly annotated with
+			function tags and traces, and that is has been patched using Vadas' NP
+			bracketing.
+		</p>
+		<p>If you are applying the tool to a fully annotated treebank
+			<b>without</b> the NP bracketing (such as the Brown corpus), then write:
+		</p>
+		<p><code>java -jar pennconverter.jar -rightBranching=false &lt; penn_treebank &gt; dep_treebank</code></p>
+		<p>
+			If you are applying the tool to parse trees without function tags and
+			traces, such as if you are using an automatic parser, then use
+			<code>-raw</code> option:
+		</p>
+		<p><code>java -jar pennconverter.jar -raw &lt; penn_treebank &gt; dep_treebank</code></p>
+		<h2>Command-line Options</h2>
+		<p>The behavior and linguistic conventions used by the program can be
+			configured using a wide range of command-line options.
+		</p>
+		<p>The following options are available (defaults in <b>bold</b>):</p>
+		<table>
+			<tr><td><b>File options</b></td></tr>
+			<tr><td><code>-f FILE</code></td> <td>read input from FILE (default: stdin)</td></tr>
+			<tr><td><code>-t FILE</code></td> <td>output to FILE (default: stdout)</td></tr>
+			<tr><td><code>-log FILE</code></td> <td>write log messages to FILE (default: no messages)</td></tr>
+			<tr>
+				<td><code>-verbosity N</code></td>
+				<td>set verbosity level in log file to N (0, 1, or 2; default: 0)</td>
+			</tr>
+			<tr>
+				<td><code>-stopOnError[=<b>true</b>|false]</code></td>
+				<td>terminate if an error is encountered</td>
+			</tr>
+			<tr><td><b>Input format options</b></td></tr>
+			<tr>
+				<td><code>-rightBranching[=<b>true</b>|false]</code></td>
+				<td>assume implicit right branching of NPs.</td>
+			</tr>
+			<tr>
+				<td><code></code></td>
+				<td>Disable this option if you are NOT using the NP bracketing by Vadas.</td>
+			</tr>
+			<tr><td><b>Shorthand options</b></td></tr>
+			<tr>
+				<td><code>-conll2007</code></td>
+				<td>turns on options to emulate the conventions used in CoNLL Shared Task 2007</td>
+			</tr>
+			<tr>
+				<td><code>-raw</code></td>
+				<td>turns on options for trees without function tags and secondary edges</td>
+			</tr>
+			<tr>
+				<td><code>-oldLTH</code></td>
+				<td>turns on options to emulate the old conventions from the NODALIDA article</td>
+			</tr>
+			<tr><td><b>Linguistic options</b></td></tr>
+			<tr>
+				<td><code>-coordStructure=oldLTH|prague|<b>melchuk</b></code></td>
+				<td>determines how to represent coordination</td>
+			</tr>
+			<tr>
+				<td><code>-posAsHead[=true|<b>false</b>]</code></td>
+				<td>let possessive be head in possessive NPs</td>
+			</tr>
+			<tr><td><code>-prepAsHead[=<b>true</b>|false]</code></td> <td>let preposition be head in PPs</td></tr>
+			<tr>
+				<td><code>-subAsHead[=<b>true</b>|false]</code></td>
+				<td>let subordinating conjunction (IN/DT) be head in SBARs</td>
+			</tr>
+			<tr>
+				<td><code>-whAsHead[=true|<b>false</b>]</code></td>
+				<td>let wh-phrase be head in relative clauses</td>
+			</tr>
+			<tr>
+				<td><code>-imAsHead[=<b>true</b>|false]</code></td>
+				<td>let infinitive marker (to) be head in VPs</td>
+			</tr>
+			<tr>
+				<td><code>-splitSmallClauses[=<b>true</b>|false]</code></td>
+				<td>split small clauses into object/OPRD</td>
+			</tr>
+			<tr><td><code>-advFuncs[=<b>true</b>|false]</code></td> <td>use adverbial tags such as LOC, TMP</td></tr>
+			<tr>
+				<td><code>-rootLabels[=true|<b>false</b>]</code></td>
+				<td>use separate root labels such as ROOT-S, ROOT-FRAG</td>
+			</tr>
+			<tr>
+				<td><code>-labelCoords[=true|<b>false</b>]</code></td>
+				<td>use separate coordination labels: SCOORD, VCOORD, COORD</td>
+			</tr>
+			<tr><td><code>-splitSlash[=<b>true</b>|false]</code></td> <td>rewrite A/B as A / B</td></tr>
+			<tr><td><code>-ddtGapping[=<b>true</b>|false]</code></td> <td>DDT-style encoding of gapping</td></tr>
+			<tr>
+				<td><code>-conll2008clf[=<b>true</b>|false]</code></td>
+				<td>annotate cleft sentences as in CoNLL-2008</td>
+			</tr>
+			<tr>
+				<td><code>-conll2008exp[=<b>true</b>|false]</code></td>
+				<td>annotate expletive constructions as in CoNLL-2008</td>
+			</tr>
+			<tr><td><code>-iobj[=true|<b>false</b>]</code></td> <td>use the IOBJ label for indirect objects</td></tr>
+			<tr>
+				<td><code>-relinkCyclicPRN[=<b>true</b>|false]</code></td>
+				<td>move cyclic parentheticals to top</td>
+			</tr>
+			<tr>
+				<td><code>-name[=<b>true</b>|false]</code></td>
+				<td>annotate dependencies inside atomic names using NAME</td>
+			</tr>
+			<tr>
+				<td><code>-suffix[=<b>true</b>|false]</code></td>
+				<td>use the SUFFIX label for possessive suffixes</td>
+			</tr>
+			<tr><td><code>-title[=<b>true</b>|false]</code></td> <td>use the TITLE label for titles in names</td></tr>
+			<tr><td><code>-posthon[=<b>true</b>|false]</code></td> <td>annotate posthonorifics using POSTHON</td></tr>
+			<tr><td><code>-appo[=<b>true</b>|false]</code></td> <td>annotate appositions using APPO</td></tr>
+			<tr><td><code>-clr[=true|<b>false</b>]</code></td> <td>use the CLR function tag</td></tr>
+			<tr>
+				<td><code>-deepenQP[=true|<b>false</b>]</code></td>
+				<td>add additional structure to numerical phrases</td>
+			</tr>
+			<tr>
+				<td><code>-qmod[=true|<b>false</b>]</code></td>
+				<td>annotate dependencies inside numerical phrases using QMOD</td>
+			</tr>
+			<tr><td><code>-noPennTags[=true|<b>false</b>]</code></td> <td>ignore function tags if present</td></tr>
+			<tr><td><code>-noSecEdges[=true|<b>false</b>]</code></td> <td>ignore secondary edges if present</td></tr>
+			<tr><td><b>Output format options</b></td></tr>
+			<tr><td><code>-format[=<b>conllx</b>|conll2008|tab]</code></td> <td>Output format</td></tr>
+		</table>
+		<h2>References</h2>
+		<ul>
+			<li>
+				Richard Johansson and Pierre Nugues.
+				<em>Extended Constituent-to-dependency Conversion for English</em>.
+				In Proceedings of NODALIDA 2007.
+				Tartu, Estonia, 2007.
+				[<a href="http://dspace.utlib.ee/dspace/bitstream/10062/2560/1/reg-Johansson-10.pdf">PDF</a>]
+			</li>
+			<li>
+				Mihai Surdeanu, Richard Johansson, Adam Meyers, Llu&iacute;s M&agrave;rquez, and Joakim Nivre.
+				<em>The CoNLL-2008 Shared Task on Joint Parsing of Syntactic and Semantic Dependencies</em>.
+				In Proceedings of the 12th Conference on Computational Natural Language Learning (CoNLL).
+				2008.
+				[<a href="http://www.surdeanu.name/mihai/papers/conll08.pdf">PDF</a>]
+			</li>
+		</ul>
+
+<!--<p><a href="english4.tar.gz">Here</a> is a trained model for
+<a href="http://w3.msi.vxu.se/~nivre/research/MaltParser.html">
+MaltParser</a> using the new conversion scheme and the <em>Head+Path</em>
+<a href="http://w3.msi.vxu.se/~nivre/research/proj/0.2/doc/Proj.html">
+pseudo-projective graph transformation</a>.</p>-->
+
+			<ul class="linkIconList" style="padding: 10px 0 0 20px; margin: 0"><li id="print">
+			<div id="LINK_PRINTABLE"><a href="&#35;" onclick="printWindow(location.href,'2');return false;">Print version</a></div></li></ul>
+			<div class="customFoot"><!--###customFoot### begin -->
+				<div class="line"><!--###line### begin --><!-- --><!--###line### end --></div>
+				<p>
+					Page Manager:&nbsp;Pierre Nugues<br />Webmaster:&nbsp;<a href="mailto:webmaster@lth.se">webmaster@lth.se</a><br />Last updated:&nbsp;2009-08-31
+				</p>
+			<!--###customFoot### end --></div>
+		<!--###contentMain### end --></div>
+	<!--###placeA### end --></div>
+</div>
+
+
+<div style="clear: both;"><!-- --></div>
+<!--###columnRight### end --></div>
+<!--###rightTd### end --></div>
+<div style="clear: both; width: 754px;" class="bottomTd"><!--###bottomTd### begin -->
+<div class="mainFootDiv"><!--###mainFootDiv### begin -->
+<div class="contentFoot"><!--###contentFoot### begin -->
+
+<!--###contentFoot### end --></div>
+<div class="clear"><!--###clear### begin --><!-- --><!--###clear### end --></div>
+<!--###mainFootDiv### end --></div>
+<!--###bottomTd### end --></div>
+<div style="clear: both;" class="startBottomShadow"><!--###startBottomShadow### begin --><!-- --><!--###startBottomShadow### end --></div>
+<!--###leftColBg### end --></div>
+<!--###templateMain### end --></div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+var pageTracker = _gat._getTracker("UA-12582595-7");
+pageTracker._trackPageview();
+</script>
+
+
+
+
+</body>
+</html>
