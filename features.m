@@ -18,6 +18,7 @@ function [f, fidx] = features(p, s, feats)
 % -7: distance to right, <= encoding (8 bits, <= encoding: <=1, <=2, <=3, <=4, <=6, <=8, <=12, <=16)
 % -3: average of in-between tokens to the right (dim:wvec)
 % +-8: average of in-between word/context vectors to the right (dim:wvec/2)
+% +-9: head exists/doesn't (one bit)
 
 ndim = size(s.wvec,1);                  % token vector dimensionality
 ndim2 = ndim/2;                         % for token encodings the first half is the word vector, the second half is the context vector
@@ -273,6 +274,14 @@ for feat = feats'                       % 16.10us/iter
       end
     end
     i=i+ndim2; fidx(end+1)=i;
+
+   case 9       % head exists
+    if (b > 0) f(i+1) = (p.head(b) > 0); end 
+    i=i+1; fidx(end+1)=i;
+
+   case -9      % head does not exist
+    if (b > 0) f(i+1) = (p.head(b) == 0); end 
+    i=i+1; fidx(end+1)=i;
 
    otherwise
     error('Unknown feature %d.\n', feat(3));
