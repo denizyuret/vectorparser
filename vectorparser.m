@@ -63,10 +63,10 @@ for snum=1:numel(corpus)
     end % if opts.update
 
     if opts.predict
-      vscore = score;
-      vscore(~valid) = -inf;
-      [~,vmove] = max(vscore);
-      p.transition(vmove);                 % 1019us
+      zscore = score;
+      zscore(~valid) = -inf;
+      [~,zmove] = max(zscore);
+      p.transition(zmove);                 % 1019us
     else
       p.transition(bestmove);
     end
@@ -244,7 +244,7 @@ if opts.compute_costs
   dump.cost(:,end+1) = cost;
 end
 if opts.compute_scores
-  dump.z(end+1) = maxmove;
+  dump.z(end+1) = zmove;
   dump.score(:,end+1) = score;
 end
 end % update_dump
