@@ -64,18 +64,17 @@ for snum=1:numel(corpus)
       end
     end % if opts.update
 
-    if opts.predict
-      if valid(maxscoremove)
-        p.transition(maxscoremove);                 % 1019us
-      else
-        zscore = score;
-        zscore(~valid) = -inf;
-        [~,zmove] = max(zscore);
-        p.transition(zmove);
-      end
+    if ~opts.predict
+      execmove = mincostmove;
+    elseif valid(maxscoremove)
+      execmove = maxscoremove;
     else
-      p.transition(mincostmove);
+      zscore = score;
+      zscore(~valid) = -inf;
+      [~,execmove] = max(zscore);
     end
+
+    p.transition(execmove);
 
     if opts.dump update_dump(); end
 
@@ -233,7 +232,7 @@ if opts.compute_costs
   dump.cost(:,end+1) = cost;
 end
 if opts.compute_scores
-  dump.z(end+1) = maxscoremove;
+  dump.z(end+1) = execmove;
   dump.score(:,end+1) = score;
 end
 end % update_dump
