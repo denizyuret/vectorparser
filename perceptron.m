@@ -1,17 +1,12 @@
 function model = perceptron(X,Y,model)
 
 % perceptron: written by Deniz Yuret, August 2, 2014.
-% Multi-class, mini-batch, cost based, gpu enabled perceptron.
+% Multi-class, mini-batch, gpu enabled perceptron.
 % Based on the DOGMA library by Francesco Orabona.
 %
 % X(nd,nx) has an instance in each column.
 %
-% Y(nc,nx) has the cost of each class for each instance.
-% - all mincost classes are considered correct.
-% - all cost=inf classes are considered invalid regardless of their score.
-%
-% If Y is a vector, it is taken to be the vector of correct answers
-% and automatically converted to a 0-1 cost matrix.
+% Y(1,nx) is a vector of correct answers.
 %
 % model can be a blank model or the result of a previous epoch, in
 % which case it will have non-empty SV(nd,ns), beta(nc,ns) and
@@ -51,12 +46,12 @@ while j < nx                          % 26986us/iter for batchsize=500
   nk = j - i + 1;                     % in case j==nx
 
   score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
-  costij = Y(:,i:j);                  % costij(nc,nk): costs for X(:,i:j)
-% score(isinf(costij)) = -inf;        % do not punish for impossible answers, turns out bad idea!
-  [maxscore, maxscore_i] = max(score); % compare the cost of maxscore answers
-  [mincost, mincost_i] = min(costij); % to the mincost answers
-  mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
-  updates = find(mycost > mincost);
+  yindex = Y(i:j);
+  ypos = sub2ind(size(score), yindex, 1:nk);
+  yscore = score(ypos);                 % scores for correct answers
+  score(ypos) = -inf;
+  [zscore, zindex] = max(score);        % max scores for other answers
+  updates = find(yscore <= zscore);
   model.beta2 = model.beta2 + model.beta;
 
   if ~isempty(updates)                % 33587us
@@ -68,8 +63,8 @@ while j < nx                          % 26986us/iter for batchsize=500
     svtr2 = [ svtr2; X(:,updates_i)' ];
 
     newbeta = zeros(nc, nu);
-    newbeta(sub2ind(size(newbeta), mincost_i(updates), 1:nu)) = 1;
-    newbeta(sub2ind(size(newbeta), maxscore_i(updates), 1:nu)) = -1;
+    newbeta(sub2ind(size(newbeta), yindex(updates), 1:nu)) = 1;
+    newbeta(sub2ind(size(newbeta), zindex(updates), 1:nu)) = -1;
 
     model.beta2 = [model.beta2 newbeta];
     model.beta = [model.beta newbeta];    % 972us
@@ -105,16 +100,10 @@ assert(strcmp(model.kerparam.type,'poly'), 'Only poly kernel models supported.\n
 % Get the size of the problem
 nd = size(X, 1);
 nx = size(X, 2);
-assert(nx == size(Y, 2));
-nc = size(Y, 1);
-if nc == 1
-  fprintf('Cost matrix is 1D, assuming these are correct answers.\n');
-  assert(all(Y>=1));
-  nc = max(Y);
-  cost = ones(nc, nx);
-  cost(sub2ind(size(cost), Y, 1:nx)) = 0;
-  Y = cost;
-end
+assert(size(Y, 1) == 1);
+assert(size(Y, 2) == nx);
+nc = max(Y);
+
 if ~isfield(model,'SV') || isempty(model.SV)
   fprintf('Initializing empty model.\n');
   ns = 0;
