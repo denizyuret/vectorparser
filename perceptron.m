@@ -95,10 +95,6 @@ if opts.update
   model = compactify(model);
 end
 
-if ~isempty(Y)
-  
-end
-
 clear m;
 
 
