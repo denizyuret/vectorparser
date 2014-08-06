@@ -4,12 +4,13 @@
 % statistics.
 %
 % model = vectorparser(model, corpus);  %% training mode, dump output optional
-% [model,dump] = vectorparser(model, corpus, 'update', 0)); %% testing
 % [model,dump] = vectorparser(model, corpus, 'update', 0, 'predict', 0); %% dump features
+% [model,dump] = vectorparser(model, corpus, 'update', 0)); %% testing
+% stats = eval_conll(corpus, dump);
 
 function [model, dump] = vectorparser(model, corpus, varargin)
 
-vectorparser_init(nargout);
+vectorparser_init(varargin, nargout);
 fprintf('Processing sentences...\n');
 
 for snum=1:numel(corpus)
@@ -24,7 +25,7 @@ for snum=1:numel(corpus)
 
     if opts.compute_costs
       cost = p.oracle_cost(h); 		% 1019us
-      [mincost, bestmove] = min(cost);
+      [mincost, mincostmove] = min(cost);
     end
 
     if opts.compute_features
@@ -33,42 +34,47 @@ for snum=1:numel(corpus)
     end
 
     if opts.compute_scores
-      % Same matrix operation has different costs on gpu:
-      % score = gather(b + beta * (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree); % 17310us
-      % score = gather(b + sum(bsxfun(@times, beta, (hp.gamma * (f * sv) + hp.coef0).^hp.degree))); % 11364us
       if isempty(svtr)
-        score = zeros(1, model.n_cla);
+        score = zeros(1, p.NMOVE);
       elseif opts.average
-        score = model.b2 + gather(sum(bsxfun(@times, betatr2, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
+        score = gather(sum(bsxfun(@times, betatr2, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1));
       else
-        score = model.b + gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
+        score = gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1));
       end
-      % score(cost==inf) = -inf;        % very very bad idea!
-      [maxscore, maxmove] = max(score); % 925us
+      [maxscore, maxscoremove] = max(score); % 925us
+
+      % Same matrix operation has different costs on gpu:
+      % score = gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
+      % Matrix multiplication is less efficient than array mult:
+      % score = gather(b + beta * (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree); % 17310us
+      % Even the transpose makes a difference:
+      % score = gather(b + sum(bsxfun(@times, beta, (hp.gamma * (f * sv) + hp.coef0).^hp.degree),1)); % 11364us
+
     end
 
     if opts.update
-      if cost(maxmove) > mincost
-        if isempty(svtr)
-          svtr = f;
-        else
-          svtr(end+1,:) = f;
-        end
-        betatr(end+1,:) = zeros(1, model.n_cla);
-        betatr2(end+1,:) = zeros(1, model.n_cla);
-        betatr(end, bestmove) = 1;
-        betatr(end, maxmove) = -1;
-      end
       betatr2 = betatr2 + betatr;
+      if cost(maxscoremove) > mincost
+        svtr(end+1,:) = f;
+        newbeta = zeros(1, p.NMOVE);
+        newbeta(mincostmove) = 1;
+        newbeta(maxscoremove) = -1;
+        betatr(end+1,:) = newbeta;
+        betatr2(end+1,:) = newbeta;
+      end
     end % if opts.update
 
     if opts.predict
-      zscore = score;
-      zscore(~valid) = -inf;
-      [~,zmove] = max(zscore);
-      p.transition(zmove);                 % 1019us
+      if valid(maxscoremove)
+        p.transition(maxscoremove);                 % 1019us
+      else
+        zscore = score;
+        zscore(~valid) = -inf;
+        [~,zmove] = max(zscore);
+        p.transition(zmove);
+      end
     else
-      p.transition(bestmove);
+      p.transition(mincostmove);
     end
 
     if opts.dump update_dump(); end
@@ -96,13 +102,14 @@ if opts.dump && opts.compute_features
 end
 
 
-function vectorparser_init(nargout_save)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function vectorparser_init(varargin_save, nargout_save)
 
-opts = struct();      % opts is an (optional) struct of options.
+opts = struct();      % opts is a struct of options.
 
-for vi = 1:2:numel(varargin)
-  v = varargin{vi};
-  v1 = varargin{vi+1};
+for vi = 1:2:numel(varargin_save)
+  v = varargin_save{vi};
+  v1 = varargin_save{vi+1};
   switch v
    case 'predict' 
     opts.predict = v1;
@@ -125,50 +132,24 @@ if ~isfield(opts, 'update')
   opts.update = true;   % update: train the model (default), otherwise model is not updated
 end
 
-if opts.update % Initialize model by defaults if necessary
-  fprintf('Updating model.\n');
-  if ~isfield(model,'parser')
-    fprintf('Using default parser archybrid.\n');
-    model.parser = @archybrid;
-  end
-  if ~isfield(model,'n_cla')
-    p = feval(model.parser, 1);
-    model.n_cla=p.NMOVE;
-  end
-  if ~isfield(model,'beta')
-    model.beta=zeros(model.n_cla, 0);
-    model.beta2=zeros(model.n_cla, 0);
-  end
-  if ~isfield(model,'feats')
-    fprintf('Using default feature set fv808.\n');
-    model.feats = ...
-        [ % use fv808 as the default feature set
-          %n0 s0 s1 n1 n0l1 s0r1 s1r1l s0l1 s0r1l s2
-          0 -1 -2  1  0   -1   -2    -1   -1    -3;
-          0  0  0  0 -1    1    1    -1    1     0;
-          0  0  0  0  0    0   -2     0   -2     0;
-        ]';
-  end
-end
-
 opts.dump = (nargout_save >= 2);
 opts.compute_costs = opts.update || opts.dump || ~opts.predict;
 opts.compute_features = opts.update || opts.dump || opts.predict;
 opts.compute_scores  = opts.update || opts.predict;
 
 assert(isfield(model,'parser'), 'Please specify model.parser.');
+tmp_s = corpus{1};
+tmp_p = feval(model.parser, numel(tmp_s.head));
+nc = tmp_p.NMOVE;
 
 if opts.compute_features
   assert(isfield(model,'feats'), 'Please specify model.feats.');
   assert(size(model.feats, 2) == 3, 'The feats matrix needs 3 columns.');
+  tmp_f = features(tmp_p, tmp_s, model.feats);
+  nd = numel(tmp_f);
 end
 
 if opts.compute_scores
-  assert(isfield(model,'n_cla'), 'Please specify model.n_cla.');
-  assert(isfield(model,'beta'), 'Please specify model.beta.');
-  assert(isfield(model,'beta2'), 'Please specify model.beta2.');
-  assert(isfield(model,'b'), 'Please specify model.b.');
-  assert(isfield(model,'b2'), 'Please specify model.b2.');
   assert(isfield(model,'kerparam') && ...
          strcmp(model.kerparam.type,'poly'), ...
          'Please specify poly kernel in model.kerparam.\n');
@@ -182,15 +163,22 @@ if opts.compute_scores
     assert(~opts.update, 'Cannot use averaged model during update.');
   end
 
-  if ~isempty(model.SV)
-    assert(~isempty(model.beta) && all(size(model.beta) == size(model.beta2)));
+  if ~isfield(model,'SV') || isempty(model.SV)
+    if opts.update
+      svtr = zeros(0, nd);
+      betatr = zeros(0, nc);
+      betatr2 = zeros(0, nc);
+    else
+      error('Please specify model.SV');
+    end
+  else
+    assert(size(model.SV, 1) == nd);
+    assert(size(model.beta, 1) == nc);
+    assert(size(model.SV, 2) == size(model.beta, 2));
+    assert(all(size(model.beta) == size(model.beta2)));
     svtr = model.SV';
     betatr = model.beta';
     betatr2 = model.beta2';
-  else
-    svtr = [];
-    betatr = zeros(0, model.n_cla);
-    betatr2 = zeros(0, model.n_cla);
   end
 
   if ~isfield(opts, 'gpu')
@@ -235,16 +223,17 @@ end % if opts.dump
 end % vectorparser_init
 
 
+%%%%%%%%%%%%%%%%%%%%%%
 function update_dump()
 if opts.compute_features
   dump.x(:,end+1) = ftr;
 end
 if opts.compute_costs
-  dump.y(end+1) = bestmove;
+  dump.y(end+1) = mincostmove;
   dump.cost(:,end+1) = cost;
 end
 if opts.compute_scores
-  dump.z(end+1) = zmove;
+  dump.z(end+1) = maxscoremove;
   dump.score(:,end+1) = score;
 end
 end % update_dump
