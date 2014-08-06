@@ -5,7 +5,9 @@
 run_*
 foo*
 matlab.sh
-logs
+log
+run
+mat
 unused
 trash
 embedded
