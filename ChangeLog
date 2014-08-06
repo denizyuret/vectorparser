@@ -1,13 +1,346 @@
-2014-08-03  Deniz Yuret  <dyuret@ku.edu.tr>
+2014-08-06  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* TODO:
-	- Let ++i00 finish so we can use the dumps.
+	- copy run scripts to ChangeLog.
+	+ move run_* to logs. split log/run/mat.
+	+ stop featselect.
+	- test 10-epoch best model for parsing
+	- start dynamic oracle training
+	+ figure out conll07 diff, 
+	- rerun featselect.
+	- rinse and repeat.
+
+	- add a head feature for arceager and redo feature selection.
+	
+	TODO: correct perceptron update rule when there can be more than
+	one maxscore and more than one mincost answer.
+	
+	- severe connections with dogma:
+	- remove model.n_cla and other useless fields from vectorparser.
+	- edit perceptron to do testing as well.
+	
+	* TODO:
+
+	x sparsification: isn't necessary, compactify is enough.
+	+ multi-epoch: ~10-12 static epochs seem sufficient, 5 epochs for fv808.
+	+ features: fv808 converges faster but same static performance.
+	+ dynamic oracle: it starts working after epoch 2, best at 5-10 epochs
+	+ embeddings: bansal seems best.
+	. arctype
+	? beam-search
+	? kernel-type
+
+	perceptron.m:
+	TODO: experiment with cost vs answer training.
+	TODO: skipping single choice answers?
+	TODO: arceager vs archybrid parse error - move error relation?
+	TODO: write testing function for perceptron instead of model_predict_gpu.
+	TODO: run_arctype_comparison should dump first instead of training.
+
+	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
+	-- Beam search parser: read paper.  read redshift.  minibatch?
+	-- we can start by writing a beam decoder to parse with existing models.  no training.
+	-- how often does the gold sequence have a total score better than greedy sequence?
+
+	- rbf kernel with gpu?
+	-- Optimize and try rbf kernel calculation and fselect.
+	-- Other kernel degrees with featselect.
+
+	- write matlab gpu tutorial on blog
+
+	- trainparser_primal.m: broken, upgrade to use new code.
+
+	- model_sparsify.m: broken, updgreade to use new code.
+	
+	% TODO: in fact, why don't we use the scaled averaged beta during
+	training?  If we know it is better it will make less mistakes,
+	accumulate fewer support vectors.  (Try this in perceptron.m after
+	debugging).
+
+	OK, another matlab bug: if we have an SV matrix more than half the
+	size of gpu memory, we can't add anything to it, we can't change
+	it etc. etc. Everything I try (concat, subasgn etc.) ends up
+	trying to create a copy.  This is the third bug I found in matlab
+	(after max and skinny multiply problems), should send a bug
+	report.  (TODO).
+
+	TODO: debug conllWSJToken_dep-100 (good train bad test)
+	TODO: debug out-of-memory on levy, murphy50, mikolovGoogleNews300
+
+	- test if saving single-choice moves in dump makes a big
+	difference in static oracle training, if it does find a way to
+	filter the multi-choice instances.
+
+	* TODO:
+	+ Let ++i00 finish so we can use the dumps.
 	- Verify the dumps.
 	- Run regular perceptron training.
 	- Figure out the difference between PTB and conll.
 	- Figure out if we need separate featselect for conll.
+
+
+2014-08-05  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run/run_conll07.m: 5 epochs of static oracle training best,
+	nsv=71496, gtrans=.0352.  However bad ptrans error.  Let's compare
+	with our old mx runs:
+
+	mx run:
+	corpus:ptb3 
+	encoding:conllToken_wikipedia2MUNK-50
+	feats:fv808
+	parser:ArcHybrid
+	static-learner:k_perceptron_multi_train_gpu (run_multi_epoch2.m)
+	dynamic-learner:trainparser_gpu (run_dynamic_oracle2.m)
 	
-	* run_arctype_comparison.m: ++i00 running all arctypes with best
+	Static Oracle:
+	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
+	mx1	6.09	314	104757	3.75	4.26	11.18		fv808 feature-set batch=1000
+	mx2	4.89	727	133856	3.50	3.95	10.36		all mx are fv808 batch=1000
+	mx3	4.11	860	150207	3.38	3.80	 9.96
+	mx4	3.54	930	161208	3.36	3.80	 9.88
+	mx5	3.21	963	169135	3.34	3.76	 9.83	8.63	best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
+
+	Dynamic Oracle:
+	--i11			TEST				TRAIN
+	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	mx5	169135	963	3.34	3.76	9.83	8.63	-	-
+	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
+	mx5d2	232151	?	4.02	3.63	9.59	8.47	2.73	7.60	6.77
+	mx5d3	254535	?	3.99	3.49	9.23	8.16	2.45	6.88	6.13
+	mx5d4	273226	?	4.00	3.47	9.20	8.12	2.23	6.28	5.61
+	mx5d5	289077	?	3.99	3.39	9.02	7.98	2.02	5.73	5.11
+	mx5d6	302335	?	3.99	3.39	8.96	7.92	1.83	5.24	4.67
+	mx5d7	314292	?	4.00	3.37	8.90	7.88	1.71	4.92	4.40
+
+	conll07 run:
+	corpus:conll07 (trn nx:763702 nd:1384)
+	encoding:bansal100
+	feats:best of mat/bansal5k_archybrid_fv130_cache.mat
+	parser:archybrid
+	static-learner:perceptron (run_conll07.m)
+	dynamic-learner:vectorparser (run_conll07.m)
+	evaluation:gtrans measured using cost, not correct answer!
+	
+	Note: in static oracle gtrans not equivalent to prev exp, it is
+	cost based (let's call this ctrans), prev was answer based
+	(gtrans).
+	
+	Note: in dynamic oracle ptrans=move_pct, phead=head_pct,
+	whead=word_pct, and the new sent_pct measures exact sentence match
+	error.
+	
+	Static Oracle: (run_conll07_experiment1.out)
+	epoch	ctrans
+	1	4.02
+	2	3.72
+	3	3.57
+	4	3.53
+	5	3.52 (nsv:71496 gtrans:5.38 ptrans:7.20 phead:18.30)
+
+	Dynamic Oracle: (run_conll07_experiment2.out ++i01)
+	epoch	move	head	word	sent
+	0	7.20	18.30	16.04	76.97
+	1	5.14	13.39	12.31	70.69
+	2	4.99	13.01	11.92	70.54
+	3	4.92	12.76	11.75	70.04
+	4	4.89	12.68	11.67	69.88
+	5	4.85	12.55	11.57	69.33
+	6	4.82	12.50	11.51	69.48
+	7	4.79	12.43	11.45	69.08
+	8	++i01
+
+	Summary: Static oracle is not easy to compare.  In mx, correct
+	answer based gtrans went from 3.75 to 3.34 in 5 epochs.  In
+	conll07 cost based gtrans went from 4.02 to 3.52 (which
+	corresponds to 5.38 answer based).  So we are doing 2% worse in
+	static oracle.  Theories:
+	1. smaller corpus
+	2. bansal vs scode encoding
+	3. fv808 vs new features
+	4. bug-fix in archybrid?
+	5. perceptron vs k_perceptron_multi_train_gpu.
+
+	In dynamic oracle, mx starts with 3.34 gtrans translating to a
+	close 3.76 ptrans, which gives the x2.6 9.83 phead.  whead is
+	about 1% better.  conll07 starts with 5.38 gtrans translating to a
+	2-point worse 7.20 ptrans, which gives the x2.6 18.30 phead.  At
+	epoch 4 mx improves ptrans 0.3 to 3.47 and phead x2.6 is 9.20.  At
+	epoch 4 conll07 improves ptrans 2.31 to 4.89 and phead x2.6 gives
+	12.68.
+
+	Static oracle is leaving a model 2.04% gtrans worse (which could
+	be explained by data size etc.) but the gtrans/ptrans difference
+	at that point is huge (1.82% vs 0.42% for mx)!  That is partly
+	compensated by dynamic oracle improvement (2.31% vs 0.29% for mx).
+
+		gtrans0	gtrans1	ptrans1	ptrans4	phead4
+	mx	3.75	3.34	3.76	3.47	9.20
+	conll07	?	5.38	7.20	4.89	12.68
+
+	Theories:
+	1. find out the answer based gtrans0 for conll07.
+	2. problem definitely in static oracle training.
+	3. 1-epoch perceptron vs k-perceptron, ctrans vs gtrans.
+	4. Look into perceptron update rule for cost/score ties.
+
+	
+	** 1-epoch-experiment: Compare the effect of different update
+	rules.
+	
+	1. k_perceptron:
+	Yi = gpuArray(int32(Y(i:j)) + model.n_cla*int32(0:ij-1)); % 1018us
+	tmp=val_f;                            % 922us
+	tmp(Yi)=-inf;                         % 1200us
+	[mx_val,idx_mx_val]=max(gather(tmp));         % 983us
+	tr_val = val_f(Yi);                   % 996us
+	updates = find(tr_val <= mx_val);     % 1219us
+
+	2. perceptron(Y):
+	First converts Y into cost matrix and then applies the rule below:
+	
+	3. perceptron(cost):
+	score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
+	costij = Y(:,i:j);                  % costij(nc,nk): costs for X(:,i:j)
+	[maxscore, maxscore_i] = max(score); % compare the cost of maxscore answers
+	[mincost, mincost_i] = min(costij); % to the mincost answers
+	mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
+	updates = find(mycost > mincost);
+
+	4. vectorparser:
+	[mincost, bestmove] = min(cost);
+	[maxscore, maxmove] = max(score);
+	update if cost(maxmove) > mincost
+
+	4.1 But maxmove is arbitrary in case of tie?
+	4.2 It is not used for transition if its cost is inf.
+	4.3 All ties are broken picking the lowest numbered move.
+	
+	First experiment shows that using the cost for training
+	(naturally) gives best result in cost, but significantly worse in
+	guessing "correct" answer. (run_conll07_debug.m)
+	
+--i02	gtrans	ctrans	ptrans	phead	whead	sent	model
+	0.0471	0.0426	0.0605	0.1549	0.1397	0.7285	k_perceptron_multi_train
+	0.0476	0.0428	0.0612	0.1576	0.1418	0.7466	perceptron(y)
+	0.0581	0.0402	0.0752	0.1899	0.1668	0.7969	perceptron(cost)
+	
+	How do we decide "correct" other than arbitrarily during dump?
+	[mincost, bestmove] = min(cost);
+
+	So the fact that we do not match arbitrary correct answer should
+	not hurt the head accuracy.  But it seems less able to generalize
+	to the dynamic parsing situation, i.e. ptrans is a lot worse.
+
+	Trying a different update rule: (perceptron_dbg.m)
+	maxscore = max(score, [], 1);       % maxscore answers according to model
+	minycost = min(ycost, [], 1);       % mincost answers according to data
+	dbeta = bsxfun(@eq, ycost, minycost) - bsxfun(@eq, score, maxscore);
+	updates = find(any(dbeta));         % nonzero columns of dbeta
+
+	gtrans	ctrans	ptrans	phead	whead	sent	model
+	0.0471	0.0426	0.0605	0.1549	0.1397	0.7285	k_perceptron_multi_train
+	0.0476	0.0428	0.0612	0.1576	0.1418	0.7466	perceptron(y)
+	0.0581	0.0402	0.0752	0.1899	0.1668	0.7969	perceptron(cost)
+	0.0481	0.0433	0.0619	0.1584	0.1424	0.7436	perceptron_dbg(y)
+	0.0713	0.0533	0.0887	0.2324	0.2095	0.8421	perceptron_dbg(cost)
+
+	Try to normalize the updates: (perceptron2_dbg.m) This makes sense
+	if we assume one pair of mincost,maxscore entries is picked at
+	random and we are looking at the expected update.
+	
+	score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
+	costij = cost(:,i:j);               % costij(nc,nk): costs for X(:,i:j)
+	maxscore = max(score);              % maxscore in each column of score
+	mincost = min(costij);              % mincost in each column of costij
+	incbeta = bsxfun(@eq, costij, mincost); % +1 beta for mincost answers
+	decbeta = bsxfun(@eq, score, maxscore); % -1 beta for maxscore answers
+	incbeta = bsxfun(@rdivide, incbeta, sum(incbeta));   % normalize in case multiple mincost answers
+	decbeta = bsxfun(@rdivide, decbeta, sum(decbeta));   % normalize in case multiple maxscore answers
+	dbeta = incbeta - decbeta;          % this should cancel out if y_mincost = y_maxscore
+	updates = find(any(dbeta));         % nonzero columns of dbeta are the updates
+	
+	gtrans	ctrans	ptrans	phead	whead	sent	model
+	0.0471	0.0426	0.0605	0.1549	0.1397	0.7285	k_perceptron_multi_train
+	0.0476	0.0428	0.0612	0.1576	0.1418	0.7466	perceptron(y)
+	0.0581	0.0402	0.0752	0.1899	0.1668	0.7969	perceptron(cost)
+	0.0481	0.0433	0.0619	0.1584	0.1424	0.7436	perceptron_dbg(y)
+	0.0713	0.0533	0.0887	0.2324	0.2095	0.8421	perceptron_dbg(cost)
+	0.0481	0.0433	0.0619	0.1584	0.1424	0.7436	perceptron2_dbg(y)
+	0.0587	0.0408	0.0733	0.1864	0.1642	0.7924	perceptron2_dbg(cost)
+	
+	This version gives the same answers in y mode.  Why?  Different
+	beta, same SV?  Look at non-compactified version.
+	
+	However ptrans and the rest still bad, even worse when using cost
+	matrix.
+
+	Theories: 
+	- Look at this cost matrix and make sure its contents are good.
+	- What kinds of instances have multiple correct answers or score ties?
+	- Can we just emulate k_perceptron_multi_train?
+	- Compare resulting beta with k_perceptron_multi_train?
+	- How do cost based algorithms in dogma do it?
+	- Does it have to do with move ordering (min picking the lowest)?  
+	- If we sort them differently does the regular k_perceptron screw up?
+	- If it is important do we have the right ordering for other arctypes?
+	- Replicate the mx results with perceptron.m.
+
+	CONCLUSION: Even though costs and scores can be tied, in reality
+	the oracle or the parser only picks one move!  When the learner
+	behaves as if other moves could have been chosen it does not gain
+	any advantage.  So we should get back to the original perceptron
+	update rule.  The actual moves that are made in vectorparser
+	should be compatible with learner:
+
+    if opts.predict
+      zscore = score;
+      zscore(~valid) = -inf;
+      [~,zmove] = max(zscore);
+      p.transition(zmove);
+    else
+      [mincost, bestmove] = min(cost);	
+      p.transition(bestmove);
+    end
+
+	
+2014-08-04  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* fsymbol.m: get feature name from feature vector f(1,3).
+
+	* conll07bansal.mat: we need conll07 dev for featselect and epoch
+	decisions.  let us use sec02 for dev: top 50123 lines, 1989
+	sentences, 48134 tokens.  We'll save it as split.  Just concat dev
+	and trn to get original data.
+	
+	* run_arctype_comparison2.m: ++i00: Determine which arctype is
+	best.  The scores *c are cost based, *a are answer based.  trn and
+	tst are from conll07, dev is from conllWSJToken.  All after one
+	epoch cost-based training with perceptron.m with features
+	optimized on conllWSJToken trn(1:5000)/dev.
+
+	NOTE: these used a buggy version of perceptron (cost based)
+	update, a bad dev set and possibly bad features (because they were
+	optimized on the bad dev set albeit with the correct
+	k_perceptron_multi_train).  Need to rerun.
+	
+	1-epoch results: (run_arctype_comparison2.m)
+	arc	trnc	trna	devc	deva	tstc	tsta	feats
+	eager	2.76	4.69	7.78	9.14	4.23	6.41	17
+	hybrid	2.75	4.46	7.30	8.55	4.23	6.30	27
+	eag13	2.76	4.87	7.62	9.22	4.08	6.43	23
+	hyb13	2.58	4.31	7.43	8.66	4.24	6.25	27
+
+	10-epoch results: (run_arctype_comparison3.m)
+	arc	trnc	trna	devc	deva	tstc	tsta	feats
+	eager	0.35	2.32	7.70	9.13	3.85	6.06	17
+	hybrid	0.39	2.18	6.99	8.32	3.65	5.76	27
+	eag13	0.36	2.43	7.52	9.12	3.71	5.96	23
+	hyb13	0.30	2.08	7.02	8.33	3.78	5.89	27
+
+2014-08-03  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run_arctype_comparison.m: --i00 running all arctypes with best
 	features on conll07.  The first results (arceager) look really
 	bad, trouble with vectorparser?  Different from using in dump
 	mode?  Trouble with feature set?
@@ -15,7 +348,7 @@
 	Debugging:
 	load conll07bansal_arceager
 	trndump.x [1022x855992]
-	trnconll 18577	446573	
+	trnconll 18577	446573
 	2*446573-2*18577 = 855992 ok
 	? 17 feats =? 1022 dims
 	m1=perceptron(trndump.x, trndump.y, m0);
@@ -39,7 +372,7 @@
 	[model,trndump] = vectorparser(m0, trnconll, 'predict', 0);
 	trying to replicate with small data tstconll.
 	no difference!
-	
+
 	compare devs in bansal5k_arceager_fv130 which comes from
 	conllWSJToken_bansal100 with conll07bansal_arceager which comes
 	from conll07bansal.
@@ -114,8 +447,52 @@
 	This gives 3.31 train error with same data:
 	model3 = perceptron(b2.trndump.x, b2.trndump.y, a2.m0);
 
-	Are the dumps of vectorparser even correct?  (TODO)
-	
+	Test if cost based eval is different:
+
+	- answer train / answer eval / cost eval (k_perceptron):
+	model2 = k_perceptron_multi_train_gpu(b2.trndump.x, b2.trndump.y, a2.m0);
+	p2=model_predict_gpu(b2.trndump.x, model2, 1);
+	c2=b2.trndump.cost(sub2ind(size(b2.trndump.cost),p2,1:numel(p2)));
+	[min2,imin2] = min(b2.trndump.cost);
+	numel(find(c2~=min2))/numel(c2) % 0.0290
+	numel(find(p2~=b2.trndump.y))/numel(p2) % 0.0328
+
+	- answer train / answer eval / cost eval (perceptron):
+	model3 = perceptron(b2.trndump.x, b2.trndump.y, a2.m0);
+	p3=model_predict_gpu(b2.trndump.x, model3, 1);
+	c3=b2.trndump.cost(sub2ind(size(b2.trndump.cost),p3,1:numel(p3)));
+	[min3,imin3] = min(b2.trndump.cost);
+	numel(find(c3~=min3))/numel(c3) => 0.0292
+	numel(find(p3~=b2.trndump.y))/numel(p3) => 0.0331
+
+	% slight difference due to how equalities are handled:
+
+	% perceptron never punishes an equal cost move:
+	% update if cost(maxscoremove) > mincost
+	[maxscore, maxscore_i] = max(score); % compare the cost of maxscore answers
+	[mincost, mincost_i] = min(costij); % to the mincost answers
+	mycost = costij(sub2ind(size(costij), maxscore_i, 1:nk)); % cost of maxscore answers
+	updates = find(mycost > mincost);
+	model.beta2 = model.beta2 + model.beta;
+
+	% k_perceptron initially will, when all val_f = 0:
+	% update if score(correctmove) <= score(maxscoreincorrectmove)
+	tmp=val_f;                            % 922us
+	tmp(Yi)=-inf;                         % 1200us
+	[mx_val,idx_mx_val]=max(gather(tmp)); % 983us
+	tr_val = val_f(Yi);                   % 996us
+	updates = find(tr_val <= mx_val);     % 1219us
+
+	- cost train / answer eval / cost eval (perceptron):
+	% gives the best cost eval but worst answer eval (as expected):
+	model4 = perceptron(b2.trndump.x, b2.trndump.cost, a2.m0);
+	p4=model_predict_gpu(b2.trndump.x, model4, 1);
+	c4=b2.trndump.cost(sub2ind(size(b2.trndump.cost),p4,1:numel(p4)));
+	[min4,imin4] = min(b2.trndump.cost);
+	numel(find(c4~=min4))/numel(c4) % 0.0276
+	numel(find(p4~=b2.trndump.y))/numel(p4) % 0.0469
+
+
 	Could be the same mistake as in the perceptron:
 	score(cost==inf) = -inf;
 
@@ -132,52 +509,10 @@
 	% fixed beta2 bug in perceptron:
 	m5 = perceptron(d1.x, d1.cost, m0);  % 0.0678
 
-	So cost based training is worse than answer based.  And ignoring
-	scores of impossible moves is by far the worst!  Why?
-	
-* run_arctype_comparison.log:
-	
-03-Aug-2014 13:06:17 loading embedded/conll07EnglishToken_bansal100/00/english_0001.dp
-03-Aug-2014 13:10:52 loading embedded/conllWSJToken_bansal100/01/wsj_0101.dp
-03-Aug-2014 13:11:16 loading embedded/conll07EnglishToken_bansal100/01/english_0101.dp
-03-Aug-2014 13:11:18 saving conll07bansal
-03-Aug-2014 13:21:11 done
-03-Aug-2014 15:48:45 initializing model
-03-Aug-2014 15:48:45 loading bansal5k_arceager_fv130_cache.mat
-03-Aug-2014 15:48:45 0.0542208 [-2 0 -4;-2 0 -1;-2 0 2;-2 0 4;-2 1 -5;-2 1 -1;-2 1 2;-1 0 -4;-1 0 2;-1 0 4;-1 1 4;-1 1 5;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4]
-03-Aug-2014 15:48:45 training
-03-Aug-2014 19:37:33 parsing dev
-head_cnt: 40117
-head_err: 10582
-head_pct: 0.2638
-move_cnt: 76834
-move_err: 8302
-move_pct: 0.1081
-sent_cnt: 1700
-sent_err: 1489
-sent_pct: 0.8759
-word_cnt: 35324
-word_err: 8596
-word_pct: 0.2433
-03-Aug-2014 19:44:16 parsing tst
-head_cnt: 5003
-head_err: 1020
-head_pct: 0.2039
-move_cnt: 9578
-move_err: 877
-move_pct: 0.0916
-sent_cnt: 214
-sent_err: 180
-sent_pct: 0.8411
-word_cnt: 4410
-word_err: 791
-word_pct: 0.1794
-03-Aug-2014 19:45:09 saving to conll07bansal_arceager
-03-Aug-2014 19:46:47 loading bansal5k_archybrid_fv130_cache.mat
-03-Aug-2014 19:46:47 0.0510451 [-3 -1 2;-3 0 2;-3 0 7;-3 1 2;-3 1 5;-2 -1 -1;-2 0 4;-2 0 6;-2 0 7;-2 1 6;-1 -1 5;-1 0 -4;-1 0 2;-1 0 4;-1 0 7;-1 1 -6;-1 1 -4;-1 1 4;-1 1 6;0 -1 -5;0 -1 -4;0 -1 4;0 -1 5;0 0 -4;0 0 4;1 0 -1;1 0 4]
-03-Aug-2014 19:46:47 training
+	So cost based training is worse than answer based.  Testing on
+	dynamic data (ptrans) makes things bad.  And ignoring scores of
+	impossible moves is by far the worst!  Why?
 
-	
 	* conll07:
 
 	- goldberg-nivre-2013: gives results for conll07 english using
@@ -187,17 +522,16 @@ word_pct: 0.1794
 	- results on conll07.  check the source of the test corpus: paper
 	claims subset of wsj23.  It seems to be wsj_2300 to part of
 	wsj_2308.  Best UAS in conll07 paper: 90.63.  Goldberg-Nivre-2013
-	best deterministic parser: 89.41.  Both include punctuation.  
+	best deterministic parser: 89.41.  Both include punctuation.
 
 		 nsent	nword
 	trnconll 18577	446573
 	tstconll 214	5003
-	devconll 1700	40117
 
 	Short	UAS+p	Paper
 	Car07	90.63	X. Carreras. 2007. Experiments with a high-order projective dependency parser. In Proc. of the CoNLL 2007 Shared Task. EMNLP-CoNLL.
 	GN13	89.41	Yoav Goldberg and Joakim Nivre. 2013. Training Deterministic Parsers with Non-Deterministic Oracles.. TACL, vol 1, pp 403--414.
-	
+
 	- results on PTB.  For beam parsers Zhang-Nivre-2011 test on PTB
 	and report 92.9 on test (wsj23), 93.14 on dev (wsj22).  They also
 	report two transition parsers: ZC08transition (91.4) HS10 (91.4),
@@ -208,7 +542,7 @@ word_pct: 0.1794
 	punctuation, that have been assigned the correct parent) and by
 	the percentage of complete matches, in which all words excluding
 	punctuation have been assigned the correct parent."
-	
+
 		Secs	Sents 	Words
 	Train 	2–21 	39832	950028
 	Dev 	22 	1700	40117
@@ -221,7 +555,32 @@ word_pct: 0.1794
 	MST05	90.9	Ryan McDonald, Koby Crammer, and Fernando Pereira. 2005. Online large-margin training of dependency parsers. In Proceedings of ACL, pages 91–98, Ann Arbor, Michigan, June.
 	MST2	91.5	R McDonald and F Pereira. 2006. Online learning of approximate dependency parsing algorithms. In In Proc. of EACL, pages 81–88, Trento, Italy, April.
 	MST1	90.7	First order result according to MP06.
+
+	- conll07-ptb difference: 
 	
+	from conll-xi/data/english/ptb/doc/README:
+	The head and dependency relation fields were converted using the
+	algorithms described in
+	> Richard Johansson and Pierre Nugues (tentative title)
+	> "Extended Constituent-to-Dependency Conversion for English"
+	> (Submitted)
+	> http://www.lucas.lth.se/lt/pennconverter
+	This was run with the arguments: -conjAsHead -prepAsHead
+
+	new website:	
+	http://nlp.cs.lth.se/software/treebank_converter
+	http://fileadmin.cs.lth.se/nlp/software/pennconverter/pennconverter.jar
+
+	The new arg -conll2007 is supposed to generate the conll07
+	conventions.  But files are not identical.  It seems the old
+	version of pennconverter (and thus the original conll07 data) had
+	some conjunction bugs which were later fixed.  220/5003 (4.40%)
+	head difference is the closest I can get to conll07.  On the
+	training set about 5 sentences were deleted from ptb to conll07.
+	Of the 446573 heads the closest I can get is 20298 difference
+	(4.55%).  It seems if we are going to work with conll07 data we
+	better use part of train as devel instead of trying to regenerate.
+
 2014-08-02  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* perceptron.m: The cost version.  Not really comparable to the
@@ -245,12 +604,6 @@ word_pct: 0.1794
 
 	recovered the normal score.
 
-	TODO: experiment with cost vs answer training.
-	TODO: skipping single choice answers?
-	TODO: arceager vs archybrid parse error - move error relation?
-	TODO: write testing function for perceptron instead of model_predict_gpu.
-	TODO: run_arctype_comparison should dump first instead of training.	
-	
 	* run_featselect_bansal5k.m: running on ++biyofiz.q.  Something
 	seems wrong with arceager.
 	+ check the featselect moves for arceager: backtracking seems ok.  except the first round multiple repeats.
@@ -261,64 +614,48 @@ word_pct: 0.1794
 
 	>> load('bansal5k_arceager13_fv130_cache.mat');
 	>> run_sort_bestfeats(bestfeats, besterror, cache)
-	% displays best feature combination (numfeats:besterror), 
+	% displays best feature combination (numfeats:besterror),
 	% sorted by the loss of each feature:
-	
-	hybrid13(27:5.10)	hybrid(26:5.15)		eager13(23:5.41)	eager(18:5.41)	  
-	[-284]    'n0w'   	[-274]    'n0w'   	[-316]    'n0w'   	[-273]    'n0w'   
-	[-268]    's0w'   	[-266]    's0w'   	[-240]    's0w'   	[-254]    's0w'   
-	[-119]    's1w'   	[-109]    's1w'   	[-168]    'n1w'   	[-101]    'n1w'   
-	[-110]    'n1w'   	[ -91]    'n1w'   	[-144]    's1r1r<'	[ -53]    'n0l1w' 
-	[ -55]    'n0l1w' 	[ -40]    'n0l1w' 	[ -50]    's1w'   	[ -40]    's0r1w' 
-	[ -38]    'n0l1c' 	[ -32]    's0r1w' 	[ -48]    's0r1w' 	[ -32]    's1r='  
-	[ -36]    's0r1w' 	[ -27]    's0d>'  	[ -42]    'n0c'   	[ -30]    's1r1-' 
-	[ -32]    's0c'   	[ -26]    's1r<'  	[ -36]    's0c'   	[ -29]    's1w'   
-	[ -32]    's0r='  	[ -26]    's1d>'  	[ -35]    'n0l1w' 	[ -28]    's0c'   
-	[ -32]    'n0c'   	[ -25]    's2r='  	[ -33]    's2r1-' 	[ -23]    's0r='  
-	[ -27]    's2c'   	[ -25]    'n0c'   	[ -32]    's0r='  	[ -22]    's1r1l>'
-	[ -27]    's1d='  	[ -24]    's0r1l<'	[ -30]    's0l1w' 	[ -20]    's1c'   
-	[ -27]    's0r1-' 	[ -21]    's0l1r>'	[ -28]    's2r1l>'	[ -20]    'n0c'   
-	[ -25]    's0l1l='	[ -20]    's1r1r<'	[ -26]    's0r1+' 	[ -18]    's1-'   
-	[ -25]    's0r1r<'	[ -19]    'n0l1c' 	[ -25]    's0r1-' 	[ -18]    'n1c'   
-	[ -23]    's1r1r<'	[ -18]    's0c'   	[ -24]    's1r1r>'	[ -17]    's1r1r='
-	[ -18]    's2r1l<'	[ -14]    's2d>'  	[ -18]    's2r>'  	[ -12]    's0r1r>'
-	[ -18]    's1l1l>'	[ -13]    's0r1c' 	[ -18]    's0l1l='	[  -1]    's1l>'  
-	[ -18]    'n0l>'  	[ -12]    's0r1r<'	[ -18]    'n0l1l>'
-	[ -16]    'n1-'   	[ -11]    'n0l1l>'	[ -13]    's2d>'  
-	[ -15]    's1r1r>'	[  -9]    's0r='  	[ -13]    's0l1r='
-	[ -12]    's1r1l>'	[  -7]    'n0l1r>'	[ -13]    'n0l1r<'
-	[ -12]    's0r1l>'	[  -5]    'n1-'   	[  -8]    's0l1-' 
-	[ -11]    's2l1l>'	[  -3]    's2r1r>'
-	[  -9]    's2r1r='	[  -1]    's2l1r='
-	[  -8]    's0l1-' 	[   0]    's1l1-' 
-	[  -5]    'n0l1-' 
 
-	
+	hybrid13(27:5.10)	hybrid(34:5.04) 	eager13(33:5.37)	eager(25:5.30)
+	[-284]    'n0w'   	[-274]    'n0w'   	[-338]    'n0w'   	[-271]    'n0w'
+	[-268]    's0w'   	[-234]    's0w'   	[-246]    's0w'   	[-237]    's0w'
+	[-119]    's1w'   	[-106]    'n1w'   	[-155]    'n1w'   	[-104]    'n1w'
+	[-110]    'n1w'   	[ -98]    's1w'   	[-150]    's1r1r<'	[ -40]    'n0c'
+	[ -55]    'n0l1w' 	[ -52]    's0r1w' 	[ -45]    's0r1w' 	[ -35]    's0r1w'
+	[ -38]    'n0l1c' 	[ -45]    'n0l1w' 	[ -44]    'n0c'   	[ -35]    'n0l1w'
+	[ -36]    's0r1w' 	[ -35]    's0r1r<'	[ -39]    's1w'   	[ -31]    's1w'
+	[ -32]    's0c'   	[ -32]    's0r1c' 	[ -39]    'n0l1w' 	[ -30]    's1r='
+	[ -32]    's0r='  	[ -30]    's0r='  	[ -28]    's0c'   	[ -28]    's0r='
+	[ -32]    'n0c'   	[ -30]    's0d>'  	[ -27]    's0l1w' 	[ -27]    's0l>'
+	[ -27]    's2c'   	[ -29]    's1l1-' 	[ -27]    's0r1-' 	[ -26]    's0c'
+	[ -27]    's1d='  	[ -28]    's2r='  	[ -27]    'n2-'   	[ -24]    'n1c'
+	[ -27]    's0r1-' 	[ -28]    's0ac'  	[ -23]    's0r='  	[ -23]    's0r1r>'
+	[ -25]    's0l1l='	[ -28]    's0c'   	[ -22]    'n1-'   	[ -22]    's2r1-'
+	[ -25]    's0r1r<'	[ -28]    'n0c'   	[ -21]    's2l1r>'	[ -21]    's1-'
+	[ -23]    's1r1r<'	[ -27]    'n0l1c' 	[ -21]    's2d>'  	[ -20]    's0-'
+	[ -18]    's2r1l<'	[ -23]    's1r1r<'	[ -21]    's0r1+' 	[ -18]    'n0l>'
+	[ -18]    's1l1l>'	[ -22]    's2c'   	[ -17]    's0l1r='	[ -16]    's1c'
+	[ -18]    'n0l>'  	[ -20]    's2l1r='	[ -16]    's0-'   	[ -15]    's1l>'
+	[ -16]    'n1-'   	[ -16]    's1r<'  	[ -15]    's2l='  	[ -15]    's1r1r='
+	[ -15]    's1r1r>'	[ -14]    's1d>'  	[ -15]    's0l1l='	[ -13]    'n0l1l>'
+	[ -12]    's1r1l>'	[ -14]    's0r1l<'	[ -15]    's0l1-' 	[ -11]    's1r1l>'
+	[ -12]    's0r1l>'	[ -14]    'n1-'   	[ -14]    'n0l1l>'	[  -9]    's1r1-'
+	[ -11]    's2l1l>'	[ -13]    's0l1w' 	[ -13]    's2r>'  	[  -8]    'n0-'
+	[  -9]    's2r1r='	[ -11]    's2r1r='	[ -13]    's1r1r>'	[   0]    's2r1l='
+	[  -8]    's0l1-' 	[ -11]    's0-'   	[ -12]    's2r1-'
+	[  -5]    'n0l1-' 	[ -10]    's2r1l>'	[ -12]    's0r1r>'
+				[ -10]    's2r1r>'	[ -11]    's2-'
+				[  -6]    'n0l1l>'	[ -10]    'n0l1r<'
+				[  -5]    's2d>'  	[  -8]    's2r1l>'
+				[  -4]    'n0-'   	[  -7]    's2l1r='
+				[  -3]    's0l1l='	[  -7]    's0l1l>'
+				[  -3]    's0l1r>'	[  -6]    'n0-'
+				[  -3]    'n0l1r>'
+
+
+
 2014-08-01  Deniz Yuret  <dyuret@ku.edu.tr>
-
-	* TODO:
-
-	x sparsification: isn't necessary, compactify is enough.
-	+ multi-epoch: ~10-12 static epochs seem sufficient, 5 epochs for fv808.
-	+ features: fv808 converges faster but same static performance.
-	+ dynamic oracle: it starts working after epoch 2, best at 5-10 epochs
-	+ embeddings: bansal seems best.
-	. arctype
-	? beam-search
-	? kernel-type
-	
-	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
-	-- Beam search parser: read paper.  read redshift.  minibatch?
-	-- we can start by writing a beam decoder to parse with existing models.  no training.
-	-- how often does the gold sequence have a total score better than greedy sequence?
-	
-	- rbf kernel with gpu?
-	-- Optimize and try rbf kernel calculation and fselect.
-	-- Other kernel degrees with featselect.
-
-	- write matlab gpu tutorial on blog
-
-	- trainparser_primal.m: broken, upgrade to use new code.
 
 	* features.m:
 	+ Separate word and context vectors.
@@ -341,7 +678,7 @@ word_pct: 0.1794
 	+ use fv130 which separates all tokens into word/context and includes s2/n2.
 	+ saving initial models:
 	+ save logs/model130 archybrid_130 archybrid13_130 arceager_130 arceager13_130
-	
+
 	* archybrid,archybrid13,arceager,arceager13: The xx13 versions are
 	replicating Goldberg and Nivre, allowing for multiple
 	root-children.  The non-13 versions allow for a single root-child.
@@ -359,31 +696,32 @@ word_pct: 0.1794
 	we need featureindices, symbolic names etc.  How fast is
 	vectorparser in dump mode?  680 wps = 1400secs/ptb.  Too slow
 	given that training takes 300secs.  So featselect has to rely on
-	the full feature set and explicit indices with names.
+	the full feature set and explicit indices with names.  (DONE)
+	rewrite features to have a compact feature matrix representation.
 
 2014-07-30  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* DONE:
-	
+
 	+ Try ArcEager.  -- should be easy 1-epoch, needs code
 	++ need feature optimization again!
 	+ Nivre says it is important not to put the root on the left?
 	+ multipe versions of archybrid, arceager (one root-child vs many, see readings in Nivre's mail)
-	
+
 	+ archybrid.m,dumpfeatures2.m: temporary new versions to replace
 	the old when scripts finish.  need to keep these separate until
 	featselect etc. is updated.  or replace featselect with trainparser.
-	
+
 	+ experiment with different number encodings for distance and
 	children.
 	+ experiment with in-between features?
 	+ try separating the type and context parts of token vectors.
-	
+
 
 2014-07-28  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* eval_conll.m: this is not giving the same result as
-	below.  testing vectorparser.m.  
+	below.  testing vectorparser.m.
 	- OK, all whead numbers were wrong! Fixed trainparser_gpu.
 	- ptrans were different, fixed eval_conll.m
 	- Confirm that total cost is equal to total head error.
@@ -409,10 +747,10 @@ word_pct: 0.1794
 
 	* vectorparser.m: trainparser, testparser, dumpfeatures etc do
 	very similar things.  We'll combine them all in this program.
-	
+
 	- Confirmed works correctly for dump, however all moves are
-	dumped, not just the multi-choice ones.  
-	
+	dumped, not just the multi-choice ones.
+
 	[m,d] = vectorparser(m0, dev1, 'update', 0, 'predict', 0);
 	[x0,y0]=dumpfeatures2(dev1, fv808, 1);
 	all(d.x(:) == x0(:)) => 1
@@ -446,27 +784,27 @@ word_pct: 0.1794
 	az1 = model_predict_gpu(devdump.x, mz1, 1);
 	numel(find(az1 ~= devdump.y))/numel(devdump.y) => 0.0363=2786/76834
 	Compare to mx1 which had 0.0375=2723/72551 or 0.0354=2723/76834
-	
+
 	So it does help a bit in first epoch (0.1%) to filter single-choice moves before training.
 	Saved dump data as trnhybrid.mat and devhybrid.mat.
-	
-	TODO- Dump, train, test, and confirm for arceager.
 
-	TODO- Remove trainparser, testparser, dumpfeatures variants.
+	DONE- Dump, train, test, and confirm for arceager.
 
-	TODO- Start featselect with arceager.
-	
+	DONE- Remove trainparser, testparser, dumpfeatures variants.
+
+	DONE- Start featselect with arceager.
+
 	* arceager.m: should modify trainparser to also do dumpfeatures so
 	we can test.  Checking oracle_cost.  Now checking archybrid oracle
-	cost.  They both passed the test.  TODO: create two versions of
+	cost.  They both passed the test.  DONE: create two versions of
 	arceager for testing, my version and the GoldbergNivre version.
 	First try with a standard feature set, then do feature
 	optimization.
-	
+
 	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.  best at 7 epochs.
 	--i11			TEST				TRAIN
 	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
-	mx5	169135	963	3.34	3.76	9.83	8.63	-	-	
+	mx5	169135	963	3.34	3.76	9.83	8.63	-	-
 	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
 	mx5d2	232151	?	4.02	3.63	9.59	8.47	2.73	7.60	6.77
 	mx5d3	254535	?	3.99	3.49	9.23	8.16	2.45	6.88	6.13
@@ -477,14 +815,14 @@ word_pct: 0.1794
 	mx5d8	324433	?	4.02	3.42	9.05	8.00	1.56	4.54	4.06
 	mx5d9	333380	?	4.04	3.41	9.02	7.98	1.46	4.25	3.80
 	mx5d10	341257	?	4.04	3.41	9.00	7.94	1.36	4.00	3.59
-	
+
 	* run_dynamic_oracle.m: --i10 best results in 9 dynamic oracle epochs.  However this is with fv804, fv808 is better.
 				TEST				TRAIN
 	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
-	m10	536294	21252	3.40	3.76	 9.89	
+	m10	536294	21252	3.40	3.76	 9.89
 	m10c	202888	-	3.40	3.76	 9.89	8.68
-	m10d	230798	27415	4.07	3.84	10.15		2.84	7.90	
-	m10d2	251746	30510	4.06	3.67	 9.68		2.58	7.21	
+	m10d	230798	27415	4.07	3.84	10.15		2.84	7.90
+	m10d2	251746	30510	4.06	3.67	 9.68		2.58	7.21
 	m10d3	268378	?	4.07	3.59	 9.46		2.35	6.60	5.89
 	m10d4	282674	31102	4.07	3.56	 9.39	8.22	2.21	6.23	5.57
 	m10d5	303011	?	4.05	3.55	 9.33	8.19	2.06	5.84	5.22
@@ -499,7 +837,7 @@ word_pct: 0.1794
 	conllWSJToken_wikipedia2MUNK-50.  sv is number of support vectors
 	at the end of one epoch.  n is the training set size, 1720842 when
 	(or 1720986 after Jul-29) not specified.
-	
+
 	score:0.0370498	conllWSJToken_bansal100 (sv:5.58)
 	score:0.0395859	conllWSJToken_wikipedia2MUNK-200 (sv:6.28)
 	score:0.0396549	conllWSJToken_wikipedia2MUNK-100 (sv:6.44)
@@ -532,7 +870,7 @@ word_pct: 0.1794
 	score:0.0829072	conllWSJToken_hpca50scaled01 (sv:13.54)
 	score:0.0929829	conllWSJToken_manaal48scaled01 (sv:15.55)
 	score:0.104547	conllWSJToken_rnn80 (sv:16.37)
-	
+
 	score:0.0409781	conll_bansal100 (sv:5.99)
 	score:0.04591	conll_wikipedia2MUNK-200
 	score:0.0461581	conll_wikipedia2MUNK-50
@@ -581,13 +919,13 @@ word_pct: 0.1794
 	score:0.0899869	conll_manaal48
 	score:0.0907036	conll_mikolovWikipedia25
 	score:0.0923024	conll_yogamata52
-	score:0.0934188	conll_gsngALL 
+	score:0.0934188	conll_gsngALL
 	score:0.0940666	conll_gsng1M
 	score:0.112555	conll_dep100+mik (sv:17.72)
 	score:0.118269	conll_rnn80
 	score:0.405623	conll_murphy50
 	score:0.401681	conll_murphy50scaled01
-	
+
 	score:0.0396251	conll_wiki50+wiki50 (n:1891402)
 	score:0.0399145	conll_wiki25+wiki25 (n:1891402)
 	score:0.0414444	conll_rcv1UNK25+rcv1UNK+25 (n:1891402/1891272)
@@ -599,7 +937,7 @@ word_pct: 0.1794
 
 	score:0.0523636	conll07Token_english (sv:8.39 n:808163)
 	score:0.0613307	conll07English_wikipedia2MUNK-50 (sv:9.90 n:808163)
-	
+
 	score:0.0865817	conll07Token_czech (sv:13.04 n:757433)
 	score:0.0978749	conll07Czech_czechSKETCH50 (sv:15.10 n:757433)
 
@@ -610,80 +948,78 @@ word_pct: 0.1794
 
 	score:0.124902	conll_hungarian (n:301537)
 	score:0.126377	conll_hungarian+f (n:301537)
-	
+
 	score:0.146755	conll_polish (n:107202)
 	score:0.15181	conll_polish+f (n:107202)
-	
+
 	score:0.132375	conll_swedish (n:131239)
 	score:0.13461	conll_swedish+f (n:131239)
-	
+
 	score:0.172941	conll_turkishSKETCH-25 (n:87228)
-	
+
 	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
 	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
 	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
 	score:0.99 conllWSJToken_murphy50 (out of memory at 1182126, sv:494871, nk:85, g:9.4e7)
 	score:0.99 conllWSJToken_murphy50scaled01 (out of memory at 1289463, sv:494698, nk:85, g:9.4e7)
-	
+
 	score:0.99 conll_french has two test files
 	score:0.99 conll_french+f has two test files
-	
+
 	score:0.99 conll08_wikipedia2MUNK-25 is empty
 	score:0.99 conllToken_cw25scaled is empty
 	score:0.99 conllToken_rnn80 is empty
 
-	TODO: debug conllWSJToken_dep-100 (good train bad test)
-
 2014-07-27  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* run_multi_epoch2.m:
-	
+
 	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
 	m_trn		15841	101517	3.78	4.25	11.02		old fulltrain+static model
 	m_trn01		52817	251480	3.89	3.94	10.15		old fulltrain+static+dynamic
 	m1	6.47	321	111431	4.01	4.47	11.75		one epoch batchsize=1250 fv804
-	mx1	6.09	314	104757	3.75	4.26	11.18		fv808 feature-set batch=1000	
+	mx1	6.09	314	104757	3.75	4.26	11.18		fv808 feature-set batch=1000
 	m2	5.94	6105	183901	3.64	4.09	10.80		second epoch batchsize=1000
-	mx2	4.89	727	133856	3.50	3.95	10.36		all mx are fv808 batch=1000	
+	mx2	4.89	727	133856	3.50	3.95	10.36		all mx are fv808 batch=1000
 	m3	5.09	8781	245190	3.50	3.99	10.37		third epoch batchsize=1000
-	mx3	4.11	860	150207	3.38	3.80	 9.96		
-	m4	4.58	11049	299268	3.44	3.91	10.17	
-	mx4	3.54	930	161208	3.36	3.80	 9.88	
-	m5	4.21	12990	347577	3.42	3.90	10.17	
+	mx3	4.11	860	150207	3.38	3.80	 9.96
+	m4	4.58	11049	299268	3.44	3.91	10.17
+	mx4	3.54	930	161208	3.36	3.80	 9.88
+	m5	4.21	12990	347577	3.42	3.90	10.17
 	mx5	3.21	963	169135	3.34	3.76	 9.83	8.63	best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
-	m6	3.92	15004	391424	3.42	3.89	10.13	
-	mx6	2.92	1000	175089	3.35	3.77	 9.86		
-	m7	3.69	16784	431962	3.43	3.83	10.02	
-	mx7	2.69	1019	179795	3.35	3.77	 9.90	
-	m8	3.49	18120	469130	3.42	3.82	10.00	
-	mx8	2.50	1030	183630	3.36	3.81	 9.95	
-	m9	3.33	19897	503651	3.41	3.79	 9.99   
+	m6	3.92	15004	391424	3.42	3.89	10.13
+	mx6	2.92	1000	175089	3.35	3.77	 9.86
+	m7	3.69	16784	431962	3.43	3.83	10.02
+	mx7	2.69	1019	179795	3.35	3.77	 9.90
+	m8	3.49	18120	469130	3.42	3.82	10.00
+	mx8	2.50	1030	183630	3.36	3.81	 9.95
+	m9	3.33	19897	503651	3.41	3.79	 9.99
 	mx9	2.35	1047	186983	3.35	3.83	10.01		first epoch where fv808 is worse than fv804
-	m10x	3.18	21252	536294	3.40	3.76	 9.89	
-	m10	3.18	?	204438	3.40	3.76	 9.89	
-	mx10	2.22	1051	189857	3.34	3.83	10.01	
+	m10x	3.18	21252	536294	3.40	3.76	 9.89
+	m10	3.18	?	204438	3.40	3.76	 9.89
+	mx10	2.22	1051	189857	3.34	3.83	10.01
 	m11x	3.05	22599	566656	3.39	3.75	 9.85		out of memory, compactify
 	m11	3.01	1182	207516	3.39	3.76	 9.89		new gpu version, diff due to reduced batchsize towards the end
-	mx11	2.11	1062	192309	3.35	3.87	10.11	
+	mx11	2.11	1062	192309	3.35	3.87	10.11
 	m12x	2.90	1196	210024	3.41	3.76	 9.94		compactified, run on gpu
 	m12	2.86	1197	210313	3.39	3.74	 9.86	8.64	best epoch for fv804: ptrans:3.74
-	mx12	2.01	1070	194373	3.35	3.86	10.09	
-	m13	2.70	1215	212685	3.39	3.76	 9.94	
-	mx13	1.92	1081	196166	3.36	3.86	10.09	
-	m14	2.56	1233	214830	3.40	3.78	 9.98	
-	mx14	1.84	1087	197736	3.36	3.85	10.08	
-	m15	2.44	1239	216702	3.41	3.80	10.05	
-	mx15	1.76	1095	199189	3.37	3.85	10.06	
-	m16	2.34	1234	218294	3.41	3.79	10.02	
-	mx16	1.69	1097	200424	3.37	3.83	10.04	
-	m17	2.25	1234	219771	3.41	3.80	10.05	
-	mx17	1.63	1100	201609	3.37	3.85	10.11	
-	m18	2.17	1226	221062	3.41	3.82	10.07	
+	mx12	2.01	1070	194373	3.35	3.86	10.09
+	m13	2.70	1215	212685	3.39	3.76	 9.94
+	mx13	1.92	1081	196166	3.36	3.86	10.09
+	m14	2.56	1233	214830	3.40	3.78	 9.98
+	mx14	1.84	1087	197736	3.36	3.85	10.08
+	m15	2.44	1239	216702	3.41	3.80	10.05
+	mx15	1.76	1095	199189	3.37	3.85	10.06
+	m16	2.34	1234	218294	3.41	3.79	10.02
+	mx16	1.69	1097	200424	3.37	3.83	10.04
+	m17	2.25	1234	219771	3.41	3.80	10.05
+	mx17	1.63	1100	201609	3.37	3.85	10.11
+	m18	2.17	1226	221062	3.41	3.82	10.07
 	mx18	1.57	1105	202676	3.38	3.84	10.07		b43
-	m19	2.10	1230	222344	3.42	3.84	10.11	
-	mx19	1.52	1107	203550	3.37	3.85	10.10	
+	m19	2.10	1230	222344	3.42	3.84	10.11
+	mx19	1.52	1107	203550	3.37	3.85	10.10
 	m20	2.04	1241	223532	3.43	3.82	10.08		b40
-	mx20	1.47	1112	204417	3.39	3.89	10.19		
+	mx20	1.47	1112	204417	3.39	3.89	10.19
 	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
 
 
@@ -694,7 +1030,7 @@ word_pct: 0.1794
           0  0  0  0 -1    1    1    -1    1     0;
 	  0  0  0  0  0    0   -2     0   -2     0;
 	];
-	
+
 	First confirm it does give the same result as featselect:
 	dyuret@yunus:~/vectorparser[0]$ grep 'n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l,s2' logs/0726-biyofiz-4-3b.log
 	5.09	3.71	102805	427.76	n0,n0l1,n1,s0,s0l1,s0r1,s0r1l,s1,s1r1l,s2
@@ -718,7 +1054,7 @@ word_pct: 0.1794
 	fprintf('%.2f\t%.2f\t%d\t%.2f\t%s\n', ...
           err_last, err_av, nsv, telapsed, fkey);
 	5.09	3.71	102805	404.16	Confirmed!
-	
+
 	After confirming this is the right feature set, rerun the
 	multi-epoch (don't forget to compactify after every epoch, or
 	modify k_perceptron to do multi-epoch and print stats, or output a
@@ -754,7 +1090,7 @@ word_pct: 0.1794
 	>> save logs/0724-ilac-2-1.mat c0
 	>> [a,b,c] = featselect_gpu(trn_x, trn_y, dev_x, dev_y, 3, 'n0,s0,s1', c0);
 
-	
+
 	* dynamic-oracle:
 	>> load m10
 	>> m10c = compactify(m10)
@@ -772,11 +1108,11 @@ word_pct: 0.1794
 	dynamic oracle because the sequence of instances keep changing.
 	We need to modify compactify and model_sparsify to not look at
 	model.S.  Fixed compactify and added it to the end of
-	trainparser_gpu.  Still need to fix model_sparsify (TODO) and
+	trainparser_gpu.  Still need to fix model_sparsify (LATER) and
 	k_perceptron_multi_train_gpu (compactify not part of dogma?).
 
 2014-07-26  Deniz Yuret  <dyuret@ku.edu.tr>
-	
+
 	* k_perceptron_multi_train_gpu.m: check to see if during
 	multi-epoch we are using cpu!  compactify during multi epoch!
 	run_multi_epoch.m figure out the memory problem with k_train in
@@ -784,13 +1120,6 @@ word_pct: 0.1794
 	before and now it blows up around 186K sv.  So all speeds in
 	run_multi_epoch are wrong, all nsv's are wrong because of
 	redundancy but the accuracy results should be correct.
-
-	OK, another matlab bug: if we have an SV matrix more than half the
-	size of gpu memory, we can't add anything to it, we can't change
-	it etc. etc. Everything I try (concat, subasgn etc.) ends up
-	trying to create a copy.  This is the third bug I found in matlab
-	(after max and skinny multiply problems), should send a bug
-	report.  (TODO).
 
 	After fixing the bug, multi-epoch became ten times faster and I
 	confirmed the same results for m1->m2 (at least up to the point
@@ -802,17 +1131,17 @@ word_pct: 0.1794
 	* model_sparsify.m: Added unique to sort(model.S): in multi-epoch
 	models, same index gets added multiple times.  Since we are not
 	shuffling they should still be correct.  For example m9 has 201060
-	unique SVs out of a 503651 total.  (TODO: take advantage of this
+	unique SVs out of a 503651 total.  (DONE: take advantage of this
 	for multi-epoch training).  Running with m9.  In fact with dynamic
 	oracle things are even more confusing, the data we see depends on
 	the moves.  So either go to the S+X convention and do not have SV,
 	or (better) forget about keeping the original SV and just pick
-	randomly (TODO).
+	randomly (DONE).
 
 	time	iter	nsv	err_tr	err_te	maxdiff	note
 	0	0	503651	24373	2475	0	m9 (201060 uniq sv)
 	72721	754468	79425	28008	2535	3.37138e+06 m9 sparsified
-	
+
 	model	nsv	aer	time	gtrans	ptrans	phead	notes
 	m9	503651	3.33	19897	3.41	3.79	 9.99   201060 uniqSV
 	m9s	79425	--	72721	3.49	3.94	10.35	i00
@@ -822,8 +1151,8 @@ word_pct: 0.1794
 	doing right now, given that the number of unique SV stays around
 	200K we can fit everything on gpu.  Also the time cost seems a
 	lot, should look at that if we ever decide to use this again.
-	
-	
+
+
 	* trainparser_gpu.m: Adding the weight updates.  Appending a
 	single SV is 25ms regardless of which way we turn the matrix.
 	Unexpectedly overwriting to existing space takes about the same.
@@ -837,8 +1166,8 @@ word_pct: 0.1794
 	Elapsed time is 861.776661 seconds.
 	Same answer as below.
 
-	
-	* trainparser_gpu.m: rewriting for both test/train. 
+
+	* trainparser_gpu.m: rewriting for both test/train.
 	>> load m1
 	>> dev1=loadCoNLL('embedded/conllWSJToken_wikipedia2MUNK-50/01/wsj_0101.dp');
 	>> newFeatureVectors  % defines fv804
@@ -870,7 +1199,7 @@ word_pct: 0.1794
 	werr: 3089
 	wpct: 0.0770 (92.3)
 
-	* DONE: 	
+	* DONE:
 	- Try smaller word vectors, type based word vectors, other embeddings.
 	oo Try /ai/home/vcirik/eParse/run/embedded/conllWSJToken_rcv1UNK50  -- should be easy 1-epoch
 	most parsers do better with it.  can do this without waiting for featselect...
@@ -916,7 +1245,7 @@ word_pct: 0.1794
 	-- we can do dynamic oracle by running the parser and collecting data
 	-- is running the parser faster?  try on small sets.  we need to speed up dyn oracle.
 	-- 38wps seems to be max
-	
+
 	* DONE:
 	- Need performance numbers excluding punctuation on section 23.
 	oo change loadCoNLL.m to load all fields and testparser to report punc and non-punc scores.
@@ -925,10 +1254,10 @@ word_pct: 0.1794
 	-- Honnibal says: I then converted the gold-standard trees from WSJ 22, for the evaluation. Accuracy scores refer to unlabelled attachment score (i.e. the head index) of all non-punctuation tokens.
 	-- Nivre says: The numbers are excluding punctuation on the standard split (2-21, 23).
 	-- Husnu says: Asagidaki wordler icin parent prediction basarimi hesaba katilmiyor.
-	if (strcmp(w->postag, ",") != 0 && strcmp(w->postag, ":") != 0 && strcmp(w->postag, ".") != 0 && strcmp(w->postag, "``") != 0 && strcmp(w->postag, "''") != 0) 
+	if (strcmp(w->postag, ",") != 0 && strcmp(w->postag, ":") != 0 && strcmp(w->postag, ".") != 0 && strcmp(w->postag, "``") != 0 && strcmp(w->postag, "''") != 0)
 	-- eval.pl uses: scalar(Encode::decode_utf8($word)=~ /^\p{Punctuation}+$/).  wsj22 has 35324 non-punc.
 	-- parser.py uses: deplabel P or punct.  wsj22 has 4728 P, leaving 35389 non-punc.
-	
+
 	* DONE:
 	- bigger models suffer more from copying. pre-allocate in perceptron_train.
 	-- daume trick for beta2 in perceptron_train.
@@ -1003,7 +1332,7 @@ word_pct: 0.1794
 	xtot: 76834
 	xerr: 3046  (0.0399)
 
-	
+
 	* testparser_gpu.m: Here is the wps for various things for a model
 	with 250K SV (model_trn01):
 
@@ -1019,8 +1348,8 @@ word_pct: 0.1794
 	be fast to cache gold contexts and moves.  Add new elements to
 	cache when we stray from gold path for future epochs.  But model
 	updated and cache useless before the next epoch.  Need a hash
-	table with several million context/score entries.  
-	
+	table with several million context/score entries.
+
 	Is gpu useless even when SV matrix is large?  Maybe try dot
 	instead of mtimes?  Let's profile testparser_gpu.  Testing with
 	model_trn with SV:804x101517.
@@ -1097,24 +1426,24 @@ word_pct: 0.1794
 	>> tic(); r=testparser(model_trn01, dev_w(1:100), dev_h(1:100), idx); toc();
 	Elapsed time is 290.181428 seconds.
 
-	
+
 	* k_pa_multi_train: run for one epoch unoptimized.
-	
+
 	>> m0=model_init(@compute_kernel,hp);
 	>> tic();m1pa=k_pa_multi_train(trn_x(idx,:),trn_y,m0);toc();
 	#1721 SV:16.33(281074)	AER: 5.01
 	Elapsed time is 87270.739688 seconds.
 
 	This is way too slow but comparable to m3 in terms of aer and nsv.
-	
+
 	PA models have sparse betas for some reason?
 	>> issparse(m1pa.beta2) => 1
-	>> m1pa.beta = full(m1pa.beta);	
-	>> m1pa.beta2 = full(m1pa.beta2);	
+	>> m1pa.beta = full(m1pa.beta);
+	>> m1pa.beta2 = full(m1pa.beta2);
 	>> save m1pa.mat m1pa
 
 	It does not generalize as well as m2 (2 epochs of avg perceptron):
-	
+
 	>> tic(); [a,b]=model_predict_gpu(dev_x(idx,:), m1pa, 1); toc();
 	>> numel(find(a ~= dev_y))/numel(dev_y)
 	0.0370  % for avg model, better than m1 but worse than m2
@@ -1124,7 +1453,7 @@ word_pct: 0.1794
 
 	Conclusion: maybe worth trying to optimize parameters etc on a
 	smaller dataset but results are not promising.
-	
+
 
 
 2014-07-23  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -1132,7 +1461,7 @@ word_pct: 0.1794
 	* run_idx708.m: try optimized feats for one epoch and compare to
 	idx804.  Does worse.  I guess we need to wait until full corpus
 	optimization is done.  --i00.
-	
+
 	idx804 = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
 	idx708=featureindices({'n0','n0l1','n0l2','n1','s0','s0r','s0r1','s0s1','s1'});
 	>> m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
@@ -1217,14 +1546,14 @@ word_pct: 0.1794
 	Saving model to parser.pickle
 	Parsing took 21752.239 ms
 	35675 40117 0.889273873919
-	balina:parser[21:41:53(10163)]$ 	
+	balina:parser[21:41:53(10163)]$
 
 2014-07-22  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* k_perceptron_multi_train_gpu.m: To optimize featselect we need
 	to optimize train: look into mini-batch perceptron training so we
 	can use gpu: http://acl.cs.qc.edu/~lhuang/papers/minibatch.pdf
-	
+
 	Implementing minibatch training.  Kernel calculation takes 8.5ms
 	per 500 batch, 17us per instance.  This is 10x faster than
 	yesterdays results, because we are starting with an empty model,
@@ -1272,7 +1601,7 @@ word_pct: 0.1794
 	13.26	12.58	3201	260.74	k_pa_multi_train
 	16.86	14.17	941	186.68	k_projectron2_multi_train
 	0.00	11.26	2930	21.44	svmtrain
-	
+
 	5k sentence results
 	last	avg	nsv	time	algo
 	7.01	5.35	18164	1127.07	k_perceptron_multi_train
@@ -1383,8 +1712,8 @@ word_pct: 0.1794
 	20000	7075	96424	12885	3028	22579	118348	54607	3004
 	21000	7197	98028	12764	3018	23350	122359	54211	2957
 	22000	7311	99540	12686	3007	24076	126138	53686	2936
-	22340	7349	100038	12641	2998	
-	23000			(2.9%)	(4.1%)	24777	129780	53187	2944	
+	22340	7349	100038	12641	2998
+	23000			(2.9%)	(4.1%)	24777	129780	53187	2944
 	40614					32470	169251	48144	2808
 								(3.4%)	(3.9%)
 
@@ -1455,7 +1784,7 @@ word_pct: 0.1794
 	% Elapsed time is 357.939658 seconds.
 	tic(); m5d = trainparser(m0, trn_w(210:5000), trn_h(210:5000), idx); toc();
 	% Elapsed time is 1251.707183 seconds.
-	
+
 	* naming: Better naming convention for models:
 	1. 'm' is the first char
 	2. [0-9]+ indicating the training set size in 1000 sentences
@@ -1472,7 +1801,7 @@ word_pct: 0.1794
 	trainparser?  It turns out the answer is the 209 sentences give
 	the first 10013 instances.  So we can use trn_w(1:209) as test and
 	trn_w(210:5000) as train.
-	
+
 	* trainparser_primal.m: Now we can also do averaging at a cost of
 	25% speed.  At this speed 1 epoch of ptb (950028 words) will take
 	18 hours.  Testing on dev (40117 words) is 45 mins.
@@ -1486,11 +1815,11 @@ word_pct: 0.1794
 	% s=50 w=1259 wps=13.2452 Elapsed time is 95.053105 seconds.
 	[w0,w0b]=trainparser_primal_12(trn_w(1:50),trn_h(1:50),idx708);
 	% 50 Elapsed time is 136.959744 seconds.  w0b empty.
-	
+
 	% Averaged version should get better accuracy.
 	r1b=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w1b,0);
 	% s=50 w=1175 we=0.4085 m=2250 me=0.1551 wps=14.32 Elapsed time is 82.079185 seconds.
-	
+
 	% Check the averaging calculation by comparing with slow version.
 	[nv,v,v2,v2b]=trainparser_primal(trn_w(1:50),trn_h(1:50),idx708);
 	% s=50 w=1259 we=0.4845 m=2418 me=0.1729 wps=8.04 Elapsed time is 156.651738 seconds.
@@ -1511,12 +1840,12 @@ word_pct: 0.1794
 	r2b=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w2b,0);
 	% s=50 w=1175 we=0.3651 m=2250 me=0.1378 wps=14.28 Elapsed time is 82.311780 seconds.
 	% compare to r1b we=0.4085 me=0.1551
-	
+
 	% How slow is the non-gpu version?
 	[n3,w3,w3b]=trainparser_primal_nogpu(trn_w(1:50),trn_h(1:50),idx708);
 	% s=11 w=222 we=0.5811 m=422 me=0.1848 wps=0.56 Elapsed time is 396.590939 seconds.
 	% compare to n2 with wps=12.12 about 20x faster
-	
+
 	% BAD IDEA: is this good for learning?  try moving after max and
 	% learn from guessing impossible moves.
 	% scores(cost == inf) = -inf;
@@ -1530,7 +1859,7 @@ word_pct: 0.1794
 	% s=50 w=1259 we=0.4821 m=2418 me=0.2047 wps=13.34 t=94.41
 	r4b=trainparser_primal(dev_w(1:50),dev_h(1:50),idx708,w4b,0);
 	% s=50 w=1175 we=0.3736 m=2250 me=0.1516 wps=16.79 t=69.98
-	
+
 	* turan.m: Sule suggested Turan's theorem to construct the filter
 	matrix.  This reduces the redundancy in the matrix representation
 	of triples, halves memory use and doubles the speed:
@@ -1541,7 +1870,7 @@ word_pct: 0.1794
 	Sentences=10 Words=189 Words/Sec=17.4957
 	Elapsed time is 10.802716 seconds.
 	% Used to be 20.96 seconds with wps=9.
-	
+
 	* model_trn_sparse01.mat: fulltrn-static+sparsify+dynamic.
 	#3541 SV: 5.27(186537)	AER: 7.50
 	Elapsed time is 46844.421232 seconds.
@@ -1562,7 +1891,7 @@ word_pct: 0.1794
 	Elapsed time is 28.091093 seconds.
 	>> tic();m=trainparser(model_trn01,trn_w(1:10),trn_h(1:10),idx);toc();
 	Elapsed time is 16.848159 seconds.
-	
+
 	- ok not working again.  i give up.  either singles causing cuda
 	failure.  or multiply not working.  this is all messed up.  fixed
 	when I sprinkled some wait(gpuDevice) in the code.
@@ -1582,11 +1911,11 @@ word_pct: 0.1794
 	>> profsave(p,'primal-profile');
 	Saves nice html file.
 	But was useless with GPU code.
-	
+
 2014-07-17  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* q: gpu instability caused by singles?  no we just need a bunch of wait(gpuDevice)
-	
+
 	* gpu: weird shit is happening.  gpu takes 15 secs to multiply.
 	what am i doing wrong?  I think applying matrix multiply for dot
 	product is the cause.  MATRIX MULTIPLY IS NOT GOOD FOR SKINNY
@@ -1594,7 +1923,7 @@ word_pct: 0.1794
 	http://blog.theincredibleholk.org/blog/2012/12/10/optimizing-dot-product/
 
 	* gpu: This is out of control:
-	
+
 	>> a=gpuArray(rand(1,1e8));
 	>> b=gpuArray(rand(1,1e8));
 	>> tic();c=sum(b.*a);disp(c);toc();
@@ -1655,7 +1984,7 @@ word_pct: 0.1794
 	Elapsed time is 6.866563 seconds.
 
 	We can now do the full triple product with 804 dimensions, but no need:
-	
+
 	>> tic();for i=1:1000 wait(gpuDevice);x2=x1*x1';x3=x2(:)*x1';end; toc();
 	Elapsed time is 60.887271 seconds.
 	>> tic();for i=1:1000 wait(gpuDevice);x2=x1*x1';x3=x2(xi)*x1';end; toc();
@@ -1664,7 +1993,7 @@ word_pct: 0.1794
 	The operations with singles are still a bit unstable.  Getting GPU
 	errors half the time.  If I can find a smaller xi, it would be
 	more memory efficient and possibly faster.
-	
+
 	* model_trn_sparse: Optimize model_sparsify and try on model03,
 	model_trn, model_trn01.  GPU memory is not sufficient to handle
 	the full problem.  We have to subsample the training data.
@@ -1679,7 +2008,7 @@ word_pct: 0.1794
 	x_tr500k = trn_x(idx,pick);
 	y_tr500k = trn_y(pick);
 	model_trn_sparse = model_sparsify(model_trn, x_tr500k, y_tr500k, struct('x_te',dev_x(idx,:),'y_te',dev_y,'eta',0.3,'epsilon',0.1,'margin',1.0));
-	
+
 	time	iter	nsv	err_tr	err_te	maxdiff
 	0	0	101517	13044	2740	0
 	7349	100038	22340	12641	2998	2.329387e+08
@@ -1699,10 +2028,11 @@ word_pct: 0.1794
 	nerr: 4782  (0.1192)
 	xtot: 76834
 	xerr: 3526  (0.0459)
-	
+
 	* featselect.m: Implemented the SFFS algorithm with backtrack.
-	From Guyon's feature selection book pp.149.  TODO: exit when no
-	more improvement?
+	From Guyon's feature selection book pp.149.  Exit when no more
+	improvement?  Well it always has a chance to come back after a few
+	iterations, so for now run continuously and save in a cache.
 
 	* featselect: do 5k featselect for order6 kernel.  Below is the
 	top two for each size, and comparison with order3.   It looks like
@@ -1888,13 +2218,13 @@ xx	5	9.08	7.08(s0r1+n1)			19979	251.18	n0,n1,s0,s0r1,s1
 	6	9.07	6.70(n1)	7.04(n0l1r)	19017	204.83	n0,n0l1,n1,s0,s0r,s1
 xx	6	8.72	6.63(-s0r+s0r1)			18609	270.89	n0,n0l1,n1,s0,s0r1,s1
 	7	8.38	6.35(s0r1)	6.45(s0l2+,s0s1)18800	258.10	n0,n0l1,n1,s0,s0r,s0r1,s1
-xx	7	8.94	6.34(-s0r+s1r2r)6.38(-s0r+s1r1+)18349	265.81	n0,n0l1,n1,s0,s0r1,s1,s1r2r	
+xx	7	8.94	6.34(-s0r+s1r2r)6.38(-s0r+s1r1+)18349	265.81	n0,n0l1,n1,s0,s0r1,s1,s1r2r
 	8	8.60	6.20(s0l1)	6.22(s1r1l,s0s1)17879	300.95	n0,n0l1,n1,s0,s0l1,s0r,s0r1,s1
 xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 	9	8.05	5.99(n0l2)	6.16(s1r2r)	17736	298.63	n0,n0l1,n0l2,n1,s0,s0r,s0r1,s0s1,s1
 
 	* idx708.mat: idx708=featureindices({'n0','n0l1','n0l2','n1','s0','s0r','s0r1','s0s1','s1'});
-	
+
 	* model_trn.mat:
 	>> path('dogma',path);
 	>> load dumpfeatures.mat
@@ -2095,10 +2425,6 @@ xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 	nerr: 5689  (0.1418)
 	xtot: 76834
 	xerr: 4192  (0.0546)
-
-	% TODO: in fact, why don't we use the scaled averaged beta during
-	training?  If we know it is better it will make less mistakes,
-	accumulate fewer support vectors.
 
 	>> model04 = model_sparsify(model03b, x_tr, y_tr, struct('x_te',x_te,'y_te',y_te,'eta',0.3,'epsilon',0.1,'margin',1.0));
 	Elapsed 2157 secs.
@@ -2395,7 +2721,7 @@ xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 
 	Evaluating this model on the test set (10K) we get 882 errors vs
 	838 with the original model:
-	
+
 	[x5k,y5k]=dumpfeatures(trn_w(1:5000),trn_h(1:5000));
 	x_te = x5k(idx,1:10000);
 	y_te = y5k(1:10000);
