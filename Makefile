@@ -1,5 +1,16 @@
 all:
 
+# For conll2007 compatible conversion do not use the vadas np corrections.
+# Apply pennconverter directly to original ptb files.
+# The original options -conjAsHead -prepAsHead has been superseded by -conll2007.
+# Cannot get identical files, possibly due to bug fixes in pennconverter.
+# Difference of 220/5003 heads are different conll07 test.
+
+%.dp: %.mrg
+	java -jar pennconverter.jar -conll2007 < $< > $@
+
+
+
 parser_py_train: wsj_0001.dp
 	awk '{if(NF==0){print $$0}else{print $$2, $$4, $$7-1, $$8}}' $< > $@
 
