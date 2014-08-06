@@ -1,5 +1,84 @@
 2014-08-06  Deniz Yuret  <dyuret@ku.edu.tr>
 
+	* replicate: mx experiments with new code. ++b40.  Static oracle
+	results are better in gmove but .25 worse in parsing performance.
+	Difference?  Not using single option moves for training?  Some
+	other change from dumpfeatures/trainparser to vectorparser?
+	
+	Static oracle:
+	epoch	gmove	move	head	word	sent
+	1	0.0363	0.0431	0.1129	0.1002	0.6624
+	2	0.0334	0.0399	0.1048	0.0929	0.6329
+	3	0.0322	0.0389	0.1021	0.0898	0.6241
+	(4)	0.0316	0.0385	0.1009	0.0887	0.6165
+	5	0.0318	0.0386	0.1012	0.0887	0.6176
+
+	Compare to the original mx Static Oracle:
+	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
+	mx1	6.09	314	104757	3.75	4.26	11.18		fv808 feature-set batch=1000
+	mx2	4.89	727	133856	3.50	3.95	10.36		all mx are fv808 batch=1000
+	mx3	4.11	860	150207	3.38	3.80	 9.96
+	mx4	3.54	930	161208	3.36	3.80	 9.88
+	mx5	3.21	963	169135	3.34	3.76	 9.83	8.63	best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
+	
+	- try removing single choice moves, results should be identical
+	-- instances go from 1820392 to 1720986
+	-- first epoch ends with 103524 sv (103062 unique).
+	-- dev error is 5.3180?
+	-- eliminate single choice moves from dev as well. 76384 -> 72555.
+	-- recovered gtrans=3.7392.  (did we do this on cost based perceptron? doesn't matter it screwed up on parsing)
+	-- vectorparser on dev: move:4.26 head:11.20 word:9.84 sent:65.88.
+
+	- this works because vectorparser is not asking the perceptron
+	anything for single choice moves.  so perceptron would be wasting
+	its capacity on useless instances.  for multichoice moves it
+	shouldn't matter what score is assigned to inf cost moves, since
+	vectorparser is not going to ask about them either?
+	
+	-- ok try to replicate the above result with cost based.
+	perceptron ignoring the single-choice moves itself.  Gives us
+	103286 sv.  3.77 gtrans.  It won't be exactly the same because
+	minibatch borders will shift.  We can use the 1720986 trn to get
+	exactly identical result.  It does.  Now add ignoring scores for
+	inf cost moves.  102510 sv.  6.86 gtrans.  Of course this is not
+	eliminating the inf moves like in training.  Parser does, so
+	vectorparser comparison more meaningful.  vectorparser on dev:
+	move:4.29 (+0.03) head:11.36 (+0.16) word:9.90 (+0.06) sent:66.41
+	(+0.53).  OK it gets worse, don't ask again.
+
+	Conclusion: it gains a bit to ignore single choice moves.  it does
+	not gain to ignore the score given to inf cost moves in the
+	multi-choice case.
+	
+	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
+
+	Dynamic oracle:
+	++b40	
+	
+	* rerun: conll07 experiments with fv808 and new code.  ++b41.
+
+	Static oracle:
+	epoch	gmove	move	head	word	sent
+	1	0.0492	0.0591	0.1523	0.1374	0.7411
+	2	0.0448	0.0551	0.1424	0.1285	0.7134
+	3	0.0438	0.0538	0.1386	0.1251	0.7054
+	4	0.0431	0.0536	0.1380	0.1246	0.7054
+	5	0.0430	0.0531	0.1373	0.1241	0.7044
+	6	0.0430	0.0532	0.1374	0.1245	0.7059
+	7	0.0426	0.0529	0.1367	0.1238	0.7039
+	(8)	0.0425	0.0526	0.1362	0.1235	0.7049
+	9	0.0426	0.0526	0.1362	0.1235	0.7029
+
+	Dynamic oracle:
+	++b41
+	
+	* rerun: featselect for conll07, archybrid, fv130, new train/dev
+	split.  ++b42 Note that fv130 does not include the new head
+	feature but that is not useful for archybrid.
+	
+	
+	* conll07: get results, move on to beam search.
+	
 	* TODO:
 	- copy run scripts to ChangeLog.
 	+ move run_* to logs. split log/run/mat.
@@ -138,7 +217,7 @@
 	4	3.53
 	5	3.52 (nsv:71496 gtrans:5.38 ptrans:7.20 phead:18.30)
 
-	Dynamic Oracle: (run_conll07_experiment2.out ++i01)
+	Dynamic Oracle: (run_conll07_experiment2.out --i01)
 	epoch	move	head	word	sent
 	0	7.20	18.30	16.04	76.97
 	1	5.14	13.39	12.31	70.69
@@ -148,14 +227,15 @@
 	5	4.85	12.55	11.57	69.33
 	6	4.82	12.50	11.51	69.48
 	7	4.79	12.43	11.45	69.08
-	8	++i01
+	8	4.75	12.36	11.37	68.78
 
 	Summary: Static oracle is not easy to compare.  In mx, correct
 	answer based gtrans went from 3.75 to 3.34 in 5 epochs.  In
 	conll07 cost based gtrans went from 4.02 to 3.52 (which
 	corresponds to 5.38 answer based).  So we are doing 2% worse in
 	static oracle.  Theories:
-	1. smaller corpus
+	1. smaller training corpus
+	1a. different dev set (02 may be more difficult than 22)
 	2. bansal vs scode encoding
 	3. fv808 vs new features
 	4. bug-fix in archybrid?
