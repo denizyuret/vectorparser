@@ -41,7 +41,7 @@ while nstart < nfeats
   end
 
   backtrack = 1;
-  while ((nstart > 1) && backtrack)
+  while ((nstart > numel(start0)) && backtrack)
     fprintf('# backtracking(%d) with %s\n', nstart, fkey(start));
     best_try_i = 0;
     best_try_err = inf;
@@ -116,7 +116,8 @@ fk = fkey(f);
 if ~isKey(cache, fk)                    % x matrix has an instance with all features in each column
   fprintf('Computing err for %s\n', fk);
   idx = logical([]);                    % idx is a boolean index into the rows of x matrix (features)
-  for fj=f                              
+  for j=1:numel(f)
+    fj=f(j);
     fidx2 = trn.fidx(fj);               % trn.fidx has the end position of each feature group in an x column
     if fj > 1                           
       fidx1 = trn.fidx(fj-1) + 1;       % the starting position is either one more than the end of last fgroup
@@ -130,14 +131,12 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   
   tic();
   gpuDevice(1);
-  m1 = k_perceptron_multi_train_gpu(x_tr,trn.y,m0);
-  z0 = model_predict_gpu(x_te,m1,0);
-  z1 = model_predict_gpu(x_te,m1,1);
+  m1 = perceptron(x_tr, trn.y, m0);
+  [~,~,e0] = perceptron(x_te, dev.y, m1, 'update', 0, 'average', 0);
+  [~,~,e1] = perceptron(x_te, dev.y, m1, 'update', 0, 'average', 1);
   t1 = toc();
-  e0 = numel(find(z0 ~= dev.y))/numel(dev.y);
-  e1 = numel(find(z1 ~=dev.y))/numel(dev.y);
   nsv = size(m1.beta, 2);
-  fprintf('%g\t%g\t%d\t%g\t%s\n', e0, e1, nsv, t1, fk);
+  fprintf('%g\t%g\t%g\t%g\t%s\n', e0, e1, nsv/numel(trn.y), t1, fk);
   cache(fk) = e1;
   save(cachefile, 'cache');
 else
@@ -190,12 +189,12 @@ end
 
 % Initialize starting feature combination
 if nargin_save < 5
-  start = [];
-  nstart = 0;
+  start0 = [];
 else
-  start = key2f(initfeats);
-  nstart = numel(start);
+  start0 = key2f(mat2str(sortrows(initfeats)));
 end
+start = start0;
+nstart = numel(start);
 
 fprintf('last\tavg\tnsv\ttime\tfeats\n');
 
