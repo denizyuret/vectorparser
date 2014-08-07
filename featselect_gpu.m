@@ -36,13 +36,13 @@ while nstart < nfeats
     if (start_err < besterror(nstart))
       bestfeats{nstart} = fkey(start);
       besterror(nstart) = start_err;
-      fprintf('# newbest(%d)\t%g\t%s\n', nstart, start_err, fkey(start));
+      fprintf('# newbest(%d)\t%g\t%s\n', nstart, start_err, fstr(start));
     end
   end
 
   backtrack = 1;
   while ((nstart > numel(start0)) && backtrack)
-    fprintf('# backtracking(%d) with %s\n', nstart, fkey(start));
+    fprintf('# backtracking(%d) with %s\n', nstart, fstr(start));
     best_try_i = 0;
     best_try_err = inf;
     for try_i=1:nstart
@@ -59,7 +59,7 @@ while nstart < nfeats
       start(best_try_i) = [];
       bestfeats{nstart} = fkey(start);
       besterror(nstart) = best_try_err;
-      fprintf('# newbest(%d)\t%g\t%s\n', nstart, best_try_err, fkey(start));
+      fprintf('# newbest(%d)\t%g\t%s\n', nstart, best_try_err, fstr(start));
     else
       backtrack = 0;
     end
@@ -67,7 +67,7 @@ while nstart < nfeats
 
   best_try = 0;
   best_try_err = inf;
-  fprintf('# children(%d) of %s\n', nstart, fkey(start));
+  fprintf('# children(%d) of %s\n', nstart, fstr(start));
   for feature_to_try=1:nfeats
     if ismember(feature_to_try, start) continue; end
     new_features = start;
@@ -85,10 +85,10 @@ while nstart < nfeats
   if best_try_err < besterror(nstart)
     bestfeats{nstart} = fkey(start);
     besterror(nstart) = best_try_err;
-    fprintf('# newbest(%d)\t%g\t%s\n', nstart, best_try_err, fkey(start));
+    fprintf('# newbest(%d)\t%g\t%s\n', nstart, best_try_err, fstr(start));
   elseif ~strcmp(fkey(start), bestfeats{nstart})
     fprintf('# reverting(%d) from %g %s to %g %s\n', nstart, best_try_err, ...
-            fkey(start), besterror(nstart), bestfeats{nstart});
+            fstr(start), besterror(nstart), bestfeats{nstart});
     start = key2f(bestfeats{nstart});
   end
 
@@ -107,14 +107,24 @@ function f = key2f(fk)
 % reverse of fkey
 [~,f] = ismember(eval(fk), trn.feats, 'rows');
 assert(strcmp(fkey(f),fk));
+end % key2f
+
+
+%%%%%%%%%%%%%%%%%%%%%
+function fs = fstr(f)
+fs = '';
+for i=1:numel(f)
+  fs = [fs fsymbol(trn.feats(f(i),:)) ' '];
 end
+end % fstr
+
 
 %%%%%%%%%%%%%%%%%
 function s=err(f)                       % f is an array of indices into trn.fidx
 
 fk = fkey(f);
 if ~isKey(cache, fk)                    % x matrix has an instance with all features in each column
-  fprintf('Computing err for %s\n', fk);
+  fprintf('Computing err for %s\n', fstr(f));
   idx = logical([]);                    % idx is a boolean index into the rows of x matrix (features)
   for j=1:numel(f)
     fj=f(j);
@@ -135,11 +145,11 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   [~,~,e1] = perceptron(x_te, dev.y, m1, 'update', 0, 'average', 1);
   t1 = toc();
   nsv = size(m1.beta, 2);
-  fprintf('%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fk);
+  fprintf('%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fstr(f));
   cache(fk) = e1;
   save(cachefile, 'cache');
 else
-  fprintf('%g\t%d\t%g\t%s\n', cache(fk), 0, 0, fk);
+  fprintf('%g\t%d\t%g\t%s\n', cache(fk), 0, 0, fstr(f));
 end % if ~isKey(cache, fk)
 s = cache(fk);
 end % err
