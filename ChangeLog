@@ -30,8 +30,13 @@
 	
 2014-08-07  Deniz Yuret  <dyuret@ku.edu.tr>
 
-++b42	
 ++b43	
+	
+	* run_fs_conll07_arceager13.m: featselect with arceager13 starting
+	at fv008 using conll07 trn split into trn and dev, bansal100
+	encoding.
+	
+++b42	
 	* run_fs_conll07_aug7: featselect stopped and restarted from a
 	better initial state: fv008.  Still using conll07a_ variables
 	(conll07 trn split into dev and trn, bansal100 token encoding).
@@ -255,6 +260,60 @@ fsorted = sortrows(fsorted, 1);
 
 end
 
+
+==> run_fs_conll07_arceager13.m <==
+load mat/conll07a_trn.mat
+load mat/conll07a_dev.mat
+whos trn dev
+
+newFeatureVectors;
+load mat/conll07a_m0.mat
+m0.feats = fv136;
+m0.parser = @arceager13;
+
+[~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0)
+dev_finite_count = sum(isfinite(devdump.cost));
+devdump.x = devdump.x(:,dev_finite_count > 1);
+devdump.y = devdump.y(:,dev_finite_count > 1);
+devdump.cost = devdump.cost(:,dev_finite_count > 1)
+save('run_fs_conll07_arceager13_devdump', 'devdump', '-v7.3');
+
+[~,trndump] = vectorparser(m0, trn, 'update', 0, 'predict', 0)
+trn_finite_count = sum(isfinite(trndump.cost));
+trndump.x = trndump.x(:,trn_finite_count > 1);
+trndump.y = trndump.y(:,trn_finite_count > 1);
+trndump.cost = trndump.cost(:,trn_finite_count > 1)
+save('run_fs_conll07_arceager13_trndump', 'trndump', '-v7.3');
+
+featselect_gpu(m0, trndump, devdump, 'fs_conll07_arceager13.mat', fv008);
+
+	
+==> run_fs_conll07_aug7.m <==
+load mat/conll07a_trn.mat
+load mat/conll07a_dev.mat
+whos trn dev
+
+newFeatureVectors;
+load mat/conll07a_m0.mat
+m0.feats = fv136;
+
+[~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0)
+dev_finite_count = sum(isfinite(devdump.cost));
+devdump.x = devdump.x(:,dev_finite_count > 1);
+devdump.y = devdump.y(:,dev_finite_count > 1);
+devdump.cost = devdump.cost(:,dev_finite_count > 1)
+save('run_fs_conll07_aug7_devdump', 'devdump', '-v7.3');
+
+[~,trndump] = vectorparser(m0, trn, 'update', 0, 'predict', 0)
+trn_finite_count = sum(isfinite(trndump.cost));
+trndump.x = trndump.x(:,trn_finite_count > 1);
+trndump.y = trndump.y(:,trn_finite_count > 1);
+trndump.cost = trndump.cost(:,trn_finite_count > 1)
+save('run_fs_conll07_aug7_trndump', 'trndump', '-v7.3');
+
+featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
+
+	
 
 2014-08-06  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -615,6 +674,16 @@ end % getval
 end % main
 
 
+==> run_fs_conll07_aug6.m <==
+load mat/conll07a_trn.mat
+load mat/conll07a_dev.mat
+whos trn dev
+
+newFeatureVectors;
+load mat/conll07a_m0.mat
+m0.feats = fv136;
+
+	
 2014-08-05  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* run/run_conll07.m: 5 epochs of static oracle training best,
