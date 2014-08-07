@@ -1,3 +1,32 @@
+% Good initial starting point
+fv008 = [
+    0 0 4;      % n0
+    -1 0 4;     % s0
+    1 0 4;      % n1
+    -2 0 4;     % s1
+    0 -1 4;     % n0l1
+    -1 1 4;     % s0r1
+    0 0 -4;     % n0c
+    -1 0 -4;	% s0c
+];
+
+% Include the head feature for stack words:
+fv136 = [];
+for a=-3:2
+  for b=-1:1
+    if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
+    if ((a > 0)  && (b < 0)) continue; end   % no ldeps for buffer words other than n0
+    for c=-9:9
+      if ((c == 0) || (c == -3)) continue; end  % do not use the word+context combination, keep them separate
+      if ((a > 0) && ~ismember(c, [1,-1,4,-4])) continue; end      % no deps/dist/in-between/head for a>0
+      if ((a == 0) && (b == 0) && ~ismember(c, [1,-1,4,-4,-2,-5,-6])) continue; end  % no rdeps/dist/in-between/head for a=0
+      if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8,9,-9])) continue; end  % no dist/in-between/head for deps
+      fv136 = [fv136; [a b c]];
+    end
+  end
+end
+
+% All legal features for s2..n2:
 fv130 = [];
 for a=-3:2
   for b=-1:1
