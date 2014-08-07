@@ -1,6 +1,264 @@
+	* TODO:	
+	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
+	-- Beam search parser: read paper.  read redshift.  minibatch?
+	-- we can start by writing a beam decoder to parse with existing models.  no training.
+	-- how often does the gold sequence have a total score better than greedy sequence?
+
+	- Implement arceasy.
+
+	- Embeddings:
+	-- test more on conll07.
+	-- debug conllWSJToken_dep-100 (good train bad test)
+	-- debug out-of-memory on levy, murphy50, mikolovGoogleNews300
+
+	- rbf kernel with gpu?
+	-- Optimize and try rbf kernel calculation and fselect.
+	-- Other kernel degrees with featselect.
+
+	- write matlab gpu tutorial on blog
+	OK, another matlab bug: if we have an SV matrix more than half the
+	size of gpu memory, we can't add anything to it, we can't change
+	it etc. etc. Everything I try (concat, subasgn etc.) ends up
+	trying to create a copy.  This is the third bug I found in matlab
+	(after max and skinny multiply problems), should send a bug
+	report.
+
+	- Old code:
+	- trainparser_primal.m: broken, upgrade to use new code.
+	- model_sparsify.m: broken, updgreade to use new code.
+	
+	
+2014-08-07  Deniz Yuret  <dyuret@ku.edu.tr>
+
+++b42	
+++b43	
+	* run_fs_conll07_aug7: featselect stopped and restarted from a
+	better initial state: fv008.  Still using conll07a_ variables
+	(conll07 trn split into dev and trn, bansal100 token encoding).
+	Get the new head features in there: fv136.  Eliminate features
+	never found useful from fv130: decided not to.  Try eager/eager13
+	as well.  Remove single-choice moves from training:done. Speed is
+	about 100 secs per feature.  We can try 864 features a day.  That
+	decides roughly six features a day.  Started at Aug 7 10:00AM.
+
+	dev 1989 sent -> 92290 move -> 87202 multi-choice move
+	trn 16588 sent -> 763702 move -> 720961 multi-choice move
+
+	- Compare basic feature set with other encoding and other
+	arctypes.  (maybe with the addition of s0r=(helps .1%) and s0h(not
+	for hybrid) and the constant 1(not helpful)).  Maybe best to wait
+	and do an actual fselect.
+	
+	- NOTE: we do not have a constant feature but we do have features
+	that are always on that will serve the same purpose: s0h- for
+	archybrid, s0+ are some of them.  It is probably not a good idea
+	to rely on these and we should include them explicitly.  Tried
+	adding s0+ to fv008, did not improve.
+
+	- NOTE: fv008 gave 0.0591 on conll07.  fv808 gave 0.0492 first
+	epoch on conll07.  It gave 0.0371 on its original data
+	conllToken_wikipedia2MUNK-50.  bansal5k experiments used 5k
+	sentences from conllWSJToken_bansal100 and got 0.0504 on its own
+	dev set. fv808 actually has 1608 dims in this case because
+	bansal100 has 100 dim vectors and it includes the context vectors
+	for each.  In addition to the 6 basic words in fv008, it has s0l1
+	and s2, all the contexts, plus two counts: s1r1l and s0r1l.
+
+	- NOTE: The first feature picked to add to fv008 is s1r1w, which
+	was not picked in the previous featselect (but was part of fv804).
+	Hopefully this will discover a good combo for conll07:
+	>> load 'fs_conll07_aug7.mat'
+	>> run_sort_bestfeats(cache)
+	emin=0.0551
+	[-309]    'n0w'  
+	[-294]    's0w'  
+	[-263]    's1w'  
+	[ -73]    'n0l1w'
+	[ -71]    'n1w'  
+	[ -44]    's0r1w'
+	[ -39]    's1r1w'
+	[ -22]    's0c'  
+	[ -14]    'n0c'  
+	
+	
+++b40	
+	
+	* mxrep: replicate mx experiments with new code.  Note that the
+	difference in the last static model is due to the older experiment
+	removing single choice moves from training.  One epoch takes about
+	7 hours which is consistent with before.
+
+	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
+
+	Dynamic oracle:
+	epoch	gmove	move	head	word	sent
+	(4)	0.0316	0.0385	0.1009	0.0887	0.6165 (last static epoch)
+	1	0.0384	0.0376	0.0997	0.0883	0.6300
+	2	0.0382	0.0368	0.0977	0.0865	0.6200
+	3	0.0383	0.0359	0.0955	0.0843	0.6165
+	
+	Compare to original mx results:
+	--i11			TEST				TRAIN
+	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
+	mx5	169135	963	3.34	3.76	9.83	8.63	-	-
+	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
+	mx5d2	232151	?	4.02	3.63	9.59	8.47	2.73	7.60	6.77
+	mx5d3	254535	?	3.99	3.49	9.23	8.16	2.45	6.88	6.13
+	mx5d4	273226	?	4.00	3.47	9.20	8.12	2.23	6.28	5.61
+	mx5d5	289077	?	3.99	3.39	9.02	7.98	2.02	5.73	5.11
+	mx5d6	302335	?	3.99	3.39	8.96	7.92	1.83	5.24	4.67
+	mx5d7	314292	?	4.00	3.37	8.90	7.88	1.71	4.92	4.40
+
+++b41	
+	
+	* conll07b: rerun conll07 experiments with fv808 and new code.
+	- try scode instead of bansal?
+	- g&n13 hybrid-static is 86.43=13.57 head.
+	- g&n13 hybrid-dynamic goes to 87.62=12.38 head.
+	- feature optimization for conll07 & difft arctypes skipping single-choice.
+	- fix featselect so it doesn't backup shorter than initfeats.
+	- use the whole training set after determining epochs and feats.
+	
+	Dynamic oracle:
+	epoch	gmove	move	head	word	sent
+	(8)	0.0425	0.0526	0.1362	0.1235	0.7049 (last static epoch)
+	1tst	0.0444	0.0567	0.1417	0.1324	0.7383 (1st dynamic epoch on test set)
+	1	0.0451	0.0535	0.1389	0.1262	0.7205
+
+	
+==> run/run_conll07_dbg.m <==
+% function run_conll07_dbg(parser, feats, trn, dev, tst, savefile)
+function run_conll07_dbg(savefile)
+
+if 0
+fprintf('%s saving arguments\n', datestr(now));
+save([savefile '_parser'], 'parser', '-v7.3');
+save([savefile '_feats'], 'feats', '-v7.3');
+save([savefile '_trn'], 'trn', '-v7.3');
+save([savefile '_dev'], 'dev', '-v7.3');
+save([savefile '_tst'], 'tst', '-v7.3');
+
+fprintf('%s initializing model\n', datestr(now));
+m0.kerparam = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3);
+m0.parser = parser;
+m0.feats = feats;
+m0.step = 1e5;
+m0.batchsize = 1e3;
+save([savefile '_m0'], 'm0', '-v7.3');
+
+fprintf('%s preparing dumps.\n', datestr(now));
+[~,trndump] = vectorparser(m0, trn, 'predict', 0, 'update', 0);
+save([savefile '_trndump'], 'trndump', '-v7.3');
+[~,devdump] = vectorparser(m0, dev, 'predict', 0, 'update', 0);
+save([savefile '_devdump'], 'devdump', '-v7.3');
+[~,tstdump] = vectorparser(m0, tst, 'predict', 0, 'update', 0);
+save([savefile '_tstdump'], 'tstdump', '-v7.3');
+
+fprintf('%s static oracle training.\n', datestr(now));
+fprintf('epoch\tgmove\tmove\thead\tword\tsent\n');
+m1 = m0;
+e1 = inf;
+for epoch=1:100
+  m = perceptron(trndump.x, trndump.y, m1);
+  [e, f] = eval_model(m, dev, devdump, epoch);
+  if e < e1
+    e1 = e;
+    f1 = f;
+    m1 = m;
+    save([savefile '_m1'], 'm1', '-v7.3');
+  else
+    break;
+  end
+end
+
+else % if 0
+% load([savefile '_parser']);
+% load([savefile '_feats']);
+load([savefile '_trn']);
+load([savefile '_dev']);
+load([savefile '_tst']);
+% load([savefile '_m0']);
+% load([savefile '_trndump']);
+load([savefile '_devdump']);
+load([savefile '_tstdump']);
+end % if 0
+
+fprintf('%s dynamic oracle training.\n', datestr(now));
+load([savefile '_m2']);
+[e2, f2] = eval_model(m2, dev, devdump, 1);
+
+for epoch=2:100
+  m2save = m2;
+  m2 = vectorparser(m2, trn);
+  save([savefile '_m2'], 'm2', '-v7.3');
+  [e, f] = eval_model(m2, dev, devdump, epoch);
+  if f.head_pct < f2.head_pct           % this can go bad first iteration
+    f2 = f;
+  else
+    break;
+  end
+end
+
+m2 = m2save;
+save([savefile '_m2'], 'm2', '-v7.3');
+
+fprintf('%s final testing.\n', datestr(now));
+eval_model(m2, tst, tstdump, 0);
+
+end % main
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [e, f] = eval_model(m, dev, devdump, epoch)
+[~,s] = perceptron(devdump.x, devdump.y, m, 'update', 0);
+[~,z] = max(s);
+e = numel(find(z ~= devdump.y))/numel(z);
+[~,mdev] = vectorparser(m, dev, 'update', 0);
+f = eval_conll(dev, mdev)
+fprintf('%d\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\n', epoch, e, ...
+        f.move_pct, f.head_pct, f.word_pct, f.sent_pct);
+end % eval_model
+
+
+==> run/run_sort_bestfeats.m <==
+function fsorted = run_sort_bestfeats(cache)
+
+nfeats = 199;
+bestfeats = cell(1,nfeats);
+besterror = inf(1,nfeats);
+cachekeys = keys(cache);
+for i=1:numel(cachekeys)
+  fstr = cachekeys{i};
+  ferr = cache(fstr);
+  flen = size(eval(fstr), 1);
+  if ferr < besterror(flen)
+    besterror(flen) = ferr;
+    bestfeats{flen} = fstr;
+  end
+end
+
+[emin, imin] = min(besterror)
+fmin = eval(bestfeats{imin});
+
+for i=1:imin
+  fsorted{i,1} = 0;
+  fsorted{i,2} = fsymbol(fmin(i,:));
+  fnew = fmin;
+  fnew(i,:) = [];
+  fk = mat2str(sortrows(fnew));
+  if isKey(cache, fk)
+    ferr = cache(fk);
+    fsorted{i,1} = round(10000 * (emin - ferr));
+  end
+end
+
+fsorted = sortrows(fsorted, 1);
+
+end
+
+
 2014-08-06  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* replicate: mx experiments with new code. ++b40.  Static oracle
+	* mxrep: replicate mx experiments with new code. --b40.  Static oracle
 	results are better in gmove but .25 worse in parsing performance.
 	Difference?  Not using single option moves for training?  Some
 	other change from dumpfeatures/trainparser to vectorparser?
@@ -50,13 +308,10 @@
 	not gain to ignore the score given to inf cost moves in the
 	multi-choice case.
 	
-	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
-
-	Dynamic oracle:
-	++b40	
 	
-	* rerun: conll07 experiments with fv808 and new code.  ++b41.
-
+	* conll07b: rerun conll07 experiments with fv808 and new code.  --b41.
+	>> run_conll07_dbg('conll07b');
+	
 	Static oracle:
 	epoch	gmove	move	head	word	sent
 	1	0.0492	0.0591	0.1523	0.1374	0.7411
@@ -69,93 +324,295 @@
 	(8)	0.0425	0.0526	0.1362	0.1235	0.7049
 	9	0.0426	0.0526	0.1362	0.1235	0.7029
 
-	Dynamic oracle:
-	++b41
 	
 	* rerun: featselect for conll07, archybrid, fv130, new train/dev
-	split.  ++b42 Note that fv130 does not include the new head
+	split.  (--b42) Note that fv130 does not include the new head
 	feature but that is not useful for archybrid.
 	
-	
-	* conll07: get results, move on to beam search.
-	
-	* TODO:
+	* DONE:
 	- copy run scripts to ChangeLog.
 	+ move run_* to logs. split log/run/mat.
 	+ stop featselect.
-	- test 10-epoch best model for parsing
-	- start dynamic oracle training
+	+ test 10-epoch best model for parsing
+	+ start dynamic oracle training
 	+ figure out conll07 diff, 
-	- rerun featselect.
-	- rinse and repeat.
+	+ rerun featselect.
+	+ rinse and repeat.
 
-	- add a head feature for arceager and redo feature selection.
-	
-	TODO: correct perceptron update rule when there can be more than
-	one maxscore and more than one mincost answer.
-	
+	* DONE:
 	- severe connections with dogma:
 	- remove model.n_cla and other useless fields from vectorparser.
 	- edit perceptron to do testing as well.
 	
-	* TODO:
+	* DONE: add a head feature for arceager and redo feature selection.
+	
+	* DONE: correct perceptron update rule when there can be more than
+	one maxscore and more than one mincost answer.
+	
+	* DONE: perceptron.m:
+	+ experiment with cost vs answer training.
+	+ skipping single choice answers?
+	? arceager vs archybrid parse error - move error relation?
+	+ write testing function for perceptron instead of model_predict_gpu.
+	+ run_arctype_comparison should dump first instead of training.
 
+	* DONE:
 	x sparsification: isn't necessary, compactify is enough.
 	+ multi-epoch: ~10-12 static epochs seem sufficient, 5 epochs for fv808.
 	+ features: fv808 converges faster but same static performance.
 	+ dynamic oracle: it starts working after epoch 2, best at 5-10 epochs
 	+ embeddings: bansal seems best.
-	. arctype
+	+ arctype
 	? beam-search
 	? kernel-type
 
-	perceptron.m:
-	TODO: experiment with cost vs answer training.
-	TODO: skipping single choice answers?
-	TODO: arceager vs archybrid parse error - move error relation?
-	TODO: write testing function for perceptron instead of model_predict_gpu.
-	TODO: run_arctype_comparison should dump first instead of training.
-
-	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
-	-- Beam search parser: read paper.  read redshift.  minibatch?
-	-- we can start by writing a beam decoder to parse with existing models.  no training.
-	-- how often does the gold sequence have a total score better than greedy sequence?
-
-	- rbf kernel with gpu?
-	-- Optimize and try rbf kernel calculation and fselect.
-	-- Other kernel degrees with featselect.
-
-	- write matlab gpu tutorial on blog
-
-	- trainparser_primal.m: broken, upgrade to use new code.
-
-	- model_sparsify.m: broken, updgreade to use new code.
-	
-	% TODO: in fact, why don't we use the scaled averaged beta during
-	training?  If we know it is better it will make less mistakes,
-	accumulate fewer support vectors.  (Try this in perceptron.m after
-	debugging).
-
-	OK, another matlab bug: if we have an SV matrix more than half the
-	size of gpu memory, we can't add anything to it, we can't change
-	it etc. etc. Everything I try (concat, subasgn etc.) ends up
-	trying to create a copy.  This is the third bug I found in matlab
-	(after max and skinny multiply problems), should send a bug
-	report.  (TODO).
-
-	TODO: debug conllWSJToken_dep-100 (good train bad test)
-	TODO: debug out-of-memory on levy, murphy50, mikolovGoogleNews300
-
-	- test if saving single-choice moves in dump makes a big
+	* DONE: test if saving single-choice moves in dump makes a big
 	difference in static oracle training, if it does find a way to
 	filter the multi-choice instances.
 
-	* TODO:
+	* DONE:
 	+ Let ++i00 finish so we can use the dumps.
 	- Verify the dumps.
 	- Run regular perceptron training.
 	- Figure out the difference between PTB and conll.
 	- Figure out if we need separate featselect for conll.
+
+	* DONE: in fact, why don't we use the scaled averaged beta during
+	training?  If we know it is better it will make less mistakes,
+	accumulate fewer support vectors.  (Try this in perceptron.m after
+	debugging). -- did not work.
+
+
+==> run/run_conll07_debug.m <==
+% % function run_conll07(parser, feats, trn, dev, tst, savefile)
+
+%% savefile = 'conll07a';
+
+% fprintf('%s saving arguments\n', datestr(now));
+% save([savefile '_parser'], 'parser', '-v7.3');
+% save([savefile '_feats'], 'feats', '-v7.3');
+% save([savefile '_trn'], 'trn', '-v7.3');
+% save([savefile '_dev'], 'dev', '-v7.3');
+% save([savefile '_tst'], 'tst', '-v7.3');
+
+% fprintf('%s initializing model\n', datestr(now));
+% path('dogma',path);
+% m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+% m0.parser = parser;
+% m0.feats = feats;
+% m0.step = 1e5;
+% m0.batchsize = 1e3;
+% tmp = feval(parser, 1);
+% m0.n_cla = tmp.NMOVE;
+% clear tmp;
+% save([savefile '_m0'], 'm0', '-v7.3');
+
+%% load([savefile '_m0']);
+
+% fprintf('%s preparing dumps.\n', datestr(now));
+% [~,trndump] = vectorparser(m0, trn, 'predict', 0, 'update', 0);
+% save([savefile '_trndump'], 'trndump', '-v7.3');
+% [~,devdump] = vectorparser(m0, dev, 'predict', 0, 'update', 0);
+% save([savefile '_devdump'], 'devdump', '-v7.3');
+% [~,tstdump] = vectorparser(m0, tst, 'predict', 0, 'update', 0);
+% save([savefile '_tstdump'], 'tstdump', '-v7.3');
+
+%% load([savefile '_trndump']);
+%% load([savefile '_devdump']);
+%% load([savefile '_dev']);
+
+% m1 = k_perceptron_multi_train_gpu(trndump.x, trndump.y, m0);
+m2 = perceptron(trndump.x, trndump.y, m0);
+% m3 = perceptron(trndump.x, trndump.cost, m0);
+% m4 = perceptron_dbg(trndump.x, trndump.y, m0);
+% m5 = perceptron_dbg(trndump.x, trndump.cost, m0);
+% m6 = perceptron2_dbg(trndump.x, trndump.y, m0);
+% m7 = perceptron2_dbg(trndump.x, trndump.cost, m0);
+
+% save('run_conll07_debug_models.mat', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', '-v7.3');
+
+% [g1,c1,e1] = run_conll07_debug_eval(m1, devdump, dev);
+[g2,c2,e2] = run_conll07_debug_eval(m2, devdump, dev);
+% [g3,c3,e3] = run_conll07_debug_eval(m3, devdump, dev);
+% [g4,c4,e4] = run_conll07_debug_eval(m4, devdump, dev);
+% [g5,c5,e5] = run_conll07_debug_eval(m5, devdump, dev);
+% [g6,c6,e6] = run_conll07_debug_eval(m6, devdump, dev);
+% [g7,c7,e7] = run_conll07_debug_eval(m7, devdump, dev);
+
+fprintf('gtrans\tctrans\tptrans\tphead\twhead\tsent\tmodel\n');
+fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%s\n', g1, c1, e1.move_pct, e1.head_pct, e1.word_pct, e1.sent_pct, 'k_perceptron_multi_train');
+fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%s\n', g2, c2, e2.move_pct, e2.head_pct, e2.word_pct, e2.sent_pct, 'perceptron(y)');
+fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%s\n', g3, c3, e3.move_pct, e3.head_pct, e3.word_pct, e3.sent_pct, 'perceptron(cost)');
+fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%s\n', g4, c4, e4.move_pct, e4.head_pct, e4.word_pct, e4.sent_pct, 'perceptron_dbg(y)');
+fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%s\n', g5, c5, e5.move_pct, e5.head_pct, e5.word_pct, e5.sent_pct, 'perceptron_dbg(cost)');
+fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%s\n', g6, c6, e6.move_pct, e6.head_pct, e6.word_pct, e6.sent_pct, 'perceptron2_dbg(y)');
+fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\t%s\n', g7, c7, e7.move_pct, e7.head_pct, e7.word_pct, e7.sent_pct, 'perceptron2_dbg(cost)');
+
+% fprintf('%s static oracle training.\n', datestr(now));
+% m1 = m0;
+% e1 = inf;
+% for epoch=1:100
+%   m = perceptron(trndump.x, trndump.cost, m1);
+%   p = model_predict_gpu(devdump.x, m, 1);
+%   c = devdump.cost(sub2ind(size(devdump.cost),p,1:numel(p)));
+%   [cmin,imin] = min(devdump.cost);
+%   e = numel(find(c~=cmin))/numel(c);
+%   fprintf('%s Epoch %d dev gtrans error: %g\n', datestr(now), epoch, e);
+%   if e < e1
+%     e1 = e;
+%     m1 = m;
+%     save([savefile '_m1'], 'm1', '-v7.3');
+%     save([savefile '_p'], 'p', '-v7.3');
+%   else
+%     break;
+%   end
+% end
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% fprintf('%s Evaluating m1\n', datestr(now));
+% [~,m1dev] = vectorparser(m1, dev, 'update', 0);
+% save([savefile '_m1dev'], 'm1dev', '-v7.3');
+% e1dev = eval_conll(dev, m1dev)
+% save([savefile '_e1dev'], 'e1dev', '-v7.3');
+
+% fprintf('%s dynamic oracle training.\n', datestr(now));
+% m2 = m1;
+% e2 = e1dev.head_pct;
+% for epoch=1:100
+%   m = vectorparser(m2, trn);
+%   [~,mdev] = vectorparser(m, dev, 'update', 0);
+%   edev = eval_conll(dev, mdev)
+%   e = edev.head_pct;
+%   fprintf('%s Epoch %d dev phead error: %g\n', datestr(now), epoch, e);
+%   if e < e2
+%     e2 = e;
+%     m2 = m;
+%     save([savefile '_m2'], 'm2', '-v7.3');
+%     save([savefile '_mdev'], 'mdev', '-v7.3');
+%     save([savefile '_edev'], 'edev', '-v7.3');
+%   else
+%     break;
+%   end
+% end
+
+% fprintf('%s final testing.\n', datestr(now));
+% [~,m2tst] = vectorparser(m2, tst, 'update', 0);
+% save([savefile '_m2tst'], 'm2tst', '-v7.3');
+% e2tst = eval_conll(tst, m2tst)
+% save([savefile '_e2tst'], 'e2tst', '-v7.3');
+
+
+==> run/run_conll07.m <==
+function run_conll07(savefile, opts)
+
+parser = getval('parser', @()(opts.parser));
+feats = getval('feats', @()(opts.feats));
+trn = getval('trn', @()(opts.trn));
+dev = getval('dev', @()(opts.trn));
+tst = getval('tst', @()(opts.trn));
+
+trndump = getval('trndump', @()(getdump(m0,trn)));
+devdump = getval('devdump', @()(getdump(m0,dev)));
+tstdump = getval('tstdump', @()(getdump(m0,tst)));
+
+m0 = getval('m0', @()(struct('kerparam', struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3),...
+                             'parser', parser, 'feats', feats, 'step', 1e5, 'batchsize', 1e3)));
+
+m3 = getval('m3', @()[]);
+if isempty(m3)
+
+  m2 = getval('m2', @()[]);
+  if isempty(m2)
+
+    m1 = getval('m1', @()[]);
+    if isempty(m1) 
+      m1 = m0; 
+      e1 = inf;
+      epoch1 = 1;
+    else
+      e1 = getval('e1', @()(error('No e1')));
+      epoch1 = getval('epoch1', @()(error('No epoch1')));
+    end
+
+    fprintf('%s static oracle training.\n', datestr(now));
+    fprintf('epoch\tgmove\tmove\thead\tword\tsent\n');
+
+    while epoch1 < 100
+      m = perceptron(trndump.x, trndump.y, m1);
+      [e, f] = eval_model(m, dev, devdump);
+      if e < e1
+        e1 = e;
+        f1 = f;
+        m1 = m;
+        save([savefile '_m1'], 'm1', '-v7.3');
+        save([savefile '_e1'], 'e1', '-v7.3');
+        save([savefile '_f1'], 'f1', '-v7.3');
+        save([savefile '_epoch1'], 'epoch1', '-v7.3');
+      else
+        break;
+      end
+    end % while epoch1 < 100
+    m2 = m1;
+    f2 = f1;
+    epoch2 = 1;
+  end % if isempty(m2)
+
+  f2 = getval('f2', @()(error('No f2')));
+  epoch2 = getval('epoch2', @()(error('No epoch2')));
+  
+  fprintf('%s dynamic oracle training.\n', datestr(now));
+  while epoch2 < 100
+    m = vectorparser(m2, trn);
+    [e, f] = eval_model(m, dev, devdump);
+    if f.head_pct < f2.head_pct
+      f2 = f;
+      m2 = m;
+      save([savefile '_m2'], 'm2', '-v7.3');
+      save([savefile '_f2'], 'f2', '-v7.3');
+      save([savefile '_epoch2'], 'epoch2', '-v7.3');
+    else
+      break;
+    end
+  end % while epoch2 < 100
+
+  m3 = m2;
+  f3 = f2;
+end % if isempty(m3)
+
+fprintf('%s final testing.\n', datestr(now));
+[e3, f3] = eval_model(m3, tst, tstdump);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [e, f] = eval_model(m, dev, devdump)
+[~,s] = perceptron(devdump.x, devdump.y, m, 'update', 0);
+[~,z] = max(s);
+e = numel(find(z ~= devdump.y))/numel(z);
+[~,mdev] = vectorparser(m, dev, 'update', 0);
+f = eval_conll(dev, mdev)
+fprintf('%d\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\n', epoch, e, ...
+        f.move_pct, f.head_pct, f.word_pct, f.sent_pct);
+end % eval_model
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function v = getval(varname, lambda)
+fprintf('Getting %s\n', varname);
+filename = [savefile '_' varname '.mat'];
+if (exist(varname))
+  v = eval(varname);
+elseif (exist(filename, 'file'))
+  load(filename);
+  v = eval(varname);
+else
+  v = feval(lambda);
+end
+if ~exist(filename, 'file')
+  save filename varname
+end
+
+end % getval
+
+end % main
 
 
 2014-08-05  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -384,6 +841,21 @@
     end
 
 	
+==> run/run_conll07_debug_eval.m <==
+function [gtrans, ctrans, ev] = run_conll07_debug_eval(model, dump, corpus)
+
+p = model_predict_gpu(dump.x, model, 1);
+gtrans = numel(find(p~=dump.y))/numel(p);
+c = dump.cost(sub2ind(size(dump.cost),p,1:numel(p)));
+[cmin,imin] = min(dump.cost);
+ctrans = numel(find(c~=cmin))/numel(c);
+
+[~,d] = vectorparser(model, corpus, 'update', 0);
+ev = eval_conll(corpus,d);
+
+end
+
+	
 2014-08-04  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* fsymbol.m: get feature name from feature vector f(1,3).
@@ -418,6 +890,137 @@
 	eag13	0.36	2.43	7.52	9.12	3.71	5.96	23
 	hyb13	0.30	2.08	7.02	8.33	3.78	5.89	27
 
+==> run/run_arctype_comparison2.m <==
+% from previous script:
+% save -v7.3 conll07bansal trnconll devconll tstconll
+% savefile = ['conll07bansal_' arc];
+% save(savefile, 'model', 'trndump', 'devdump', 'tstdump', 'deveval', 'tsteval', '-v7.3');
+
+path('dogma',path);
+
+fprintf('%s initializing model\n', datestr(now));
+m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+m0.step = 1e5;
+m0.batchsize = 1e3;
+% m0.parser = parser;
+% m0.feats = feats;
+
+fprintf('%s loading conll07bansal\n', datestr(now));
+load conll07bansal;
+
+for arctype={'arceager', 'archybrid', 'arceager13', 'archybrid13'}
+  arc = arctype{1};
+  m0.parser = eval(['@' arc]);
+  savefile = ['conll07bansal_' arc];
+  fprintf('%s loading %s\n', datestr(now), savefile);
+  load(savefile);
+  m0.feats = trndump.feats;
+  fprintf('%s training\n', datestr(now));
+  m1 = perceptron(trndump.x, trndump.cost, m0)
+
+  fprintf('%s trn eval\n', datestr(now));
+  p1 = model_predict_gpu(trndump.x, m1, 1);
+  c1=trndump.cost(sub2ind(size(trndump.cost),p1,1:numel(p1)));
+  [min1,imin1] = min(trndump.cost);
+  trn_cost_eval = numel(find(c1~=min1))/numel(c1)
+  trn_answer_eval = numel(find(p1~=trndump.y))/numel(p1)
+
+  fprintf('%s dev eval\n', datestr(now));
+  [~,devdump] = vectorparser(m0, devconll, 'predict', 0, 'update', 0);
+  p2 = model_predict_gpu(devdump.x, m1, 1);
+  c2=devdump.cost(sub2ind(size(devdump.cost),p2,1:numel(p2)));
+  [min2,imin2] = min(devdump.cost);
+  dev_cost_eval = numel(find(c2~=min2))/numel(c2)
+  dev_answer_eval = numel(find(p2~=devdump.y))/numel(p2)
+
+  fprintf('%s tst eval\n', datestr(now));
+  [~,tstdump] = vectorparser(m0, tstconll, 'predict', 0, 'update', 0);
+  p3 = model_predict_gpu(tstdump.x, m1, 1);
+  c3=tstdump.cost(sub2ind(size(tstdump.cost),p3,1:numel(p3)));
+  [min3,imin3] = min(tstdump.cost);
+  tst_cost_eval = numel(find(c3~=min3))/numel(c3)
+  tst_answer_eval = numel(find(p3~=tstdump.y))/numel(p3)
+
+end
+
+==> run/run_arctype_comparison3.m <==
+% from previous script:
+% save -v7.3 conll07bansal trnconll devconll tstconll
+% savefile = ['conll07bansal_' arc];
+% save(savefile, 'model', 'trndump', 'devdump', 'tstdump', 'deveval', 'tsteval', '-v7.3');
+
+path('dogma',path);
+
+fprintf('%s initializing model\n', datestr(now));
+m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+m0.step = 1e5;
+m0.batchsize = 1e3;
+% m0.parser = parser;
+% m0.feats = feats;
+
+fprintf('%s loading conll07bansal\n', datestr(now));
+load conll07bansal;
+
+for arctype={'arceager', 'archybrid', 'arceager13', 'archybrid13'}
+  arc = arctype{1};
+  m0.parser = eval(['@' arc]);
+  savefile = ['conll07bansal_' arc];
+  fprintf('%s loading %s\n', datestr(now), savefile);
+  load(savefile);
+  m0.feats = trndump.feats;
+
+  fprintf('%s training\n', datestr(now));
+  m1 = m0;
+  for i=1:10
+    m1 = perceptron(trndump.x, trndump.cost, m1);
+  end
+  m1_10_epoch = m1
+
+  fprintf('%s trn eval\n', datestr(now));
+  p1 = model_predict_gpu(trndump.x, m1, 1);
+  c1=trndump.cost(sub2ind(size(trndump.cost),p1,1:numel(p1)));
+  [min1,imin1] = min(trndump.cost);
+  trn_cost_eval = numel(find(c1~=min1))/numel(c1)
+  trn_answer_eval = numel(find(p1~=trndump.y))/numel(p1)
+
+  fprintf('%s dev eval\n', datestr(now));
+  [~,devdump] = vectorparser(m0, devconll, 'predict', 0, 'update', 0);
+  p2 = model_predict_gpu(devdump.x, m1, 1);
+  c2=devdump.cost(sub2ind(size(devdump.cost),p2,1:numel(p2)));
+  [min2,imin2] = min(devdump.cost);
+  dev_cost_eval = numel(find(c2~=min2))/numel(c2)
+  dev_answer_eval = numel(find(p2~=devdump.y))/numel(p2)
+
+  fprintf('%s tst eval\n', datestr(now));
+  [~,tstdump] = vectorparser(m0, tstconll, 'predict', 0, 'update', 0);
+  p3 = model_predict_gpu(tstdump.x, m1, 1);
+  c3=tstdump.cost(sub2ind(size(tstdump.cost),p3,1:numel(p3)));
+  [min3,imin3] = min(tstdump.cost);
+  tst_cost_eval = numel(find(c3~=min3))/numel(c3)
+  tst_answer_eval = numel(find(p3~=tstdump.y))/numel(p3)
+
+end
+
+==> run/run_conll07_experiment1.m <==
+path('dogma',path);
+path('run',path);
+savefile = 'run_conll07_experiment01.mat';
+if 0
+load('mat/conll07bansal.mat'); % trn, dev, tst
+load('mat/bansal5k_archybrid_fv130_cache.mat'); % cache
+[emin, imin] = min(besterror);
+fprintf('%s Features(%d:%g) %s\n', datestr(now), imin, emin, bestfeats{imin});
+feats = eval(bestfeats{imin});
+parser = @archybrid;
+
+run_conll07(parser, feats, trn, dev, tst, savefile);
+
+else
+run_conll07([], [], [], [], [], savefile);
+
+end
+
+	
 2014-08-03  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* run_arctype_comparison.m: --i00 running all arctypes with best
@@ -661,6 +1264,165 @@
 	(4.55%).  It seems if we are going to work with conll07 data we
 	better use part of train as devel instead of trying to regenerate.
 
+==> run/run_arctype_comparison.m <==
+if 0
+path('dogma',path);
+
+trnfile = 'embedded/conll07EnglishToken_bansal100/00/english_0001.dp';
+tstfile = 'embedded/conll07EnglishToken_bansal100/01/english_0101.dp';
+devfile = 'embedded/conllWSJToken_bansal100/01/wsj_0101.dp';
+
+fprintf('%s loading %s\n', datestr(now), trnfile);
+trnconll = loadCoNLL(trnfile);
+fprintf('%s loading %s\n', datestr(now), devfile);
+devconll = loadCoNLL(devfile);
+fprintf('%s loading %s\n', datestr(now), tstfile);
+tstconll = loadCoNLL(tstfile);
+fprintf('%s saving %s\n', datestr(now), 'conll07bansal');
+save -v7.3 conll07bansal trnconll devconll tstconll
+end
+
+fprintf('%s initializing model\n', datestr(now));
+m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+% m0.parser = parser;
+% m0.feats = feats;
+m0.step = 1e5;
+m0.batchsize = 1e3;
+
+for arctype={'arceager', 'archybrid', 'arceager13', 'archybrid13'}
+  arc = arctype{1};
+  m0.parser = eval(['@' arc]);
+  cachefile = ['bansal5k_' arc '_fv130_cache.mat'];
+  fprintf('%s loading %s\n', datestr(now), cachefile);
+  load(cachefile);
+  [emin, imin] = min(besterror);
+  fprintf('%s %g %s\n', datestr(now), emin, bestfeats{imin});
+  m0.feats = eval(bestfeats{imin});
+  fprintf('%s training\n', datestr(now));
+  [model,trndump] = vectorparser(m0, trnconll, 'predict', 0);
+  fprintf('%s parsing dev\n', datestr(now));
+  [~,devdump] = vectorparser(model, devconll, 'update', 0);
+  deveval = eval_conll(devconll, devdump)
+  fprintf('%s parsing tst\n', datestr(now));
+  [~,tstdump] = vectorparser(model, tstconll, 'update', 0);
+  tsteval = eval_conll(tstconll, tstdump)
+  savefile = ['conll07bansal_' arc];
+  fprintf('%s saving to %s\n', datestr(now), savefile);
+  save(savefile, 'model', 'trndump', 'devdump', 'tstdump', 'deveval', 'tsteval', '-v7.3');
+end
+
+	
+==> run/run_convert_cache.m <==
+function run_convert_cache(trn, cachefile, newfile)
+
+load(cachefile);
+oldcache = cache;
+nfeats = numel(trn.fidx);
+bestfeats = cell(1,nfeats);
+besterror = inf(1,nfeats);
+cachekeys = keys(oldcache);
+cache = containers.Map();
+for i=1:numel(cachekeys)
+  fstr = cachekeys{i};
+  ferr = oldcache(fstr)/100;
+  fvec = eval(fstr);
+  flen = numel(fvec);
+  fk = fkey(fvec);
+  cache(fk) = ferr;
+  if ferr < besterror(flen)
+    besterror(flen) = ferr;
+    bestfeats{flen} = fk;
+  end
+end
+
+save(newfile, 'cache', 'besterror', 'bestfeats');
+
+function fk = fkey(f)
+% f is an array of indices into trn.fidx and rows of trn.feats
+fk = mat2str(sortrows(trn.feats(f,:)));
+end % fkey
+
+end
+
+	
+==> run/run_sort_bestfeats_dbg.m <==
+function fsorted = run_sort_bestfeats_dbg(bestfeats, besterror, cache)
+
+[emin, imin] = min(besterror);
+imin = imin-1
+emin = besterror(imin)
+fmin = eval(bestfeats{imin});
+
+for i=1:imin
+  fsorted{i,1} = 0;
+  fsorted{i,2} = fsymbol(fmin(i,:));
+  fnew = fmin;
+  fnew(i,:) = [];
+  fk = mat2str(sortrows(fnew));
+  if isKey(cache, fk)
+    ferr = cache(fk);
+    fsorted{i,1} = round(10000 * (emin - ferr));
+  end
+end
+
+fsorted = sortrows(fsorted, 1);
+
+function s = fsymbol(f)
+a = {'s2','s1','s0','n0','n1','n2'};
+b = {'l2','l1','','r1','r2'};
+c = {'ac','d<','l<','l>','c','at','l=','-','t','+','r=','d=','w','r>','r<','d>','aw'};
+s = [ a{f(1)+4} b{f(2)+3} c{f(3)+9} ];
+end
+
+end
+
+
+==> run/run_to_cache.pl <==
+#!/usr/bin/perl -w
+use strict;
+
+my @score;
+my @feats;
+
+while(<>) {
+    next unless /^\d+\./;
+    chop;
+    my @a = split /\t/;
+    push @score, $a[1];
+    push @feats, $a[4];
+}
+
+print "cache = containers.Map({\n";
+for (my $i = 0; $i <= $#feats; $i++) {
+    print "'$feats[$i]'\n";
+}
+print "}, [\n";
+for (my $i = 0; $i <= $#score; $i++) {
+    print "$score[$i]\n";
+}
+print "]);\n";
+
+
+==> run/run_watchfile.pl <==
+#!/usr/bin/perl -w
+use strict;
+use Data::Dumper;
+use File::Copy;
+my $fh;
+my $last_timestamp=0;
+
+while (1) {
+    sleep(1);
+    open($fh, '814724.mat');
+    my $epoch_timestamp = (stat($fh))[9];
+    if ($epoch_timestamp != $last_timestamp) {
+	$last_timestamp = $epoch_timestamp;
+	copy '814724.mat', "814724-$last_timestamp.mat";
+    }
+    close($fh);
+}
+
+	
 2014-08-02  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* perceptron.m: The cost version.  Not really comparable to the
@@ -703,26 +1465,31 @@
 	[-119]    's1w'   	[-106]    'n1w'   	[-155]    'n1w'   	[-104]    'n1w'
 	[-110]    'n1w'   	[ -98]    's1w'   	[-150]    's1r1r<'	[ -40]    'n0c'
 	[ -55]    'n0l1w' 	[ -52]    's0r1w' 	[ -45]    's0r1w' 	[ -35]    's0r1w'
+	
 	[ -38]    'n0l1c' 	[ -45]    'n0l1w' 	[ -44]    'n0c'   	[ -35]    'n0l1w'
 	[ -36]    's0r1w' 	[ -35]    's0r1r<'	[ -39]    's1w'   	[ -31]    's1w'
 	[ -32]    's0c'   	[ -32]    's0r1c' 	[ -39]    'n0l1w' 	[ -30]    's1r='
 	[ -32]    's0r='  	[ -30]    's0r='  	[ -28]    's0c'   	[ -28]    's0r='
 	[ -32]    'n0c'   	[ -30]    's0d>'  	[ -27]    's0l1w' 	[ -27]    's0l>'
+	
 	[ -27]    's2c'   	[ -29]    's1l1-' 	[ -27]    's0r1-' 	[ -26]    's0c'
 	[ -27]    's1d='  	[ -28]    's2r='  	[ -27]    'n2-'   	[ -24]    'n1c'
 	[ -27]    's0r1-' 	[ -28]    's0ac'  	[ -23]    's0r='  	[ -23]    's0r1r>'
 	[ -25]    's0l1l='	[ -28]    's0c'   	[ -22]    'n1-'   	[ -22]    's2r1-'
 	[ -25]    's0r1r<'	[ -28]    'n0c'   	[ -21]    's2l1r>'	[ -21]    's1-'
+	
 	[ -23]    's1r1r<'	[ -27]    'n0l1c' 	[ -21]    's2d>'  	[ -20]    's0-'
 	[ -18]    's2r1l<'	[ -23]    's1r1r<'	[ -21]    's0r1+' 	[ -18]    'n0l>'
 	[ -18]    's1l1l>'	[ -22]    's2c'   	[ -17]    's0l1r='	[ -16]    's1c'
 	[ -18]    'n0l>'  	[ -20]    's2l1r='	[ -16]    's0-'   	[ -15]    's1l>'
 	[ -16]    'n1-'   	[ -16]    's1r<'  	[ -15]    's2l='  	[ -15]    's1r1r='
+	
 	[ -15]    's1r1r>'	[ -14]    's1d>'  	[ -15]    's0l1l='	[ -13]    'n0l1l>'
 	[ -12]    's1r1l>'	[ -14]    's0r1l<'	[ -15]    's0l1-' 	[ -11]    's1r1l>'
 	[ -12]    's0r1l>'	[ -14]    'n1-'   	[ -14]    'n0l1l>'	[  -9]    's1r1-'
 	[ -11]    's2l1l>'	[ -13]    's0l1w' 	[ -13]    's2r>'  	[  -8]    'n0-'
 	[  -9]    's2r1r='	[ -11]    's2r1r='	[ -13]    's1r1r>'	[   0]    's2r1l='
+	
 	[  -8]    's0l1-' 	[ -11]    's0-'   	[ -12]    's2r1-'
 	[  -5]    'n0l1-' 	[ -10]    's2r1l>'	[ -12]    's0r1r>'
 				[ -10]    's2r1r>'	[ -11]    's2-'
@@ -735,6 +1502,70 @@
 
 
 
+==> run/run_dump_bansal5k.m <==
+function run_dump_bansal5k(parser, featname, dumpfile)
+
+fprintf('%s Initializing features %s\n', datestr(now), featname);
+newFeatureVectors;
+feats = eval(featname);
+size_feats = size(feats)
+
+fprintf('%s Initializing model\n', datestr(now));
+path('dogma',path);
+m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+m0.parser = parser;
+m0.feats = feats;
+m0.step = 1e7;
+m0.batchsize = 1e3;
+
+fprintf('%s Loading logs/conllWSJToken_bansal100.mat...\n', datestr(now));
+load logs/conllWSJToken_bansal100.mat;  % trn,dev,tst; 7 mins
+
+fprintf('%s trndump...\n', datestr(now)); % 20 mins
+[~,trndump] = vectorparser(m0, trn(1:5000), 'update', 0, 'predict', 0);
+
+fprintf('%s devdump...\n', datestr(now)); % 7 mins
+[~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0);
+
+fprintf('Saving...\n');
+save(dumpfile, 'm0', 'trndump', 'devdump', '-v7.3');
+
+end
+
+
+
+==> run/run_featselect_bansal5k.m <==
+function run_featselect_bansal5k(parser, featname, cachefile)
+
+fprintf('%s Initializing features %s\n', datestr(now), featname);
+newFeatureVectors;
+feats = eval(featname);
+size_feats = size(feats)
+
+fprintf('%s Initializing model\n', datestr(now));
+path('dogma',path);
+m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+m0.parser = parser;
+m0.feats = feats;
+m0.step = 1e7;
+m0.batchsize = 1e3;
+
+fprintf('%s Loading logs/conllWSJToken_bansal100.mat...\n', datestr(now));
+load logs/conllWSJToken_bansal100.mat;  % trn,dev,tst; 7 mins
+
+fprintf('%s trndump...\n', datestr(now)); % 20 mins
+[~,trndump] = vectorparser(m0, trn(1:5000), 'update', 0, 'predict', 0);
+
+fprintf('%s devdump...\n', datestr(now)); % 7 mins
+[~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0);
+
+fprintf('%s Starting featselect_gpu\n', datestr(now));
+[a,b,c] = featselect_gpu(m0,trndump,devdump);
+
+fprintf('%s this will never happen :)\n', datestr(now));
+end
+
+	
 2014-08-01  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* features.m:
@@ -779,6 +1610,115 @@
 	the full feature set and explicit indices with names.  (DONE)
 	rewrite features to have a compact feature matrix representation.
 
+==> run/run_featselect5k.m <==
+function run_featselect5k(parser, feats)
+
+fprintf('%s Loading logs/conllWSJToken_bansal100.mat...\n', datestr(now));
+% load logs/conllWSJToken_bansal100.mat;  % trn,dev,tst
+
+fprintf('%s Initializing model\n', datestr(now));
+path('dogma',path);
+m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+m0.parser = parser;
+m0.feats = feats;
+m0.step = 1e7;
+m0.batchsize = 1e3;
+
+fprintf('%s trndump...\n', datestr(now));
+[~,trndump] = vectorparser(m0, trn(1:5000), 'update', 0, 'predict', 0);
+
+fprintf('%s devdump...\n', datestr(now));
+[~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0);
+
+fprintf('%s Starting featselect_gpu\n', datestr(now));
+[a,b,c] = featselect_gpu(m0,trndump,devdump);
+
+fprintf('%s this will never happen :)\n', datestr(now));
+end
+
+	
+==> run/run_loadCoNLL.m <==
+function run_loadCoNLL(emi)
+
+root = 'embedded';
+fprintf('Reading %s\n', emi);
+tic;
+  trn = {};
+  dev = {};
+  tst = {};
+  if isdir([root '/' emi '/22'])
+    for j=2:21                          % read train
+      dir_j = sprintf('%s/%s/%02d', root, emi, j); % e.g. embedded/conllToken_rcv1UNK/02
+      fprintf('Reading %s\n', dir_j);
+      dp = dir(dir_j);  % e.g. dir('embedded/conllToken_rcv1UNK/02')
+      for k=1:numel(dp);
+        if dp(k).isdir continue; end
+        dpk = dp(k).name;               % e.g. wsj_0201.dp
+        if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+        trn_k = loadCoNLL([dir_j '/' dpk]); % e.g. embedded/conllToken_rcv1UNK/02/wsj_0201.dp
+        trn = [trn trn_k];
+      end % for k=1:numel(dp);
+    end % for j=2:21
+
+    for j=[0,1,23,24]                          % read test
+      dir_j = sprintf('%s/%s/%02d', root, emi, j); % e.g. embedded/conllToken_rcv1UNK/02
+      fprintf('Reading %s\n', dir_j);
+      dp = dir(dir_j);  % e.g. dir('embedded/conllToken_rcv1UNK/02')
+      for k=1:numel(dp);
+        if dp(k).isdir continue; end
+        dpk = dp(k).name;               % e.g. wsj_0201.dp
+        if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+        tst_k = loadCoNLL([dir_j '/' dpk]); % e.g. embedded/conllToken_rcv1UNK/02/wsj_0201.dp
+        tst = [tst tst_k];
+      end % for k=1:numel(dp);
+    end % for j=2:21
+
+    dir_j = sprintf('%s/%s/%02d', root, emi, 22);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);    % e.g. dir('embedded/conllToken_rcv1UNK/22')
+    for k=1:numel(dp);
+      if dp(k).isdir continue; end
+      dpk = dp(k).name;                 % e.g. wsj_2201.dp
+      if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+      dev_k = loadCoNLL([dir_j '/' dpk]);
+      dev = [dev dev_k];
+    end % for k=1:numel(dp)
+
+  elseif isdir([root '/' emi '/01'])
+    dir_j = sprintf('%s/%s/%02d', root, emi, 0);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    trn = loadCoNLL([dir_j '/' dp3]);
+
+    dir_j = sprintf('%s/%s/%02d', root, emi, 1);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    dev = loadCoNLL([dir_j '/' dp3]);
+
+    dir_j = sprintf('%s/%s/%02d', root, emi, 2);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    tst = loadCoNLL([dir_j '/' dp3]);
+
+  else
+    fprintf('%s is empty\n', emi);
+    return;
+  end %if
+toc;
+
+outfile = ['logs/' emi '.mat'];
+save(outfile, 'trn', 'dev', 'tst', '-v7.3');
+
+	
 2014-07-30  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* DONE:
@@ -798,6 +1738,339 @@
 	+ try separating the type and context parts of token vectors.
 
 
+==> run/run_embeddings1.m <==
+function run_embeddings1(emi)
+
+gpu = gpuDeviceCount();
+if gpu==0 error('No GPU'); end
+
+path('dogma', path);
+fv804 = [
+%n0 s0 s1 n1 n0l1 s0r1 s0l1 s1r1 s0r
+  0 -1 -2  1  0   -1   -1   -2   -1;
+  0  0  0  0 -1    1   -1    1    0;
+  0  0  0  0  0    0    0    0    2;
+];
+hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3);
+m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
+
+root = 'embedded';
+fprintf('Reading %s\n', emi);
+tic;
+  trn_i = {};
+  dev_i = {};
+  if isdir([root '/' emi '/22'])
+    for j=2:21                          % read train
+      dir_j = sprintf('%s/%s/%02d', root, emi, j); % e.g. embedded/conllToken_rcv1UNK/02
+      fprintf('Reading %s\n', dir_j);
+      dp = dir(dir_j);  % e.g. dir('embedded/conllToken_rcv1UNK/02')
+      for k=1:numel(dp);
+        if dp(k).isdir continue; end
+        dpk = dp(k).name;               % e.g. wsj_0201.dp
+        if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+        trn_k = loadCoNLL([dir_j '/' dpk]); % e.g. embedded/conllToken_rcv1UNK/02/wsj_0201.dp
+        trn_i = [trn_i trn_k];
+      end % for k=1:numel(dp);
+    end % for j=2:21
+    dir_j = sprintf('%s/%s/%02d', root, emi, 22);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);    % e.g. dir('embedded/conllToken_rcv1UNK/22')
+    for k=1:numel(dp);
+      if dp(k).isdir continue; end
+      dpk = dp(k).name;                 % e.g. wsj_2201.dp
+      if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+      dev_k = loadCoNLL([dir_j '/' dpk]);
+      dev_i = [dev_i dev_k];
+    end % for k=1:numel(dp)
+
+  elseif isdir([root '/' emi '/01'])
+    dir_j = sprintf('%s/%s/%02d', root, emi, 0);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    trn_i = loadCoNLL([dir_j '/' dp3]);
+
+    dir_j = sprintf('%s/%s/%02d', root, emi, 1);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    dev_i = loadCoNLL([dir_j '/' dp3]);
+
+  else
+    fprintf('%s is empty\n', emi);
+    return;
+  end %if
+toc;
+fprintf('dumpfeatures...\n');
+tic; [trn_x, trn_y] = dumpfeatures2(trn_i, fv804); toc;
+tic; [dev_x, dev_y] = dumpfeatures2(dev_i, fv804); toc;
+fprintf('k_perceptron_multi_train_gpu...\n');
+gpuDevice(1);
+tic;m1=k_perceptron_multi_train_gpu(trn_x,trn_y,m0); toc;
+tic;[a,b]=model_predict_gpu(dev_x, m1, 1); toc;
+score = numel(find(a ~= dev_y))/numel(dev_y);
+fprintf('score:%g\t%s\n', score, emi);
+
+==> run/run_embeddings1.sh <==
+#!/bin/bash
+#$ -N job_name
+#$ -S /bin/bash
+#$ -q ilac.q
+#$ -cwd
+#$ -o job_name.out
+#$ -e job_name.err
+#$ -M login_id@ku.edu.tr
+#$ -m bea
+ 
+# We have a file named bigtest.m 
+/share/apps/matlab/R2011a/bin/matlab -nojvm -nodisplay -r bigtest > output.txt
+
+==> run/run_embeddings2.m <==
+path('dogma', path);
+fv804 = [
+%n0 s0 s1 n1 n0l1 s0r1 s0l1 s1r1 s0r
+  0 -1 -2  1  0   -1   -1   -2   -1;
+  0  0  0  0 -1    1   -1    1    0;
+  0  0  0  0  0    0    0    0    2;
+];
+hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3);
+m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
+
+root = 'embedded';
+em = dir(root);
+for i=1:numel(em)
+  emi = em(i).name;                     % e.g. conllToken_rcv1UNK
+  if ~any(strcmp(emi, {
+    % 'conllWSJToken_levy300',		% error
+    % 'conllWSJToken_bansal100',	% .0370
+    % 'conllWSJToken_dep-WSJ',		% .0490
+    % 'conllWSJToken_ungar2-0.1',	% .0520
+    % 'conllWSJToken_stratos50k5000scaled01', % .0604
+    % 'conllWSJToken_gsng1M',		% .0610
+    % 'conllWSJToken_gsngAE',		% .0631
+    % 'conllWSJToken_gsngALL',		% .0662
+    % 'conllWSJToken_murphy50scaled01',	% error
+    % 'conllWSJToken_murphy50'		% error
+                      }))
+    continue; 
+  end
+  fprintf('Reading %s\n', emi);
+  tic;
+  trn_i = {};
+  dev_i = {};
+  if isdir([root '/' emi '/24'])
+    for j=2:21                          % read train
+      dir_j = sprintf('%s/%s/%02d', root, emi, j); % e.g. embedded/conllToken_rcv1UNK/02
+      fprintf('Reading %s\n', dir_j);
+      dp = dir(dir_j);  % e.g. dir('embedded/conllToken_rcv1UNK/02')
+      for k=1:numel(dp);
+        if dp(k).isdir continue; end
+        dpk = dp(k).name;               % e.g. wsj_0201.dp
+        if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+        trn_k = loadCoNLL([dir_j '/' dpk]); % e.g. embedded/conllToken_rcv1UNK/02/wsj_0201.dp
+        trn_i = [trn_i trn_k];
+      end % for k=1:numel(dp);
+    end % for j=2:21
+    dir_j = sprintf('%s/%s/%02d', root, emi, 22);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);    % e.g. dir('embedded/conllToken_rcv1UNK/22')
+    for k=1:numel(dp);
+      if dp(k).isdir continue; end
+      dpk = dp(k).name;                 % e.g. wsj_2201.dp
+      if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+      dev_k = loadCoNLL([dir_j '/' dpk]);
+      dev_i = [dev_i dev_k];
+    end % for k=1:numel(dp)
+
+  elseif isdir([root '/' emi '/02'])
+    dir_j = sprintf('%s/%s/%02d', root, emi, 0);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    trn_i = loadCoNLL([dir_j '/' dp3]);
+
+    dir_j = sprintf('%s/%s/%02d', root, emi, 1);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    dev_i = loadCoNLL([dir_j '/' dp3]);
+
+  else
+    fprintf('%s is empty\n', emi);
+    continue;
+  end %if
+  toc;
+  fprintf('dumpfeatures...\n');
+  tic; [trn_x, trn_y] = dumpfeatures2(trn_i, fv804); toc;
+  tic; [dev_x, dev_y] = dumpfeatures2(dev_i, fv804); toc;
+  fprintf('k_perceptron_multi_train_gpu...\n');
+  gpuDevice(1);
+  tic;m1=k_perceptron_multi_train_gpu(trn_x,trn_y,m0); toc;
+  tic;[a,b]=model_predict_gpu(dev_x, m1, 1); toc;
+  score = numel(find(a ~= dev_y))/numel(dev_y);
+  fprintf('score:%g\t%s\n', score, emi);
+end % for i=1:numel(em)
+
+==> run/run_embeddings.m <==
+path('dogma', path);
+fv804 = [
+%n0 s0 s1 n1 n0l1 s0r1 s0l1 s1r1 s0r
+  0 -1 -2  1  0   -1   -1   -2   -1;
+  0  0  0  0 -1    1   -1    1    0;
+  0  0  0  0  0    0    0    0    2;
+];
+hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3);
+m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
+
+root = 'embedded';
+em = dir(root);
+for i=1:numel(em)
+  emi = em(i).name;                     % e.g. conllToken_rcv1UNK
+  if strcmp(emi(1),'.') continue; end
+  if any(strcmp(emi, {
+'conllWSJToken_bansal100',
+'conllWSJToken_wikipedia2MUNK-200',
+'conllWSJToken_wikipedia2MUNK-100',
+'conllToken_wikipedia2MUNK-50',
+'conllToken_wikipedia2MUNK-25',
+'conll_bansal100',
+'conllWSJToken_rcv1UNK50',
+'conllToken_rcv1UNK',
+'conllWSJToken_rcv1UNK',
+'conllWSJToken_rcv1UNK25',
+'conllWSJToken_dep-100',
+'conll_cw100scaled',
+'conllWSJToken_huang-0.1',
+'conll_4scode+f50',
+'conll_2scode+f100',
+'conll_3scode+f100',
+'conll_6scode+f50',
+'conll_4scode+f100',
+'conll_6scode+f100',
+'conll_5scode+f100',
+'conllWSJToken_dep-WSJ',
+'conll_10scode+f50',
+'conll_7scode+f50',
+'conll_2scode+f50',
+'conll_1scode+f100',
+'conll_1scode+f50',
+'conll_9scode+f50',
+'conll_3scode+f50',
+'conll_5scode+f50',
+'conll_8scode+f50',
+'conll_3scode+f25',
+'conllWSJToken_cw50scaled',
+'conll_cw50scaled',
+'conllWSJToken_ungar2-0.1',
+'conllWSJToken_hlbl50scaled',
+'conll_cw',
+'conllWSJToken_mikolovWiki-0.1',
+'conll_dep-100',
+'conll_dep-WSJ',
+'conll_cw25+cw25',
+'conll_cw25',
+'conllWSJToken_cw25',
+'conllWSJToken_stratos50k5000scaled01',
+'conllWSJToken_gsng1M',
+'conllWSJToken_mikolovRCV50scaled01',
+'conllWSJToken_cw25scaled',
+'conll_cw25scaled',
+'conllWSJToken_gsngAE',
+'conllWSJToken_gsngALL',
+'conll_dep100+wiki25',
+'conllWSJToken_yogamata52scaled01',
+'conllWSJToken_yogamata52',
+'conllWSJToken_stratos50k200scaled01',
+'conll_german+german',
+'conllWSJToken_manaal48',
+'conllWSJToken_hpca50scaled01',
+'conllWSJToken_manaal48scaled01',
+'conll_german',
+'conllWSJToken_rnn80',
+'conll_dep100+mik',
+'conllWSJToken_levy300',
+'conllWSJToken_mikolovGoogleNews300',
+'conllWSJToken_murphy50',
+'conllWSJToken_murphy50scaled01',
+'conllWSJToken_wikipedia2MUNK-25',
+'conll_10scode+f50',
+'conll_german2',
+
+                     }))
+    fprintf('Skipping %s\n', emi);
+    continue; 
+  end
+
+  fprintf('Reading %s\n', emi);
+  tic;
+  trn_i = {};
+  dev_i = {};
+  if isdir([root '/' emi '/22'])
+    for j=2:21                          % read train
+      dir_j = sprintf('%s/%s/%02d', root, emi, j); % e.g. embedded/conllToken_rcv1UNK/02
+      fprintf('Reading %s\n', dir_j);
+      dp = dir(dir_j);  % e.g. dir('embedded/conllToken_rcv1UNK/02')
+      for k=1:numel(dp);
+        if dp(k).isdir continue; end
+        dpk = dp(k).name;               % e.g. wsj_0201.dp
+        if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+        trn_k = loadCoNLL([dir_j '/' dpk]); % e.g. embedded/conllToken_rcv1UNK/02/wsj_0201.dp
+        trn_i = [trn_i trn_k];
+      end % for k=1:numel(dp);
+    end % for j=2:21
+    dir_j = sprintf('%s/%s/%02d', root, emi, 22);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);    % e.g. dir('embedded/conllToken_rcv1UNK/22')
+    for k=1:numel(dp);
+      if dp(k).isdir continue; end
+      dpk = dp(k).name;                 % e.g. wsj_2201.dp
+      if (~strcmp(dpk(end-2:end), '.dp')) continue; end
+      dev_k = loadCoNLL([dir_j '/' dpk]);
+      dev_i = [dev_i dev_k];
+    end % for k=1:numel(dp)
+
+  elseif isdir([root '/' emi '/01'])
+    dir_j = sprintf('%s/%s/%02d', root, emi, 0);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    trn_i = loadCoNLL([dir_j '/' dp3]);
+
+    dir_j = sprintf('%s/%s/%02d', root, emi, 1);
+    fprintf('Reading %s\n', dir_j);
+    dp = dir(dir_j);
+    assert(numel(dp) == 3, dir_j);
+    dp3 = dp(3).name;
+    assert(strcmp(dp3(end-2:end), '.dp'), dir_j);
+    dev_i = loadCoNLL([dir_j '/' dp3]);
+
+  else
+    fprintf('%s is empty\n', emi);
+    continue;
+  end %if
+  toc;
+  fprintf('dumpfeatures...\n');
+  tic; [trn_x, trn_y] = dumpfeatures2(trn_i, fv804); toc;
+  tic; [dev_x, dev_y] = dumpfeatures2(dev_i, fv804); toc;
+  fprintf('k_perceptron_multi_train_gpu...\n');
+  gpuDevice(1);
+  tic;m1=k_perceptron_multi_train_gpu(trn_x,trn_y,m0); toc;
+  tic;[a,b]=model_predict_gpu(dev_x, m1, 1); toc;
+  score = numel(find(a ~= dev_y))/numel(dev_y);
+  fprintf('score:%g\t%s\n', score, emi);
+end % for i=1:numel(em)
+
+	
 2014-07-28  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* eval_conll.m: this is not giving the same result as
@@ -1191,6 +2464,375 @@
 	trainparser_gpu.  Still need to fix model_sparsify (LATER) and
 	k_perceptron_multi_train_gpu (compactify not part of dogma?).
 
+
+
+==> run/run_dynamic_oracle2.m <==
+load logs/mx5
+newFeatureVectors
+idx808 = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s1r1l','s0l1','s0r1l','s2'});
+
+toc;tic;[rt10d1, mx5d1] = trainparser_gpu(mx5, trn1, fv808)
+toc;tic;[a10d1,~]=model_predict_gpu(dev_x(idx808,:), mx5d1, 1);
+numel(find(a10d1 ~= dev_y))/numel(dev_y)
+toc;tic;r10d1 = trainparser_gpu(mx5d1, dev1, fv808)
+save -v7.3 logs/mx5d1 mx5d1 rt10d1 r10d1 a10d1
+
+toc;tic;[rt10d2, mx5d2] = trainparser_gpu(mx5d1, trn1, fv808)
+toc;tic;[a10d2,~]=model_predict_gpu(dev_x(idx808,:), mx5d2, 1);
+numel(find(a10d2 ~= dev_y))/numel(dev_y)
+toc;tic;r10d2 = trainparser_gpu(mx5d2, dev1, fv808)
+save -v7.3 logs/mx5d2 mx5d2 rt10d2 r10d2 a10d2
+
+toc;tic;[rt10d3, mx5d3] = trainparser_gpu(mx5d2, trn1, fv808)
+toc;tic;[a10d3,~]=model_predict_gpu(dev_x(idx808,:), mx5d3, 1);
+numel(find(a10d3 ~= dev_y))/numel(dev_y)
+toc;tic;r10d3 = trainparser_gpu(mx5d3, dev1, fv808)
+save -v7.3 logs/mx5d3 mx5d3 rt10d3 r10d3 a10d3
+
+toc;tic;[rt10d4, mx5d4] = trainparser_gpu(mx5d3, trn1, fv808)
+toc;tic;[a10d4,~]=model_predict_gpu(dev_x(idx808,:), mx5d4, 1);
+numel(find(a10d4 ~= dev_y))/numel(dev_y)
+toc;tic;r10d4 = trainparser_gpu(mx5d4, dev1, fv808)
+save -v7.3 logs/mx5d4 mx5d4 rt10d4 r10d4 a10d4
+
+toc;tic;[rt10d5, mx5d5] = trainparser_gpu(mx5d4, trn1, fv808)
+toc;tic;[a10d5,~]=model_predict_gpu(dev_x(idx808,:), mx5d5, 1);
+numel(find(a10d5 ~= dev_y))/numel(dev_y)
+toc;tic;r10d5 = trainparser_gpu(mx5d5, dev1, fv808)
+save -v7.3 logs/mx5d5 mx5d5 rt10d5 r10d5 a10d5
+
+toc;tic;[rt10d6, mx5d6] = trainparser_gpu(mx5d5, trn1, fv808)
+toc;tic;[a10d6,~]=model_predict_gpu(dev_x(idx808,:), mx5d6, 1);
+numel(find(a10d6 ~= dev_y))/numel(dev_y)
+toc;tic;r10d6 = trainparser_gpu(mx5d6, dev1, fv808)
+save -v7.3 logs/mx5d6 mx5d6 rt10d6 r10d6 a10d6
+
+toc;tic;[rt10d7, mx5d7] = trainparser_gpu(mx5d6, trn1, fv808)
+toc;tic;[a10d7,~]=model_predict_gpu(dev_x(idx808,:), mx5d7, 1);
+numel(find(a10d7 ~= dev_y))/numel(dev_y)
+toc;tic;r10d7 = trainparser_gpu(mx5d7, dev1, fv808)
+save -v7.3 logs/mx5d7 mx5d7 rt10d7 r10d7 a10d7
+
+toc;tic;[rt10d8, mx5d8] = trainparser_gpu(mx5d7, trn1, fv808)
+toc;tic;[a10d8,~]=model_predict_gpu(dev_x(idx808,:), mx5d8, 1);
+numel(find(a10d8 ~= dev_y))/numel(dev_y)
+toc;tic;r10d8 = trainparser_gpu(mx5d8, dev1, fv808)
+save -v7.3 logs/mx5d8 mx5d8 rt10d8 r10d8 a10d8
+
+toc;tic;[rt10d9, mx5d9] = trainparser_gpu(mx5d8, trn1, fv808)
+toc;tic;[a10d9,~]=model_predict_gpu(dev_x(idx808,:), mx5d9, 1);
+numel(find(a10d9 ~= dev_y))/numel(dev_y)
+toc;tic;r10d9 = trainparser_gpu(mx5d9, dev1, fv808)
+save -v7.3 logs/mx5d9 mx5d9 rt10d9 r10d9 a10d9
+
+toc;tic;[rt10d10, mx5d10] = trainparser_gpu(mx5d9, trn1, fv808)
+toc;tic;[a10d10,~]=model_predict_gpu(dev_x(idx808,:), mx5d10, 1);
+numel(find(a10d10 ~= dev_y))/numel(dev_y)
+toc;tic;r10d10 = trainparser_gpu(mx5d10, dev1, fv808)
+save -v7.3 logs/mx5d10 mx5d10 rt10d10 r10d10 a10d10
+
+
+==> run/run_dynamic_oracle.m <==
+toc;tic;[rt10d4, m10d4] = trainparser_gpu(m10d3, trn1, fv804)
+toc;tic;[a10d4,~]=model_predict_gpu(dev_x(idx,:), m10d4, 1);
+numel(find(a10d4 ~= dev_y))/numel(dev_y)
+toc;tic;r10d4 = trainparser_gpu(m10d4, dev1, fv804)
+save -v7.3 logs/m10d4 m10d4 rt10d4 r10d4 a10d4
+
+toc;tic;[rt10d5, m10d5] = trainparser_gpu(m10d4, trn1, fv804)
+toc;tic;[a10d5,~]=model_predict_gpu(dev_x(idx,:), m10d5, 1);
+numel(find(a10d5 ~= dev_y))/numel(dev_y)
+toc;tic;r10d5 = trainparser_gpu(m10d5, dev1, fv804)
+save -v7.3 logs/m10d5 m10d5 rt10d5 r10d5 a10d5
+
+toc;tic;[rt10d6, m10d6] = trainparser_gpu(m10d5, trn1, fv804)
+toc;tic;[a10d6,~]=model_predict_gpu(dev_x(idx,:), m10d6, 1);
+numel(find(a10d6 ~= dev_y))/numel(dev_y)
+toc;tic;r10d6 = trainparser_gpu(m10d6, dev1, fv804)
+save -v7.3 logs/m10d6 m10d6 rt10d6 r10d6 a10d6
+
+toc;tic;[rt10d7, m10d7] = trainparser_gpu(m10d6, trn1, fv804)
+toc;tic;[a10d7,~]=model_predict_gpu(dev_x(idx,:), m10d7, 1);
+numel(find(a10d7 ~= dev_y))/numel(dev_y)
+toc;tic;r10d7 = trainparser_gpu(m10d7, dev1, fv804)
+save -v7.3 logs/m10d7 m10d7 rt10d7 r10d7 a10d7
+
+toc;tic;[rt10d8, m10d8] = trainparser_gpu(m10d7, trn1, fv804)
+toc;tic;[a10d8,~]=model_predict_gpu(dev_x(idx,:), m10d8, 1);
+numel(find(a10d8 ~= dev_y))/numel(dev_y)
+toc;tic;r10d8 = trainparser_gpu(m10d8, dev1, fv804)
+save -v7.3 logs/m10d8 m10d8 rt10d8 r10d8 a10d8
+
+toc;tic;[rt10d9, m10d9] = trainparser_gpu(m10d8, trn1, fv804)
+toc;tic;[a10d9,~]=model_predict_gpu(dev_x(idx,:), m10d9, 1);
+numel(find(a10d9 ~= dev_y))/numel(dev_y)
+toc;tic;r10d9 = trainparser_gpu(m10d9, dev1, fv804)
+save -v7.3 logs/m10d9 m10d9 rt10d9 r10d9 a10d9
+
+toc;tic;[rt10d10, m10d10] = trainparser_gpu(m10d9, trn1, fv804)
+toc;tic;[a10d10,~]=model_predict_gpu(dev_x(idx,:), m10d10, 1);
+numel(find(a10d10 ~= dev_y))/numel(dev_y)
+toc;tic;r10d10 = trainparser_gpu(m10d10, dev1, fv804)
+save -v7.3 logs/m10d10 m10d10 rt10d10 r10d10 a10d10
+
+
+	
+==> run/run_multi_epoch2.m <==
+fv808 = [
+%n0 s0 s1 n1 n0l1 s0r1 s1r1l s0l1 s0r1l s2
+  0 -1 -2  1  0   -1   -2    -1   -1    -3;
+  0  0  0  0 -1    1    1    -1    1     0;
+  0  0  0  0  0    0   -2     0   -2     0;
+];
+
+path('dogma',path);
+hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3);
+mx0=model_init(@compute_kernel,hp);mx0.batchsize=1000; mx0.step=8;
+
+tic;mx1=k_perceptron_multi_train_gpu(trn1x,trn1y,mx0)
+toc;tic;mx1 = compactify(mx1)
+toc;tic;[a1,~]=model_predict_gpu(dev1x, mx1, 1);
+toc;tic;gtrans1 = numel(find(a1 ~= dev1y))/numel(dev1y)
+toc;tic;r1=trainparser_gpu(mx1, dev1, fv808)
+toc;tic;save -v7.3 logs/mx1 mx1 a1 r1
+toc;
+
+tic;mx2=k_perceptron_multi_train_gpu(trn1x,trn1y,mx1)
+toc;tic;mx2 = compactify(mx2)
+toc;tic;[a2,~]=model_predict_gpu(dev1x, mx2, 1);
+toc;tic;gtrans2 = numel(find(a2 ~= dev1y))/numel(dev1y)
+toc;tic;r2=trainparser_gpu(mx2, dev1, fv808)
+toc;tic;save -v7.3 logs/mx2 mx2 a2 r2
+toc;
+
+tic;mx3=k_perceptron_multi_train_gpu(trn1x,trn1y,mx2)
+toc;tic;mx3 = compactify(mx3)
+toc;tic;[a3,~]=model_predict_gpu(dev1x, mx3, 1);
+toc;tic;gtrans3 = numel(find(a3 ~= dev1y))/numel(dev1y)
+toc;tic;r3=trainparser_gpu(mx3, dev1, fv808)
+toc;tic;save -v7.3 logs/mx3 mx3 a3 r3
+toc;
+
+tic;mx4=k_perceptron_multi_train_gpu(trn1x,trn1y,mx3)
+toc;tic;mx4 = compactify(mx4)
+toc;tic;[a4,~]=model_predict_gpu(dev1x, mx4, 1);
+toc;tic;gtrans4 = numel(find(a4 ~= dev1y))/numel(dev1y)
+toc;tic;r4=trainparser_gpu(mx4, dev1, fv808)
+toc;tic;save -v7.3 logs/mx4 mx4 a4 r4
+toc;
+
+tic;mx5=k_perceptron_multi_train_gpu(trn1x,trn1y,mx4)
+toc;tic;mx5 = compactify(mx5)
+toc;tic;[a5,~]=model_predict_gpu(dev1x, mx5, 1);
+toc;tic;gtrans5 = numel(find(a5 ~= dev1y))/numel(dev1y)
+toc;tic;r5=trainparser_gpu(mx5, dev1, fv808)
+toc;tic;save -v7.3 logs/mx5 mx5 a5 r5
+toc;
+
+tic;mx6=k_perceptron_multi_train_gpu(trn1x,trn1y,mx5)
+toc;tic;mx6 = compactify(mx6)
+toc;tic;[a6,~]=model_predict_gpu(dev1x, mx6, 1);
+toc;tic;gtrans6 = numel(find(a6 ~= dev1y))/numel(dev1y)
+toc;tic;r6=trainparser_gpu(mx6, dev1, fv808)
+toc;tic;save -v7.3 logs/mx6 mx6 a6 r6
+toc;
+
+tic;mx7=k_perceptron_multi_train_gpu(trn1x,trn1y,mx6)
+toc;tic;mx7 = compactify(mx7)
+toc;tic;[a7,~]=model_predict_gpu(dev1x, mx7, 1);
+toc;tic;gtrans7 = numel(find(a7 ~= dev1y))/numel(dev1y)
+toc;tic;r7=trainparser_gpu(mx7, dev1, fv808)
+toc;tic;save -v7.3 logs/mx7 mx7 a7 r7
+toc;
+
+tic;mx8=k_perceptron_multi_train_gpu(trn1x,trn1y,mx7)
+toc;tic;mx8 = compactify(mx8)
+toc;tic;[a8,~]=model_predict_gpu(dev1x, mx8, 1);
+toc;tic;gtrans8 = numel(find(a8 ~= dev1y))/numel(dev1y)
+toc;tic;r8=trainparser_gpu(mx8, dev1, fv808)
+toc;tic;save -v7.3 logs/mx8 mx8 a8 r8
+toc;
+
+tic;mx9=k_perceptron_multi_train_gpu(trn1x,trn1y,mx8)
+toc;tic;mx9 = compactify(mx9)
+toc;tic;[a9,~]=model_predict_gpu(dev1x, mx9, 1);
+toc;tic;gtrans9 = numel(find(a9 ~= dev1y))/numel(dev1y)
+toc;tic;r9=trainparser_gpu(mx9, dev1, fv808)
+toc;tic;save -v7.3 logs/mx9 mx9 a9 r9
+toc;
+
+tic;mx10=k_perceptron_multi_train_gpu(trn1x,trn1y,mx9)
+toc;tic;mx10 = compactify(mx10)
+toc;tic;[a10,~]=model_predict_gpu(dev1x, mx10, 1);
+toc;tic;gtrans10 = numel(find(a10 ~= dev1y))/numel(dev1y)
+toc;tic;r10=trainparser_gpu(mx10, dev1, fv808)
+toc;tic;save -v7.3 logs/mx10 mx10 a10 r10
+toc;
+
+tic;mx11=k_perceptron_multi_train_gpu(trn1x,trn1y,mx10)
+toc;tic;mx11 = compactify(mx11)
+toc;tic;[a11,~]=model_predict_gpu(dev1x, mx11, 1);
+toc;tic;gtrans11 = numel(find(a11 ~= dev1y))/numel(dev1y)
+toc;tic;r11=trainparser_gpu(mx11, dev1, fv808)
+toc;tic;save -v7.3 logs/mx11 mx11 a11 r11
+toc;
+
+tic;mx12=k_perceptron_multi_train_gpu(trn1x,trn1y,mx11)
+toc;tic;mx12 = compactify(mx12)
+toc;tic;[a12,~]=model_predict_gpu(dev1x, mx12, 1);
+toc;tic;gtrans12 = numel(find(a12 ~= dev1y))/numel(dev1y)
+toc;tic;r12=trainparser_gpu(mx12, dev1, fv808)
+toc;tic;save -v7.3 logs/mx12 mx12 a12 r12
+toc;
+
+tic;mx13=k_perceptron_multi_train_gpu(trn1x,trn1y,mx12)
+toc;tic;mx13 = compactify(mx13)
+toc;tic;[a13,~]=model_predict_gpu(dev1x, mx13, 1);
+toc;tic;gtrans13 = numel(find(a13 ~= dev1y))/numel(dev1y)
+toc;tic;r13=trainparser_gpu(mx13, dev1, fv808)
+toc;tic;save -v7.3 logs/mx13 mx13 a13 r13
+toc;
+
+tic;mx14=k_perceptron_multi_train_gpu(trn1x,trn1y,mx13)
+toc;tic;mx14 = compactify(mx14)
+toc;tic;[a14,~]=model_predict_gpu(dev1x, mx14, 1);
+toc;tic;gtrans14 = numel(find(a14 ~= dev1y))/numel(dev1y)
+toc;tic;r14=trainparser_gpu(mx14, dev1, fv808)
+toc;tic;save -v7.3 logs/mx14 mx14 a14 r14
+toc;
+
+tic;mx15=k_perceptron_multi_train_gpu(trn1x,trn1y,mx14)
+toc;tic;mx15 = compactify(mx15)
+toc;tic;[a15,~]=model_predict_gpu(dev1x, mx15, 1);
+toc;tic;gtrans15 = numel(find(a15 ~= dev1y))/numel(dev1y)
+toc;tic;r15=trainparser_gpu(mx15, dev1, fv808)
+toc;tic;save -v7.3 logs/mx15 mx15 a15 r15
+toc;
+
+tic;mx16=k_perceptron_multi_train_gpu(trn1x,trn1y,mx15)
+toc;tic;mx16 = compactify(mx16)
+toc;tic;[a16,~]=model_predict_gpu(dev1x, mx16, 1);
+toc;tic;gtrans16 = numel(find(a16 ~= dev1y))/numel(dev1y)
+toc;tic;r16=trainparser_gpu(mx16, dev1, fv808)
+toc;tic;save -v7.3 logs/mx16 mx16 a16 r16
+toc;
+
+tic;mx17=k_perceptron_multi_train_gpu(trn1x,trn1y,mx16)
+toc;tic;mx17 = compactify(mx17)
+toc;tic;[a17,~]=model_predict_gpu(dev1x, mx17, 1);
+toc;tic;gtrans17 = numel(find(a17 ~= dev1y))/numel(dev1y)
+toc;tic;r17=trainparser_gpu(mx17, dev1, fv808)
+toc;tic;save -v7.3 logs/mx17 mx17 a17 r17
+toc;
+
+tic;mx18=k_perceptron_multi_train_gpu(trn1x,trn1y,mx17)
+toc;tic;mx18 = compactify(mx18)
+toc;tic;[a18,~]=model_predict_gpu(dev1x, mx18, 1);
+toc;tic;gtrans18 = numel(find(a18 ~= dev1y))/numel(dev1y)
+toc;tic;r18=trainparser_gpu(mx18, dev1, fv808)
+toc;tic;save -v7.3 logs/mx18 mx18 a18 r18
+toc;
+
+tic;mx19=k_perceptron_multi_train_gpu(trn1x,trn1y,mx18)
+toc;tic;mx19 = compactify(mx19)
+toc;tic;[a19,~]=model_predict_gpu(dev1x, mx19, 1);
+toc;tic;gtrans19 = numel(find(a19 ~= dev1y))/numel(dev1y)
+toc;tic;r19=trainparser_gpu(mx19, dev1, fv808)
+toc;tic;save -v7.3 logs/mx19 mx19 a19 r19
+toc;
+
+tic;mx20=k_perceptron_multi_train_gpu(trn1x,trn1y,mx19)
+toc;tic;mx20 = compactify(mx20)
+toc;tic;[a20,~]=model_predict_gpu(dev1x, mx20, 1);
+toc;tic;gtrans20 = numel(find(a20 ~= dev1y))/numel(dev1y)
+toc;tic;r20=trainparser_gpu(mx20, dev1, fv808)
+toc;tic;save -v7.3 logs/mx20 mx20 a20 r20
+toc;
+
+==> run/run_multi_epoch.m <==
+m10=compactify(m10)
+
+tic;m11=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m10)
+toc;tic;m11 = compactify(m11)
+toc;tic;[a11,b11]=model_predict_gpu(dev_x(idx,:), m11, 1);
+toc;tic;gtrans11 = numel(find(a11 ~= dev_y))/numel(dev_y)
+toc;tic;r11=trainparser_gpu(m11, dev1, fv804)
+toc;tic;save -v7.3 logs/m11 m11 a11 b11 r11
+toc;
+
+tic;m12=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m11)
+toc;tic;m12 = compactify(m12)
+toc;tic;[a12,b12]=model_predict_gpu(dev_x(idx,:), m12, 1);
+toc;tic;gtrans12 = numel(find(a12 ~= dev_y))/numel(dev_y)
+toc;tic;r12=trainparser_gpu(m12, dev1, fv804)
+toc;tic;save -v7.3 logs/m12 m12 a12 b12 r12
+toc;
+
+tic;m13=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m12)
+toc;tic;m13 = compactify(m13)
+toc;tic;[a13,b13]=model_predict_gpu(dev_x(idx,:), m13, 1);
+toc;tic;gtrans13 = numel(find(a13 ~= dev_y))/numel(dev_y)
+toc;tic;r13=trainparser_gpu(m13, dev1, fv804)
+toc;tic;save -v7.3 logs/m13 m13 a13 b13 r13
+toc;
+
+tic;m14=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m13)
+toc;tic;m14 = compactify(m14)
+toc;tic;[a14,b14]=model_predict_gpu(dev_x(idx,:), m14, 1);
+toc;tic;gtrans14 = numel(find(a14 ~= dev_y))/numel(dev_y)
+toc;tic;r14=trainparser_gpu(m14, dev1, fv804)
+toc;tic;save -v7.3 logs/m14 m14 a14 b14 r14
+toc;
+
+tic;m15=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m14)
+toc;tic;m15 = compactify(m15)
+toc;tic;[a15,b15]=model_predict_gpu(dev_x(idx,:), m15, 1);
+toc;tic;gtrans15 = numel(find(a15 ~= dev_y))/numel(dev_y)
+toc;tic;r15=trainparser_gpu(m15, dev1, fv804)
+toc;tic;save -v7.3 logs/m15 m15 a15 b15 r15
+toc;
+
+tic;m16=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m15)
+toc;tic;m16 = compactify(m16)
+toc;tic;[a16,b16]=model_predict_gpu(dev_x(idx,:), m16, 1);
+toc;tic;gtrans16 = numel(find(a16 ~= dev_y))/numel(dev_y)
+toc;tic;r16=trainparser_gpu(m16, dev1, fv804)
+toc;tic;save -v7.3 logs/m16 m16 a16 b16 r16
+toc;
+
+tic;m17=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m16)
+toc;tic;m17 = compactify(m17)
+toc;tic;[a17,b17]=model_predict_gpu(dev_x(idx,:), m17, 1);
+toc;tic;gtrans17 = numel(find(a17 ~= dev_y))/numel(dev_y)
+toc;tic;r17=trainparser_gpu(m17, dev1, fv804)
+toc;tic;save -v7.3 logs/m17 m17 a17 b17 r17
+toc;
+
+tic;m18=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m17)
+toc;tic;m18 = compactify(m18)
+toc;tic;[a18,b18]=model_predict_gpu(dev_x(idx,:), m18, 1);
+toc;tic;gtrans18 = numel(find(a18 ~= dev_y))/numel(dev_y)
+toc;tic;r18=trainparser_gpu(m18, dev1, fv804)
+toc;tic;save -v7.3 logs/m18 m18 a18 b18 r18
+toc;
+
+tic;m19=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m18)
+toc;tic;m19 = compactify(m19)
+toc;tic;[a19,b19]=model_predict_gpu(dev_x(idx,:), m19, 1);
+toc;tic;gtrans19 = numel(find(a19 ~= dev_y))/numel(dev_y)
+toc;tic;r19=trainparser_gpu(m19, dev1, fv804)
+toc;tic;save -v7.3 logs/m19 m19 a19 b19 r19
+toc;
+
+tic;m20=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m19)
+toc;tic;m20 = compactify(m20)
+toc;tic;[a20,b20]=model_predict_gpu(dev_x(idx,:), m20, 1);
+toc;tic;gtrans20 = numel(find(a20 ~= dev_y))/numel(dev_y)
+toc;tic;r20=trainparser_gpu(m20, dev1, fv804)
+toc;tic;save -v7.3 logs/m20 m20 a20 b20 r20
+toc;
+	
+	
 2014-07-26  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* k_perceptron_multi_train_gpu.m: check to see if during
@@ -1205,6 +2847,16 @@
 	confirmed the same results for m1->m2 (at least up to the point
 	where batchsize was reduced to fit memory).  This, combined with
 	compactify should allow us to run one epoch in < 20 mins.
+
+==> run/gpu_train_script.m <==
+gpuDevice(1);
+m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
+tic();m1=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m0);toc();
+tic();m2=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m1);toc();
+tic();m3=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m2);toc();
+tic();m4=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m3);toc();
+tic();m5=k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m4);toc();
+
 
 2014-07-25  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -1316,6 +2968,19 @@
 
 	* loadCoNLL.m: modified to load the whole information.
 
+==> run/run_batchsize.m <==
+hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3);
+m0 = model_init(@compute_kernel, hp);
+m0.step = 10;
+for bs=500:500:3000
+  batchsize = bs
+  m0.batchsize = bs;
+  gpuDevice(1);
+  tic();m1 = k_perceptron_multi_train_gpu(trn_x(idx,:),trn_y,m0); ...
+             toc();
+end
+
+	
 2014-07-24  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* DONE:
@@ -1628,6 +3293,21 @@
 	35675 40117 0.889273873919
 	balina:parser[21:41:53(10163)]$
 
+
+==> run/run_idx708.m <==
+m0=model_init(@compute_kernel,hp);m0.batchsize=1250; m0.step=8;
+tic();m1=k_perceptron_multi_train_gpu(trn_x(idx708,:),trn_y,m0);toc();
+show_m1=m1
+tic(); [a,b]=model_predict_gpu(dev_x(idx708,:), m1, 1); toc();
+numel(find(a ~= dev_y))/numel(dev_y)
+tic(); [a,b]=model_predict_gpu(dev_x(idx708,:), m1, 0); toc();
+numel(find(a ~= dev_y))/numel(dev_y)
+tic(); r1=testparser(m1, dev_w, dev_h, idx708); toc();
+show_r1=r1
+r1.nerr/r1.ntot
+r1.xerr/r1.xtot
+
+	
 2014-07-22  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* k_perceptron_multi_train_gpu.m: To optimize featselect we need
@@ -1709,6 +3389,60 @@
 	2000	118131	6.86	336.41
 	2500	out-of-memory
 
+
+==> run/run_learners_5k.m <==
+x_tr = trn_x(idx, 1:217603);
+y_tr = trn_y(1:217603);
+x_te = dev_x(idx, :);
+y_te = dev_y;
+hp = struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3)
+m0 = model_init(@compute_kernel,hp);
+fprintf('last\tavg\tnsv\ttime\talgo\n');
+
+tic();
+m1 = k_perceptron_multi_train(x_tr, y_tr, m0)
+m1ttm = toc();
+m1nsv = size(m1.beta, 2);
+m1lst = model_predict(x_te, m1, 0);
+m1avg = model_predict(x_te, m1, 1);
+m1lst_err = numel(find(m1lst ~= y_te))/numel(y_te)*100;
+m1avg_err = numel(find(m1avg ~= y_te))/numel(y_te)*100;
+fprintf('%.2f\t%.2f\t%d\t%.2f\tk_perceptron_multi_train\n', ...
+        m1lst_err, m1avg_err, m1nsv, m1ttm);
+
+tic();
+m2 = k_pa_multi_train(x_tr, y_tr, m0)
+m2ttm = toc();
+m2nsv = size(m2.beta, 2);
+m2lst = model_predict(x_te, m2, 0);
+m2avg = model_predict(x_te, m2, 1);
+m2lst_err = numel(find(m2lst ~= y_te))/numel(y_te)*100;
+m2avg_err = numel(find(m2avg ~= y_te))/numel(y_te)*100;
+fprintf('%.2f\t%.2f\t%d\t%.2f\tk_pa_multi_train\n', ...
+        m2lst_err, m2avg_err, m2nsv, m2ttm);
+
+tic();
+m3 = k_projectron2_multi_train(x_tr, y_tr, m0)
+m3ttm = toc();
+m3nsv = size(m3.beta, 2);
+m3lst = model_predict(x_te, m3, 0);
+m3avg = model_predict(x_te, m3, 1);
+m3lst_err = numel(find(m3lst ~= y_te))/numel(y_te)*100;
+m3avg_err = numel(find(m3avg ~= y_te))/numel(y_te)*100;
+fprintf('%.2f\t%.2f\t%d\t%.2f\tk_projectron2_multi_train\n', ...
+        m3lst_err, m3avg_err, m3nsv, m3ttm);
+
+path('libsvm-3.18/matlab', path);
+tic();
+m4 = svmtrain(y_tr', x_tr', '-t 1 -d 3 -g 1 -r 1 -c 1')
+m4ttm = toc();
+m4nsv = m4.totalSV;
+[m4lst, m4acc, m4val] = svmpredict(y_te', x_te', m4);
+m4lst_err = numel(find(m4lst ~= y_te'))/numel(y_te)*100;
+fprintf('%.2f\t%.2f\t%d\t%.2f\tsvmtrain\n', ...
+        m4lst_err, 0, m4nsv, m4ttm);
+
+	
 2014-07-21  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* trainparser_gpu.m: Profiling trainparser to find the ideal
@@ -2171,6 +3905,25 @@
 	different scaling.  So we will just copy the norm from the old
 	beta at the same number of sv.
 
+==> run/run_altay.m <==
+tic(); r3=testparser(model03, dev_w, dev_h, idx); toc();
+r3
+r3.nerr/r3.ntot
+r3.xerr/r3.xtot
+x_te = x5k(idx,1:10000);
+y_te = y5k(1:10000);
+x_tr = x5k(idx,10001:end);
+y_tr = y5k(10001:end);
+p4 = struct('x_te', x_te, 'y_te', y_te, epsilon, 0.1, margin, 1, eta, 0.5);
+tic(); model04 = model_sparsify(model03, x_tr, y_tr, p4); toc();
+model04
+tic(); [a4,b4]=model_predict_gpu(dev_x(idx,:), model04, 0); toc();
+numel(find(a4 ~= dev_y))/numel(dev_y)
+tic(); r4=testparser_par(model04, dev_w, dev_h, idx); toc();
+r4
+r4.nerr/r4.ntot
+r4.xerr/r4.xtot
+
 2014-07-14  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* testparser_par.m: parfor version.
@@ -2611,6 +4364,51 @@ xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 	train	last	avg	nsv	time
 	207603	7.81	6.18	17318	1939.12
 
+
+==> run/run_polydegree.m <==
+% load conllWSJToken_wikipedia2MUNK-50.mat;
+% Elapsed time is 9.625437 seconds.
+% [x5k,y5k]=dumpfeatures(trn_w(1:5000),trn_h(1:5000));
+% Elapsed time is 341.514392 seconds.
+
+[fi,i] = featureindices();
+assert(i == size(x5k,1));
+feats = {'n0','n0l','n0r','n0+','n0-', ...
+         's0','s0l','s0r','s0+','s0-', ...
+         's1','s1l','s1r','s1+','s1-', ...
+         'n1','n1l','n1r','n1+','n1-', ...
+         'n0l1','n0l1l','n0l1r','n0l1+','n0l1-', ...
+         's0r1','s0r1l','s0r1r','s0r1+','s0r1-', ...
+         's0l1','s0l1l','s0l1r','s0l1+','s0l1-', ...
+         's1r1','s1r1l','s1r1r','s1r1+','s1r1-', ...
+         'n0s0','s0s1'};
+idx = [];
+for i=1:length(feats) idx = [idx, fi(feats{i})]; end
+
+x_te = x5k(idx,1:10000);
+y_te = y5k(1:10000);
+x_tr = x5k(idx,10001:end);
+y_tr = y5k(10001:end);
+
+hp.type = 'poly';
+hp.gamma = 1;
+hp.coef0 = 1;
+
+fprintf('degree\tlast\tavg\tnsv\ttime\n');
+for d=1:9
+  hp.degree = d;
+  model = model_init(@compute_kernel, hp);
+  model.step = 1000000;
+  tic();
+  model = k_perceptron_multi_train(x_tr, y_tr, model);
+  telapsed = toc();
+  nsv = size(model.beta, 2);
+  last = numel(find(y_te ~= model_predict(x_te, model, 0)))/numel(y_te)*100;
+  avg = numel(find(y_te ~= model_predict(x_te, model, 1)))/numel(y_te)*100;
+  fprintf('%d\t%.2f\t%.2f\t%d\t%.2f\n', hp.degree, last, avg, nsv, telapsed);
+end
+
+	
 2014-07-12  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* testparser.m: shows that 5.4% static error rate corresponds to 15%
@@ -2770,6 +4568,52 @@ xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 	4239	20299	8400	6630	615	2.69433e+07
 	6213	29002	13377	5899	599	9.47589e+06
 
+==> run/run_perceptron.m <==
+% path('dogma',path);
+function [last,avg,nsv,time,model] = run_perceptron(x_tr, y_tr, x_te, y_te, kernel)
+model = model_init(@compute_kernel, kernel);
+model.step = 1000000;
+tic();
+model = k_perceptron_multi_train(x_tr,y_tr,model);
+pred_perceptron_last = model_predict(x_te,model,0);
+pred_perceptron_av = model_predict(x_te,model,1);
+time = toc();
+last = numel(find(pred_perceptron_last~= y_te))/numel(y_te)*100;
+avg = numel(find(pred_perceptron_av~=y_te))/numel(y_te)*100;
+nsv = size(model.beta, 2);
+end
+
+	
+==> run/run_sparsify5000.m <==
+% load conllWSJToken_wikipedia2MUNK-50.mat;
+% Elapsed time is 9.625437 seconds.
+% [x5k,y5k]=dumpfeatures(trn_w(1:5000),trn_h(1:5000));
+% Elapsed time is 341.514392 seconds.
+% load dump5000-model.mat; % loads model
+% Elapsed time is 0.704188 seconds.
+
+[fi,i] = featureindices();
+assert(i == size(x5k,1));
+feats = {'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'};
+idx = [];
+for i=1:length(feats)
+  idx = [idx, fi(feats{i})];
+end % for
+
+x_te = x5k(idx,1:10000);
+y_te = y5k(1:10000);
+x_tr = x5k(idx,10001:end);
+y_tr = y5k(10001:end);
+return
+model.step = 100;
+m = model_sparsify(x_tr, y_tr, model, 1);
+
+p0 = model_predict(x_te, model, 1);
+numel(find(p0 ~= y_te))
+p = model_predict(x_te, m, 0);
+numel(find(p ~= y_te))
+
+	
 2014-07-11  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* sparsify5000.m: Saved as sparsify5000.log and
@@ -2898,6 +4742,183 @@ xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 	190000	7.81	6.25	16100	1643.82
 	200000	8.40	6.23	16832	1800.59
 	207603	7.81	6.18	17318	1939.12
+
+==> run/dump1000b.m <==
+% path('dogma', path);
+% 
+
+tic();
+fprintf('Loading dump1000b dataset\n');
+load dump1000b.mat;                     % load x,y
+toc();
+
+% reduce features to 8 basic words
+tic();
+fprintf('Splitting features\n');
+[fi,i] = featureindices();
+assert(i == size(x,1));
+
+feats = {'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'};
+fprintf('Using poly kernel on %s\n', strjoin(feats,','));
+idx = [];
+for i=1:length(feats)
+  idx = [idx, fi(feats{i})];
+end % for
+x = x(idx, :);
+x_te = x(:,1:10000);
+y_te = y(1:10000);
+x_tr = x(:,10001:end);
+y_tr = y(10001:end);
+%x_tr = x(:,10001:20000);
+%y_tr = y(10001:20000);
+toc();
+
+fprintf('degree\tlast\tavg\tnsv\ttime\n');
+for degree=1:9
+hp.type = 'poly';
+hp.gamma = 1;
+hp.coef0 = 1;
+hp.degree = degree;
+
+% fprintf('Using %dth degree poly kernel\n', hp.degree);
+
+% for i=[.07,.09]
+% hp.type = 'rbf';
+% hp.gamma = i;
+% fprintf('Using rbf kernel with gamma=%f\n', hp.gamma);
+
+model_bak = model_init(@compute_kernel,hp);
+model_bak.step = 1000000;
+
+tic();
+%% PERC
+% train Perceptron
+% fprintf('Training Perceptron model...\n');
+model_perceptron = k_perceptron_multi_train(x_tr,y_tr,model_bak);
+% fprintf('Done!\n');
+% fprintf('Number of support vectors last solution:%d\n',size(model_perceptron.beta, 2));
+% fprintf('Number of support vectors averaged solution:%d\n',size(model_perceptron.beta2, 2));
+% fprintf('Testing last solution...');
+pred_perceptron_last = model_predict(x_te,model_perceptron,0);
+% fprintf('Done!\n');
+% fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_perceptron_last~=y_te))/numel(y_te)*100);
+% fprintf('Testing averaged solution...');
+pred_perceptron_av = model_predict(x_te,model_perceptron,1);
+% fprintf('Done!\n');
+% fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_perceptron_av~=y_te))/numel(y_te)*100);
+
+telapsed = toc();
+err_last = numel(find(pred_perceptron_last~= y_te))/numel(y_te)*100;
+err_av = numel(find(pred_perceptron_av~=y_te))/numel(y_te)*100;
+nsv = size(model_perceptron.beta, 2);
+fprintf('%d\t%.2f\t%.2f\t%d\t%.2f\n', ...
+        degree, err_last, err_av, nsv, telapsed);
+
+end
+return
+
+%% PA_I
+tic();
+fprintf('Training PA-I model...\n');
+model_pa1 = k_pa_multi_train(x_tr,y_tr,model_bak);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_pa1.beta, 2));
+fprintf('Number of support vectors averaged solution:%d\n',size(model_pa1.beta2, 2));
+fprintf('Testing last solution...');
+pred_pa1_last = model_predict(x_te,model_pa1,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_pa1_last~=y_te))/numel(y_te)*100);
+fprintf('Testing averaged solution...');
+pred_pa1_av = model_predict(x_te,model_pa1,1);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_pa1_av~=y_te))/numel(y_te)*100);
+toc();
+
+%% PA_II
+tic();
+fprintf('Training PA-II model...\n');
+model_pa2 = model_bak;
+model_pa2.update = 2;
+model_pa2 = k_pa_multi_train(x_tr,y_tr,model_pa2);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_pa2.beta, 2));
+fprintf('Number of support vectors averaged solution:%d\n',size(model_pa2.beta2, 2));
+fprintf('Testing last solution...');
+pred_pa2_last = model_predict(x_te,model_pa2,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_pa2_last~=y_te))/numel(y_te)*100);
+fprintf('Testing averaged solution...');
+pred_pa2_av = model_predict(x_te,model_pa2,1);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_pa2_av~=y_te))/numel(y_te)*100);
+toc();
+
+
+%% PROJ++ eta=0.1
+tic();
+% train Projectron++
+fprintf('Training Projectron++ model...\n');
+model_projectron2 = k_projectron2_multi_train(x_tr,y_tr,model_bak);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_projectron2.beta, 2));
+fprintf('Number of support vectors averaged solution:%d\n',size(model_projectron2.beta2, 2));
+fprintf('Testing last solution...');
+pred_projectron2_last = model_predict(x_te,model_projectron2,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_projectron2_last~=y_te))/numel(y_te)*100);
+fprintf('Testing averaged solution...');
+pred_projectron2_av = model_predict(x_te,model_projectron2,1);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_projectron2_av~=y_te))/numel(y_te)*100);
+toc();
+
+%% RBP
+tic();
+% set maximum number of support vectors for RBP
+model_bak.maxSV = size(model_projectron2.beta,2);
+% train RBP
+fprintf('Training RBP...\n');
+model_rbp = k_perceptron_multi_train(x_tr,y_tr,model_bak);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_rbp.beta, 2));
+fprintf('Testing last solution...');
+pred_rbp_last = model_predict(x_te,model_rbp,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_rbp_last~=y_te))/numel(y_te)*100);
+toc();
+
+% tic();
+% fprintf('Plotting error and SV curves...\n');
+% % plot error curves
+% figure(1)
+% plot(model_pa1.aer(100:end),'k')
+% hold on
+% plot(model_perceptron.aer(100:end),'c')
+% plot(model_projectron.aer(100:end),'b')
+% plot(model_projectron2.aer(100:end),'m')
+% plot(model_rbp.aer(100:end),'r')
+% plot(model_forgetron.aer(100:end),'y')
+% plot(model_oisvm.aer(100:end),'g')
+% grid
+% legend('PA-I','Perceptron','Projectron','Projectron++','RBP','Forgetron','OISVM')
+% xlabel('Number of Samples')
+% ylabel('Average Online Error')
+
+% % plot support vector curves
+% figure(2)
+% plot(model_pa1.numSV,'k')
+% hold on
+% plot(model_perceptron.numSV,'c')
+% plot(model_projectron.numSV,'b')
+% plot(model_projectron2.numSV,'m')
+% plot(model_rbp.numSV,'r')
+% plot(model_forgetron.numSV,'y')
+% plot(model_oisvm.numSV,'g')
+% legend('PA-I','Perceptron','Projectron','Projectron++','RBP','Forgetron','OISVM','Location','NorthWest')
+% grid
+% xlabel('Number of Samples')
+% ylabel('Number of Support Vectors')
+% toc();
 
 	* dump1000b.m: Rerun the poly kernel experiment with the basic
 	poly3 feature set:  Best result 7.65->8.38 probably due to removal
@@ -3111,6 +5132,160 @@ xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 	8	11.68	10.18	5035	201.17
 	9	11.44	10.28	5038	203.50
 
+==> run/dump1000.m <==
+% path('dogma', path);
+% 
+
+tic();
+fprintf('Loading dump1000 data set\n');
+load dump1000.mat;
+
+x_te = x(:,1:10000);
+y_te = y(1:10000);
+x_tr = x(:,10001:end);
+y_tr = y(10001:end);
+%x_tr = x(:,10001:20000);
+%y_tr = y(10001:20000);
+toc();
+
+% for i=1:9
+% hp.type = 'poly';
+% hp.gamma = 1;
+% hp.coef0 = 1;
+% hp.degree = i;
+% fprintf('Using %dth degree poly kernel\n', hp.degree);
+
+for i=[.07,.09]
+hp.type = 'rbf';
+hp.gamma = i;
+fprintf('Using rbf kernel with gamma=%f\n', hp.gamma);
+
+model_bak = model_init(@compute_kernel,hp);
+
+tic();
+%% PERC
+% train Perceptron
+fprintf('Training Perceptron model...\n');
+model_perceptron = k_perceptron_multi_train(x_tr,y_tr,model_bak);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_perceptron.beta, 2));
+fprintf('Number of support vectors averaged solution:%d\n',size(model_perceptron.beta2, 2));
+fprintf('Testing last solution...');
+pred_perceptron_last = model_predict(x_te,model_perceptron,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_perceptron_last~=y_te))/numel(y_te)*100);
+fprintf('Testing averaged solution...');
+pred_perceptron_av = model_predict(x_te,model_perceptron,1);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_perceptron_av~=y_te))/numel(y_te)*100);
+toc();
+end
+return
+
+%% PA_I
+tic();
+fprintf('Training PA-I model...\n');
+model_pa1 = k_pa_multi_train(x_tr,y_tr,model_bak);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_pa1.beta, 2));
+fprintf('Number of support vectors averaged solution:%d\n',size(model_pa1.beta2, 2));
+fprintf('Testing last solution...');
+pred_pa1_last = model_predict(x_te,model_pa1,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_pa1_last~=y_te))/numel(y_te)*100);
+fprintf('Testing averaged solution...');
+pred_pa1_av = model_predict(x_te,model_pa1,1);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_pa1_av~=y_te))/numel(y_te)*100);
+toc();
+
+%% PA_II
+tic();
+fprintf('Training PA-II model...\n');
+model_pa2 = model_bak;
+model_pa2.update = 2;
+model_pa2 = k_pa_multi_train(x_tr,y_tr,model_pa2);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_pa2.beta, 2));
+fprintf('Number of support vectors averaged solution:%d\n',size(model_pa2.beta2, 2));
+fprintf('Testing last solution...');
+pred_pa2_last = model_predict(x_te,model_pa2,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_pa2_last~=y_te))/numel(y_te)*100);
+fprintf('Testing averaged solution...');
+pred_pa2_av = model_predict(x_te,model_pa2,1);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_pa2_av~=y_te))/numel(y_te)*100);
+toc();
+
+
+%% PROJ++ eta=0.1
+tic();
+% train Projectron++
+fprintf('Training Projectron++ model...\n');
+model_projectron2 = k_projectron2_multi_train(x_tr,y_tr,model_bak);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_projectron2.beta, 2));
+fprintf('Number of support vectors averaged solution:%d\n',size(model_projectron2.beta2, 2));
+fprintf('Testing last solution...');
+pred_projectron2_last = model_predict(x_te,model_projectron2,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n',numel(find(pred_projectron2_last~=y_te))/numel(y_te)*100);
+fprintf('Testing averaged solution...');
+pred_projectron2_av = model_predict(x_te,model_projectron2,1);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_projectron2_av~=y_te))/numel(y_te)*100);
+toc();
+
+%% RBP
+tic();
+% set maximum number of support vectors for RBP
+model_bak.maxSV = size(model_projectron2.beta,2);
+% train RBP
+fprintf('Training RBP...\n');
+model_rbp = k_perceptron_multi_train(x_tr,y_tr,model_bak);
+fprintf('Done!\n');
+fprintf('Number of support vectors last solution:%d\n',size(model_rbp.beta, 2));
+fprintf('Testing last solution...');
+pred_rbp_last = model_predict(x_te,model_rbp,0);
+fprintf('Done!\n');
+fprintf('%5.2f%% of errors on the test set.\n\n',numel(find(pred_rbp_last~=y_te))/numel(y_te)*100);
+toc();
+
+% tic();
+% fprintf('Plotting error and SV curves...\n');
+% % plot error curves
+% figure(1)
+% plot(model_pa1.aer(100:end),'k')
+% hold on
+% plot(model_perceptron.aer(100:end),'c')
+% plot(model_projectron.aer(100:end),'b')
+% plot(model_projectron2.aer(100:end),'m')
+% plot(model_rbp.aer(100:end),'r')
+% plot(model_forgetron.aer(100:end),'y')
+% plot(model_oisvm.aer(100:end),'g')
+% grid
+% legend('PA-I','Perceptron','Projectron','Projectron++','RBP','Forgetron','OISVM')
+% xlabel('Number of Samples')
+% ylabel('Average Online Error')
+
+% % plot support vector curves
+% figure(2)
+% plot(model_pa1.numSV,'k')
+% hold on
+% plot(model_perceptron.numSV,'c')
+% plot(model_projectron.numSV,'b')
+% plot(model_projectron2.numSV,'m')
+% plot(model_rbp.numSV,'r')
+% plot(model_forgetron.numSV,'y')
+% plot(model_oisvm.numSV,'g')
+% legend('PA-I','Perceptron','Projectron','Projectron++','RBP','Forgetron','OISVM','Location','NorthWest')
+% grid
+% xlabel('Number of Samples')
+% ylabel('Number of Support Vectors')
+% toc();
+
+	
 	* dump1000.m, k_perceptron_multi_train: Using first 10000 as test
 	and 37716 as train (1 epoch) using all 1752 features.  At 3
 	minutes and 90+ accuracy we can use this to do feature and kernel
@@ -3243,3 +5418,15 @@ xx	8	8.53	6.22(s0s1)			17775	252.31	n0,n0l1,n1,s0,s0r,s0r1,s0s1,s1
 
 	* loadCONLL.m: Load conll data to cell arrays.
 
+==> run/savedata.m <==
+clear;
+dir = '/ai/home/vcirik/eParse/run/embedded/conllWSJToken_wikipedia2MUNK-50/';
+tic();
+[trn_w, trn_h] = loadCoNLL([dir '00/wsj_0001.dp']); % 989860 lines, wsj 02-21
+toc(); tic();
+[dev_w, dev_h] = loadCoNLL([dir '01/wsj_0101.dp']); % 41817 lines, wsj 22
+toc(); tic();
+[tst_w, tst_h] = loadCoNLL([dir '02/wsj_0201.dp']); % 191297 lines, wsj 00, 01, 23, 24
+toc(); tic();
+save('conllWSJToken_wikipedia2MUNK-50');
+toc();
