@@ -1,4 +1,4 @@
-function [model, scores] = perceptron(X,Y,model,varargin)
+function [model, scores, aer] = perceptron(X,Y,model,varargin)
 
 % perceptron: written by Deniz Yuret, August 2, 2014.
 % Multi-class, mini-batch, gpu enabled perceptron.
@@ -93,6 +93,10 @@ if opts.update
   model.SV = [ gather(m.svtr1)', gather(m.svtr2)' ];
   model.batchsize = m.batchsize;
   model = compactify(model);
+end
+
+if nargout >= 3
+  aer = m.nerr/nx;
 end
 
 clear m;
@@ -216,6 +220,9 @@ end
 m.nerr = 0;
 if nargout_save >= 2
   scores = [];
+end
+if nargout_save >= 3
+  aer = 0;
 end
 
 end % perceptron_init
