@@ -247,7 +247,7 @@ m.svtr1 = [ gather(m.svtr1); gather(m.svtr2) ];
 m.svtr2 = zeros(0, nd);
 m.beta = gather(m.beta);
 m.beta2 = gather(m.beta2);
-if gpu
+if opts.gpu
   reset(gdev);
   m.svtr1 = gpuArray(m.svtr1);
   m.svtr2 = gpuArray(m.svtr2);
@@ -288,9 +288,9 @@ if opts.gpu
   end
   assert(nk >= 1, 'g=%.2g nk=%d sv=%.2g beta=%.2g beta2=%.2g, no space left.\n', gmem, ...
          nk, numel(m.svtr1), numel(m.beta), numel(m.beta2));
-else % if gpu
+else % if opts.gpu
   nk = m.batchsize;
-end % if gpu
+end % if opts.gpu
 end % real_batchsize
 
 
