@@ -24,7 +24,7 @@ function [model, scores, aer] = perceptron(X,Y,model,varargin)
 % model.step determines how often results are printed (default=10000).
 %
 
-tic;
+t0=tic;
 perceptron_init(varargin, nargout);
 fprintf('nd=%d nx=%d nc=%d ns=%d\n', nd, nx, nc, ns);
 fprintf('inst\terr\tnsv\tbatch\ttime\tmem\n');
@@ -79,13 +79,13 @@ while j < nx
   end % if opts.update
 
   if j >= j_step
-    fprintf('%d\t%.4f\t%d\t%d\t%.2f\t%.2e\n', j, 100*m.nerr/j, ns, nk, toc, gmem);
+    fprintf('%d\t%.4f\t%d\t%d\t%.2f\t%.2e\n', j, 100*m.nerr/j, ns, nk, toc(t0), gmem);
     j_step = j_step + m.step;
   end
 
 end % while j < nx
 
-fprintf('%d\t%.4f\t%d\t%d\t%.2f\t%.2e\n', j, 100*m.nerr/j, ns, nk, toc, gmem);
+fprintf('%d\t%.4f\t%d\t%d\t%.2f\t%.2e\n', j, 100*m.nerr/j, ns, nk, toc(t0), gmem);
 
 if opts.update
   model.beta = gather(m.beta);
