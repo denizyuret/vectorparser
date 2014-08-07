@@ -18,12 +18,11 @@ function featselect_gpu(m0, trn, dev, cachefile, initfeats)
 % fkey(f) = mat2str(sortrows(trn.feats(f,:)))
 
 % Typical usage:
-% m0 = model_init(@compute_kernel,struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
-% m0.parser = @archybrid;
-% m0.feats = fv102;
+% m0 = struct(
+%  'kerparam', struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3),
+%  'parser', @archybrid, 'feats', fv102, 'step', 100000, 'batchsize', 1000);
 % [~,trndump] = vectorparser(m0, trn, 'update', 0, 'predict', 0);
 % [~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0);
-% m0.step = 200; m0.batchsize = 500;
 % featselect_gpu(m0,trndump,devdump,'foo.mat');
 
 [cache,bestfeats,besterror,start,nfeats,nstart] = featselect_init(nargin);
@@ -139,11 +138,11 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   x_te = dev.x(idx,:);
   x_tr = trn.x(idx,:);
   
-  tic();
+  t0 = tic;
   gpuDevice(1);
   m1 = perceptron(x_tr, trn.y, m0);
   [~,~,e1] = perceptron(x_te, dev.y, m1, 'update', 0, 'average', 1);
-  t1 = toc();
+  t1 = toc(t0);
   nsv = size(m1.beta, 2);
   fprintf('%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fstr(f));
   cache(fk) = e1;
