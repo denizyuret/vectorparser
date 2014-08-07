@@ -7,16 +7,16 @@ function [f, fidx] = features(p, s, feats)
 % 2. target word: 0:self, 1:rightmost child, 2:second rightmost, -1:leftmost, -2:second leftmost ...
 % 3. feature: One of the features listed below.
 %
-% 0:wvec (dim depends on encoding)
+% 0:wvec (word+context if token, dim depends on encoding)
 % +-1: exists/doesn't (one bit)
 % +-2: right/left child count (4 bits, == encoding: 0,1,2,3+)
 % +3: distance to right (4 bits, == encoding: 1,2,3,4+, root is 4+)
+% -3: average of in-between tokens to the right (dim:wvec)
 % +-4: word/context half of vector (dim:wvec/2, only valid for token encoding, assumes first half=word, second half=context)
 % +-5: right/left child count (4 bits, >= encoding: >=1, >=2, >=3, >=4)
 % +-6: right/left child count (4 bits, <= encoding: <=0, <=1, <=2, <=3)
 % +7: distance to right, >= encoding (8 bits, >= encoding: >=2, >=3, >=4, >=6, >=8, >=12, >=16, >=20)
 % -7: distance to right, <= encoding (8 bits, <= encoding: <=1, <=2, <=3, <=4, <=6, <=8, <=12, <=16)
-% -3: average of in-between tokens to the right (dim:wvec)
 % +-8: average of in-between word/context vectors to the right (dim:wvec/2)
 % +-9: head exists/doesn't (one bit)
 
