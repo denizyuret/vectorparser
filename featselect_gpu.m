@@ -132,15 +132,14 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   tic();
   gpuDevice(1);
   m1 = perceptron(x_tr, trn.y, m0);
-  [~,~,e0] = perceptron(x_te, dev.y, m1, 'update', 0, 'average', 0);
   [~,~,e1] = perceptron(x_te, dev.y, m1, 'update', 0, 'average', 1);
   t1 = toc();
   nsv = size(m1.beta, 2);
-  fprintf('%g\t%g\t%g\t%g\t%s\n', e0, e1, nsv/numel(trn.y), t1, fk);
+  fprintf('%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fk);
   cache(fk) = e1;
   save(cachefile, 'cache');
 else
-  fprintf('%g\t%g\t%d\t%g\t%s\n', nan, cache(fk), nan, 0, fk);
+  fprintf('%g\t%d\t%g\t%s\n', cache(fk), 0, 0, fk);
 end % if ~isKey(cache, fk)
 s = cache(fk);
 end % err
@@ -196,7 +195,7 @@ end
 start = start0;
 nstart = numel(start);
 
-fprintf('last\tavg\tnsv\ttime\tfeats\n');
+fprintf('avg\tnsv\ttime\tfeats\n');
 
 end % featselect_init
 
