@@ -159,7 +159,6 @@ if opts.compute_scores
   elseif opts.average
     assert(isfield(model,'beta2') && ~isempty(model.beta2),...
            'Please set model.beta2 for averaged model.');
-    assert(~opts.update, 'Cannot use averaged model during update.');
   end
 
   if ~isfield(model,'SV') || isempty(model.SV)
