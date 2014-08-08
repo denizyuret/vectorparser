@@ -25,6 +25,8 @@ function [model, scores, aer] = perceptron(X,Y,model,varargin)
 %
 
 t0=tic;
+default_batchsize = 1000;
+default_step = 10000;
 perceptron_init(varargin, nargout);
 fprintf('nd=%d nx=%d nc=%d ns=%d\n', nd, nx, nc, ns);
 fprintf('inst\terr\tnsv\tbatch\ttime\tmem\n');
@@ -207,14 +209,14 @@ if ~opts.update
 elseif isfield(model,'batchsize')
   m.batchsize = model.batchsize;
 else
-  m.batchsize=1000;
+  m.batchsize=default_batchsize;
 end
 fprintf('Using X batchsize=%d\n', m.batchsize);
 
 if isfield(model,'step')
   m.step = model.step;
 else
-  m.step = 10000;
+  m.step = default_step;
 end
 
 m.nerr = 0;
@@ -289,7 +291,11 @@ if opts.gpu
   assert(nk >= 1, 'g=%.2g nk=%d sv=%.2g beta=%.2g beta2=%.2g, no space left.\n', gmem, ...
          nk, numel(m.svtr1), numel(m.beta), numel(m.beta2));
 else % if opts.gpu
-  nk = m.batchsize;
+  if isfield(m, 'batchsize')
+    nk = m.batchsize;
+  else
+    nk = default_batchsize;
+  end
 end % if opts.gpu
 end % real_batchsize
 
