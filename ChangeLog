@@ -1,10 +1,15 @@
+2014-08-08  Deniz Yuret  <dyuret@ku.edu.tr>
+
 	* TODO:	
+
+	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
+
+	- Implement arceasy.
+
 	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
 	-- Beam search parser: read paper.  read redshift.  minibatch?
 	-- we can start by writing a beam decoder to parse with existing models.  no training.
 	-- how often does the gold sequence have a total score better than greedy sequence?
-
-	- Implement arceasy.
 
 	- Embeddings:
 	-- test more on conll07.
@@ -33,8 +38,8 @@
 ++b43	
 	
 	* run_fs_conll07_arceager13.m: featselect with arceager13 starting
-	at fv008 using conll07 trn split into trn and dev, bansal100
-	encoding.
+	at fv008 using fv136 (head features), conll07 trn split into trn
+	and dev, bansal100 encoding.
 	
 ++b42	
 	* run_fs_conll07_aug7: featselect stopped and restarted from a
@@ -74,7 +79,7 @@
 	Hopefully this will discover a good combo for conll07:
 	>> load 'fs_conll07_aug7.mat'
 	>> run_sort_bestfeats(cache)
-	emin=0.0551
+	emin=0.0551 (9)
 	[-309]    'n0w'  
 	[-294]    's0w'  
 	[-263]    's1w'  
@@ -93,14 +98,13 @@
 	removing single choice moves from training.  One epoch takes about
 	7 hours which is consistent with before.
 
-	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
-
 	Dynamic oracle:
 	epoch	gmove	move	head	word	sent
 	(4)	0.0316	0.0385	0.1009	0.0887	0.6165 (last static epoch)
 	1	0.0384	0.0376	0.0997	0.0883	0.6300
 	2	0.0382	0.0368	0.0977	0.0865	0.6200
 	3	0.0383	0.0359	0.0955	0.0843	0.6165
+	4	0.0382	0.0350	0.0930	0.0822	0.6118
 	
 	Compare to original mx results:
 	--i11			TEST				TRAIN
@@ -129,7 +133,8 @@
 	(8)	0.0425	0.0526	0.1362	0.1235	0.7049 (last static epoch)
 	1tst	0.0444	0.0567	0.1417	0.1324	0.7383 (1st dynamic epoch on test set)
 	1	0.0451	0.0535	0.1389	0.1262	0.7205
-
+	2	0.0451	0.0522	0.1351	0.1229	0.7094
+	
 	
 ==> run/run_conll07_dbg.m <==
 % function run_conll07_dbg(parser, feats, trn, dev, tst, savefile)
@@ -2378,7 +2383,8 @@ end % for i=1:numel(em)
 	score:0.13461	conll_swedish+f (n:131239)
 
 	score:0.172941	conll_turkishSKETCH-25 (n:87228)
-
+	
+	++i02 ++i03
 	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
 	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
 	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
