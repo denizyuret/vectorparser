@@ -1,3 +1,33 @@
+fv084 = [];
+for a=-3:1
+  for b=-1:1
+    if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
+    if ((a > 0)  && (b < 0)) continue; end   % no ldeps for buffer words other than n0
+    for c=-9:9
+      if ((c == 0) || (c == -3)) continue; end  % do not use the word+context combination, keep them separate
+      if (abs(c) == 5 || abs(c) == 6) continue; end  % just use = encoding for child count
+      if ((c == 3) || (c == -7)) continue; end  % just use >= encoding for distance
+      if ((a > 0) && ~ismember(c, [1,-1,4,-4])) continue; end      % no deps/dist/in-between/head for a>0
+      if ((a == 0) && (b == 0) && ~ismember(c, [1,-1,4,-4,-2,-5,-6])) continue; end  % no rdeps/dist/in-between/head for a=0
+      if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8,9,-9])) continue; end  % no dist/in-between/head for deps
+      fv084 = [fv084; [a b c]];
+    end
+  end
+end
+
+
+% Better initial starting point
+fv008w = [
+    0  0 4; % n0w
+    -1 0 4; % s0w
+    1  0 4; % n1w
+    -2 0 4; % s1w
+    0 -1 4; % n0l1w
+    -1 1 4; % s0r1w
+    -2 1 4; % s1r1w
+    -1 -1 4; % s0l1w
+         ];
+
 % Good initial starting point
 fv008 = [
     0 0 4;      % n0
