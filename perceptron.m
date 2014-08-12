@@ -250,6 +250,7 @@ m.svtr2 = zeros(0, nd);
 m.beta = gather(m.beta);
 m.beta2 = gather(m.beta2);
 if opts.gpu
+  gdev = gpuDevice;
   reset(gdev);
   m.svtr1 = gpuArray(m.svtr1);
   m.svtr2 = gpuArray(m.svtr2);
