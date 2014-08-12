@@ -2,6 +2,9 @@
 *.mexa64
 *_dbg.m
 *.mat
+*.job
+*.out
+*.err
 run_*
 foo*
 matlab.sh
