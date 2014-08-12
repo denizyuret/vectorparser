@@ -22,23 +22,25 @@ function [f, fidx] = features(p, s, feats)
 
 ndim = size(s.wvec,1);                  % token vector dimensionality
 ndim2 = ndim/2;                         % for token encodings the first half is the word vector, the second half is the context vector
-imax = 10000;                           % maximum number of features
-smax = 1000;                            % maximum number of words in sentence
+nfeat = size(feats, 1);			% number of features
+imax = nfeat*ndim;                      % maximum number of dimensions
+smax = 1000;                            % maximum distance in sentence
 f = zeros(1,imax);                      % feature vector
 i = 0;                                  % index into feature vector
-fidx = [];                              % indices into feature vector
+fidx = zeros(1,nfeat);                  % fidx(ifeat): end of feature feats(ifeat,:) in f
 
-for feat = feats'                       % 16.10us/iter
+for ifeat=1:nfeat
+  feat = feats(ifeat,:);
 
   % identify the anchor a: 8.81us
   if feat(1) >= 0                       % buffer word
     a = p.wptr + feat(1);
-    if (a > p.nword) a = 0; end
+    if (a > p.nword) a = 0; end;
   else                                  % stack word
     ax = p.sptr + feat(1) + 1;
     if (ax > 0) 
       a = p.stack(ax);
-      assert(a >= 1 && a <= p.nword);
+      if ((a < 1) || (a >= p.wptr)) error('Bad anchor'); end;
     else 
       a = 0; 
     end
@@ -50,22 +52,22 @@ for feat = feats'                       % 16.10us/iter
   elseif feat(2) == 0                   % self
     b = a;                              
   elseif feat(2) > 0                    % right-child
-    assert(a < p.wptr, 'buffer words do not have rdeps');
+    if (a >= p.wptr) error('buffer words do not have rdeps'); end;
     nc = p.rcnt(a);
     bx = nc - feat(2) + 1;
     if (bx > 0)
       b = p.rdep(a, bx);
-      assert(b > a && b <= p.nword && p.head(b) == a);
+      if ((b <= a) || (b > p.nword) || (p.head(b) ~= a)) error('Bad rdep'); end;
     else
       b = 0;
     end
   elseif feat(2) < 0                    % left-child
-    assert(a <= p.wptr, 'buffer words other than n0 do not have ldeps');
+    if (a > p.wptr) error('buffer words other than n0 do not have ldeps'); end;
     nc = p.lcnt(a);
     bx = nc + feat(2) + 1;
     if (bx > 0)
       b = p.ldep(a, bx);
-      assert(b >= 1 && b < a && p.head(b) == a);
+      if ((b < 1) || (b >= a) || p.head(b) ~= a) error('Bad ldep'); end;
     else
       b = 0;
     end
@@ -74,35 +76,35 @@ for feat = feats'                       % 16.10us/iter
   % generate the feature: 4.16us
   switch feat(3)
    case 0	% wvec
-    if (b > 0) f(i+1:i+ndim) = s.wvec(:,b); end 
-    i=i+ndim; fidx(end+1)=i;
+    if (b > 0) f(i+1:i+ndim) = s.wvec(:,b); end;
+    i=i+ndim; fidx(ifeat)=i;
 
    case 1       % exists
     if (b > 0) f(i+1) = 1; end 
-    i=i+1; fidx(end+1)=i;
+    i=i+1; fidx(ifeat)=i;
 
    case -1      % does not exist
     if (b == 0) f(i+1) = 1; end 
-    i=i+1; fidx(end+1)=i;
+    i=i+1; fidx(ifeat)=i;
 
    case 2       % rdep count, 4 bits, == encoding
     if (b > 0) 
-      assert(b < p.wptr, 'buffer words do not have rdeps');
-      nc = p.rcnt(b); if (nc > 3) nc = 3; end
+      if (b >= p.wptr) error('buffer words do not have rdeps'); end;
+      nc = p.rcnt(b); if (nc > 3) nc = 3; end;
       f(i+1+nc) = 1;
     end 
-    i=i+4; fidx(end+1)=i;
+    i=i+4; fidx(ifeat)=i;
 
    case -2      % ldep count, 4 bits, == encoding
     if (b > 0)
-      assert(b <= p.wptr, 'buffer words other than n0 do not have ldeps');
-      nc = p.lcnt(b); if (nc > 3) nc = 3; end
+      if (b > p.wptr) error('buffer words other than n0 do not have ldeps'); end;
+      nc = p.lcnt(b); if (nc > 3) nc = 3; end;
       f(i+1+nc) = 1;
     end 
-    i=i+4; fidx(end+1)=i;
+    i=i+4; fidx(ifeat)=i;
 
    case 3       % distance to the right
-    assert(feat(1) < 0 && feat(2) == 0, 'distance only available for stack words');
+    if (~(feat(1) < 0 && feat(2) == 0)) error('distance only available for stack words'); end
     if (b > 0)
       if feat(1) == -1 % s0n0 distance
         if (p.wptr <= p.nword) c = p.wptr;
@@ -111,23 +113,23 @@ for feat = feats'                       % 16.10us/iter
         cx = p.sptr + feat(1) + 2;
         c = p.stack(cx);
       end
-      assert(c > b);
-      d = c - b; if (d > 4) d = 4; end
+      if (c <= b) error('c <= b'); end;
+      d = c - b; if (d > 4) d = 4; end;
       f(i+d) = 1;
     end 
-    i=i+4; fidx(end+1)=i;
+    i=i+4; fidx(ifeat)=i;
 
    case 4       % word (first) half of token vector
     if (b > 0) f(i+1:i+ndim2) = s.wvec(1:ndim2,b); end 
-    i=i+ndim2; fidx(end+1)=i;
+    i=i+ndim2; fidx(ifeat)=i;
 
    case -4      % context (second) half of token vector
     if (b > 0) f(i+1:i+ndim2) = s.wvec(ndim2+1:end,b); end 
-    i=i+ndim2; fidx(end+1)=i;
+    i=i+ndim2; fidx(ifeat)=i;
 
    case 5       % rdep count, 4 bits, >= encoding
     if (b > 0) 
-      assert(b < p.wptr, 'buffer words do not have rdeps');
+      if (b >= p.wptr) error('buffer words do not have rdeps'); end;
       nc = p.rcnt(b);
       for ic=1:4 
         if nc >= ic
@@ -135,11 +137,11 @@ for feat = feats'                       % 16.10us/iter
         end
       end
     end 
-    i=i+4; fidx(end+1)=i;
+    i=i+4; fidx(ifeat)=i;
 
    case -5      % ldep count, 4 bits, >= encoding
     if (b > 0)
-      assert(b <= p.wptr, 'buffer words other than n0 do not have ldeps');
+      if (b > p.wptr) error('buffer words other than n0 do not have ldeps'); end;
       nc = p.lcnt(b);
       for ic=1:4 
         if nc >= ic
@@ -147,11 +149,11 @@ for feat = feats'                       % 16.10us/iter
         end
       end
     end 
-    i=i+4; fidx(end+1)=i;
+    i=i+4; fidx(ifeat)=i;
 
    case 6       % rdep count, 4 bits, <= encoding
     if (b > 0) 
-      assert(b < p.wptr, 'buffer words do not have rdeps');
+      if (b >= p.wptr) error('buffer words do not have rdeps'); end;
       nc = p.rcnt(b);
       for ic=0:3
         if nc <= ic
@@ -159,11 +161,11 @@ for feat = feats'                       % 16.10us/iter
         end
       end
     end 
-    i=i+4; fidx(end+1)=i;
+    i=i+4; fidx(ifeat)=i;
 
    case -6      % ldep count, 4 bits, <= encoding
     if (b > 0)
-      assert(b <= p.wptr, 'buffer words other than n0 do not have ldeps');
+      if (b > p.wptr) error('buffer words other than n0 do not have ldeps'); end;
       nc = p.lcnt(b);
       for ic=0:3 
         if nc <= ic
@@ -171,10 +173,10 @@ for feat = feats'                       % 16.10us/iter
         end
       end
     end 
-    i=i+4; fidx(end+1)=i;
+    i=i+4; fidx(ifeat)=i;
 
    case 7       % distance to the right, >= encoding, 8 bits
-    assert(feat(1) < 0 && feat(2) == 0, 'distance only available for stack words');
+    if (~(feat(1) < 0 && feat(2) == 0)) error('distance only available for stack words'); end;
     if (b > 0)
       if feat(1) == -1 % s0n0 distance
         if (p.wptr <= p.nword) c = p.wptr;
@@ -183,7 +185,7 @@ for feat = feats'                       % 16.10us/iter
         cx = p.sptr + feat(1) + 2;
         c = p.stack(cx);
       end
-      assert(c > b);
+      if (c <= b) error('c <= b'); end;
       d = c - b;
       dmin = [2,3,4,6,8,12,16,20];
       for id=1:numel(dmin)
@@ -192,10 +194,10 @@ for feat = feats'                       % 16.10us/iter
         end
       end
     end 
-    i=i+8; fidx(end+1)=i;
+    i=i+8; fidx(ifeat)=i;
 
    case -7       % distance to the right, <= encoding, 8 bits
-    assert(feat(1) < 0 && feat(2) == 0, 'distance only available for stack words');
+    if (~(feat(1) < 0 && feat(2) == 0)) error('distance only available for stack words'); end;
     if (b > 0)
       if feat(1) == -1 % s0n0 distance
         if (p.wptr <= p.nword) c = p.wptr;
@@ -204,7 +206,7 @@ for feat = feats'                       % 16.10us/iter
         cx = p.sptr + feat(1) + 2;
         c = p.stack(cx);
       end
-      assert(c > b);
+      if (c <= b) error('c <= b'); end;
       d = c - b;
       dmax = [1,2,3,4,6,8,12,16];
       for id=1:numel(dmax)
@@ -213,10 +215,10 @@ for feat = feats'                       % 16.10us/iter
         end
       end
     end 
-    i=i+8; fidx(end+1)=i;
+    i=i+8; fidx(ifeat)=i;
 
    case -3      % avg of in-between token vectors to the right
-    assert(feat(1) < 0 && feat(2) == 0, 'in-between only available for stack words');
+    if (~(feat(1) < 0 && feat(2) == 0)) error('in-between only available for stack words'); end;
     if (b > 0)
       if feat(1) == -1 % s0n0 interval
         if (p.wptr <= p.nword) c = p.wptr;
@@ -233,10 +235,10 @@ for feat = feats'                       % 16.10us/iter
         f(i+1:i+ndim) = avec / (c-b-1);
       end
     end
-    i=i+ndim; fidx(end+1)=i;
+    i=i+ndim; fidx(ifeat)=i;
     
    case 8      % avg of in-between word vectors to the right
-    assert(feat(1) < 0 && feat(2) == 0, 'in-between only available for stack words');
+    if (~(feat(1) < 0 && feat(2) == 0)) error('in-between only available for stack words'); end;
     if (b > 0)
       if feat(1) == -1 % s0n0 interval
         if (p.wptr <= p.nword) c = p.wptr;
@@ -253,10 +255,10 @@ for feat = feats'                       % 16.10us/iter
         f(i+1:i+ndim2) = avec / (c-b-1);
       end
     end
-    i=i+ndim2; fidx(end+1)=i;
+    i=i+ndim2; fidx(ifeat)=i;
     
    case -8      % avg of in-between context vectors to the right
-    assert(feat(1) < 0 && feat(2) == 0, 'in-between only available for stack words');
+    if (~(feat(1) < 0 && feat(2) == 0)) error('in-between only available for stack words'); end;
     if (b > 0)
       if feat(1) == -1 % s0n0 interval
         if (p.wptr <= p.nword) c = p.wptr;
@@ -273,24 +275,22 @@ for feat = feats'                       % 16.10us/iter
         f(i+1:i+ndim2) = avec / (c-b-1);
       end
     end
-    i=i+ndim2; fidx(end+1)=i;
+    i=i+ndim2; fidx(ifeat)=i;
 
    case 9       % head exists
     if (b > 0) f(i+1) = (p.head(b) > 0); end 
-    i=i+1; fidx(end+1)=i;
+    i=i+1; fidx(ifeat)=i;
 
    case -9      % head does not exist
     if (b > 0) f(i+1) = (p.head(b) == 0); end 
-    i=i+1; fidx(end+1)=i;
+    i=i+1; fidx(ifeat)=i;
 
    otherwise
     error('Unknown feature %d.\n', feat(3));
   end % switch feat(3)
-  assert(i <= imax, 'max feature vector length exceeded, need to increase imax');
-end % for feat = feats
+end % for ifeat=1:nfeat
 
 assert(fidx(end) == i);
-assert(numel(fidx) == size(feats, 1));
 f = f(1:i);
 
 end % features
