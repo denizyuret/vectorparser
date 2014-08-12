@@ -1,27 +1,58 @@
 function [model, scores, aer] = perceptron(X,Y,model,varargin)
 
 % perceptron: written by Deniz Yuret, August 2, 2014.
-% Multi-class, mini-batch, gpu enabled perceptron.
-% Based on the DOGMA library by Francesco Orabona.
+% Multi-class, mini-batch, gpu enabled, kernel perceptron.
+%
+% Based on the k_perceptron_multi_train.m in the DOGMA library by
+% Francesco Orabona which references:
+%
+%     - Crammer, K., & Singer Y. (2003).
+%       Ultraconservative Online Algorithms for Multiclass Problems.
+%       Journal of Machine Learning Research 3, (pp. 951-991).
+%
+%
+% Typical usage:
+%
+% m0 = struct('step', 1e5, 'batchsize', 1e3, 'kerparam', 
+%             struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+%
+% m1 = perceptron(x_trn, y_trn, m0);  % first epoch
+%
+% m1 = perceptron(x_trn, y_trn, m1);  % for 2nd, 3rd etc. epoch.
+%
+% [~, scores, aer] = perceptron(x_tst, y_tst, m1, 'update', 0);  % testing
+% 
+%
+% Input arguments:
 %
 % X(nd,nx) has an instance in each column.
 %
-% Y(1,nx) is a vector of correct answers.
+% Y(1,nx) is a vector of correct answers.  Could be empty [] for testing.
 %
 % model can be a blank model or the result of a previous epoch, in
-% which case it will have non-empty SV(nd,ns), beta(nc,ns) and
-% beta2(nc,ns).
+% which case it will have non-empty support vectors: model.SV(nd,ns),
+% SV coefficients: model.beta(nc,ns) and averaged coefficients:
+% model.beta2(nc,ns).
 % 
-% model specifies the polynomial kernel parameters:
-% Default gamma=1, coef0=1, degree=3, type='poly'.
-% hp = model.kerparam;
-% scores = model.beta * (hp.gamma * full(model.SV' * X) + hp.coef0) .^ hp.degree;
-%
-% model.beta2 are the averaged (rather summed) parameters.
+% model.kerparam specifies the polynomial kernel parameters:
+% hp = model.kerparam; Defaults: hp.gamma=1, hp.coef0=1, hp.degree=3, hp.type='poly'.
+% scores = model.beta * (hp.gamma * (model.SV' * X) + hp.coef0) .^ hp.degree;
 %
 % model.batchsize gives the mini-batch size (default=1000).
 %
 % model.step determines how often results are printed (default=10000).
+%
+% The rest of the input arguments give optional parameters:
+% 'gpu': 1 to use gpu, 0 not. (default is to use it if there is one).
+% 'update': 1 for training (default), 0 for testing
+% 'average': 1 uses averaged model (default for testing), 
+%            0 uses latest coefficients (default for training).
+%
+% The return values:
+%
+% model: possibly updated model (same as input model if update==0).
+% scores(nc,nx) gives the score for each class for each instance.
+% aer: average error rate.
 %
 
 t0=tic;
@@ -94,7 +125,7 @@ if opts.update
   model.beta2 = gather(m.beta2);
   model.SV = [ gather(m.svtr1)', gather(m.svtr2)' ];
   model.batchsize = m.batchsize;
-  model = compactify(model);
+  model = perceptron_compactify(model);
 end
 
 if nargout >= 3
@@ -338,3 +369,32 @@ else
 end % if ns>0
 end % compute_scores
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function model = perceptron_compactify(model)
+
+% [C, ia, ic] = unique(A,'rows')
+% Find the unique rows C(u,d) of A(n,d) and the index vectors ia(u,1) and ic(n,1), such that ...
+% C = A(ia,:) and A = C(ic,:).
+
+fprintf('Finding unique SV in %d...\n', size(model.SV, 2));
+[~, ia, ic] = unique(model.SV', 'rows');
+
+fprintf('Saving %d unique SV.\n', numel(ia));
+b2 = isfield(model, 'beta2');
+nc = size(model.beta, 1);
+newbeta  = zeros(nc, numel(ia));
+if b2 newbeta2 = zeros(nc, numel(ia)); end
+assert(numel(ic) == size(model.beta, 2));
+
+for oldi=1:numel(ic)
+  newi = ic(oldi);
+  newbeta(:,newi) = newbeta(:,newi) + model.beta(:,oldi);
+  if b2 newbeta2(:,newi) = newbeta2(:,newi) + model.beta2(:,oldi); end
+end
+
+model.SV = model.SV(:,ia);
+model.beta = newbeta;
+if b2 model.beta2 = newbeta2; end
+
+end % perceptron_compactify
