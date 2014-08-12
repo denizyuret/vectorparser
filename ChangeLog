@@ -1,15 +1,175 @@
-2014-08-08  Deniz Yuret  <dyuret@ku.edu.tr>
+2014-08-11  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run_featselect.m: conll07b with bansal100 and fv808 ended with:
+	epoch	gmove	move	head	word	sent
+	1	0.0492	0.0591	0.1523	0.1374	0.7411	first-static-epoch on dev
+	8	0.0425	0.0526	0.1362	0.1235	0.7049	best-static-epoch on dev 
+	10	0.0458	0.0487	0.1257	0.1157	0.6933	best-dynamic-epoch on dev
+	1tst	0.0444	0.0567	0.1417	0.1324	0.7383	first-dynamic-epoch on tst
+	0tst	0.0484	0.0540	0.1347	0.1270	0.7383	best-dynamic-epoch on tst
+	
+	- GN13 hybrid-static is 86.43=13.57 head.
+	- GN13 hybrid-dynamic goes to 87.62=12.38 head.
+	There must be better feature/embedding combinations.
+	However note also that my experiments are not using the whole training set.
+	
+	>> load 'archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat'
+	>> [a,b,c] = run_sort_bestfeats(cache);
+	best(17): 0.0476108
+	>> [find(isfinite(b')) 100*b(isfinite(b))']
+
+	11.0000    5.2476
+	12.0000    4.9539	izvlcazmsj (start:5.4892)
+	13.0000    4.9160
+	14.0000    4.7925
+        15.0000    4.7340	izvlcazmsj (switch to diarnxtnht)
+
+	16.0000    4.7340	diarnxtnht (last)
+	17.0000    4.7611
+	18.0000    4.7611	aefsjihmbv (start:4.8532,done)
+	19.0000    4.7925
+
+	29.0000    5.0601	vkuvhmnnsm (switch to bxofpzrjcr)
+	30.0000    5.1869
+	31.0000    4.8304	lvmbqppcab (last)
+	32.0000    4.8651
+	33.0000    4.8857
+	34.0000    4.9409	vkuvhmnnsm (start:5.6658)
+	
+	35.0000    5.0406
+	36.0000    5.0406
+	37.0000    5.0515
+	38.0000    5.2281
+	39.0000    5.3007	lvmbqppcab (start:5.3007)
+	
+	80.0000    7.4353	nslylpeu (last)
+	81.0000    7.5729
+	82.0000    7.6433
+	83.0000    7.8448
+	84.0000    7.9976	nslylpeu (start:7.9976)
+
+
+	* beamparser: can we gpu parallelize the beam score calculation?
+	we only compute move scores for parent, not the children!?  can we
+	do kernel hashing?  ++b43.  Experimenting with conll07b_m2 and
+	dev (fv808 bansal encoding trn split run_conll07_dbg.m):
+
+	>> load conll07b_m2.mat
+	epoch	stat	move	head	word	sent
+	10	0.0458	0.0487	0.1257	0.1157	0.6933
+	>> load conll07b_dev.mat
+	>> tic;[a,b] = beamparser(m2, dev(1:10), 'update', 0, 'beam', 10);toc;
+	Elapsed time is 106.003019 seconds.
+	>> tic;[c,d] = vectorparser(m2, dev(1:10), 'update', 0);toc;
+	Elapsed time is 16.087695 seconds.
+	
+	First version of beamparser: can only parse with existing model, no training.
+	
+	Way too slow!
+	Approx linear with beam size.  Approx eq to vectorparser at beam=1.
+	
+	Make it output scores and moves. done.
+
+	Comparison on 100 sentences of dev with vectorparser:
+	beamparser made more than twice as many errors, must be bug?
+
+	Looking at the first 10 sentences.  beamparser finds better
+	scoring move sequences for 8 of them with beam=10.
+
+	s (len)	vparser(16s)	b1(17s)		b2(28s)		b5(58s)		b10(107s)	b64(604s)
+	1 (49)	4.73e+14	4.73e+14	5.65e+14	6.08e+14	6.01e+14	6.31e+14
+	2 (5)	2.92e+13	2.92e+13	2.92e+13	2.92e+13	2.92e+13	2.92e+13
+	3 (20)	3.72e+14	3.72e+14	3.80e+14	3.85e+14	3.94e+14	3.96e+14
+	4 (12)	1.30e+14	1.30e+14	1.30e+14	1.30e+14	1.30e+14	1.34e+14
+	5 (29)	5.12e+14	5.12e+14	4.65e+14	5.24e+14	5.28e+14	5.57e+14
+	6 (15)	3.75e+14	3.75e+14	4.18e+14	4.18e+14	4.26e+14	4.26e+14
+	7 (9)	2.15e+14	2.15e+14	2.15e+14	2.15e+14	2.15e+14	2.15e+14
+	8 (8)	1.67e+14	1.67e+14	1.91e+14	2.22e+14	2.22e+14	2.22e+14
+	9 (17)	3.86e+14	3.86e+14	3.93e+14	3.90e+14	3.95e+14	4.06e+14
+	10 (25)	3.94e+14	3.94e+14	3.99e+14	4.02e+14	4.06e+14	4.06e+14
+	head	0.1164		0.1164		0.1693		0.2434		0.2698		0.3175
+	
+	+ vectorparser and beam=1 are equal, good.
+	+ generally sentence scores increase with beam size, good.
+	+ beam=2 is worse than beam=1 in sent=5?
+	+ beam=10 is worse than beam=5 in sent=1?
+	+ beam=5 is worse than beam=2 in sent=9?
+	+ it is totally normal for larger beams to lose the correct answer.
+	+ only inf beam guaranteed higher score.
+	
+	+ higher beams have progressively worse head error.  unless there
+	  is a bug, seems we can't use a model not trained with beamsearch.
+	- would it matter if we used only static training? try with final model in ++43.
+	- figure out how to make it faster.
+	
+	
+	* multi-epoch-featselect: 
+	>> run_static('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv034');
+	Try and see if multiple epochs will get rid of irrelevant features. --b42
+
+	This is fv034: (34 features)
+	epoch	stat	move	head	word	sent
+	1	0.0567	0.0722	0.1842	0.1662	0.7883
+	2	0.0490	0.0632	0.1609	0.1448	0.7557
+	3	0.0462	0.0600	0.1529	0.1385	0.7401
+	4	0.0451	0.0587	0.1498	0.1362	0.7305
+	5	0.0446	0.0582	0.1485	0.1346	0.7275	best-epoch
+	6	0.0446	0.0583	0.1486	0.1345	0.7285
+
+	Compare to fv808: (18 features)
+	1	0.0485	0.0597	0.1518	0.1360	0.7506
+	2	0.0453	0.0563	0.1430	0.1284	0.7230
+	3	0.0442	0.0549	0.1398	0.1248	0.7119
+	4	0.0437	0.0542	0.1375	0.1228	0.7114
+	5	0.0435	0.0538	0.1370	0.1224	0.7144
+
+	Doing featselect based on first epoch may not be a good idea!
+	
+	Another multi-epoch experiment comparing: ++b40 ++b41
+	Will the larger feature set win with more epochs?
+        15.0000    4.7340	fv015a
+	31.0000    4.8304	fv031a
+	
+	fv015a
+	epoch	stat	move	head	word	sent
+	1	0.0473	0.0580	0.1490	0.1332	0.7441
+	2	0.0438	0.0543	0.1399	0.1244	0.7260
+	3	0.0430	0.0528	0.1362	0.1209	0.7200
+	4	0.0424	0.0524	0.1351	0.1198	0.7114
+	5	0.0424	0.0528	0.1360	0.1211	0.7104
+	6	0.0422	0.0523	0.1350	0.1203	0.7084
+
+	fv031a
+	epoch	stat	move	head	word	sent
+	1	0.0483	0.0621	0.1587	0.1433	0.7547
+	2	0.0448	0.0588	0.1507	0.1357	0.7366
+
+	
+2014-08-10  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* TODO:	
 
-	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
-
-	- Implement arceasy.
-
+	- look at train/test performance to validate model and decide if
+	higher orders are worth trying.
+	
+	+ write script to run featselect on short.q.  job id can be random so we can check.
+	+ try backward elimination instead of forward selection.
+	+ run_static should take corpus, parser name and feature name as args.
+	+ check to see if it can load existing mat files.
+	+ also compare bansal and wiki on fv808.
+	
 	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
 	-- Beam search parser: read paper.  read redshift.  minibatch?
 	-- we can start by writing a beam decoder to parse with existing models.  no training.
-	-- how often does the gold sequence have a total score better than greedy sequence?
+	+ how often does the gold sequence have a total score better than greedy sequence?
+
+	- vectorparser.m: Debugging the update rule.  --i30
+	-- try vectorparser only ignore single choice as well, i.e. three options.
+	-- no diff with small data, try bigger data or without static pre-training.
+	
+	- featselect_par: --balina. left for later.
+	
+	- Implement arceasy.
 
 	- Embeddings:
 	-- test more on conll07.
@@ -32,16 +192,322 @@
 	- trainparser_primal.m: broken, upgrade to use new code.
 	- model_sparsify.m: broken, updgreade to use new code.
 	
+	--i02 --i03: still oom, do this on balina
+	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
+	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
+	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
+	score:0.99 conllWSJToken_murphy50 (out of memory at 1182126, sv:494871, nk:85, g:9.4e7)
+	score:0.99 conllWSJToken_murphy50scaled01 (out of memory at 1289463, sv:494698, nk:85, g:9.4e7)
+
+
+2014-08-09  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run_static.m: take corpus, parser name and feature name as args.
+	also compare bansal and wiki (and others) on fv808.  running on
+	split conll07 trn.
+	
+	>> run_static('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv808');
+	
+	First Epoch
+	epoch	stat	move	head	word	sent	parser
+	1	0.0485	0.0597	0.1518	0.1360	0.7506	archybrid
+	1	0.0487	0.0592	0.1506	0.1353	0.7536	archybrid13
+	1	0.0505	0.0689	0.1649	0.1469	0.7622	arceager13
+	1	0.0512	0.0697	0.1682	0.1501	0.7717	arceager
+	
+	Fifth Epoch
+	epoch	stat	move	head	word	sent	parser
+	5	0.0435	0.0538	0.1370	0.1224	0.7144	archybrid (unfinished)
+	5	0.0433	0.0539	0.1380	0.1234	0.7174	archybrid13 (unfinished)
+	5	0.0454	0.0634	0.1548	0.1379	0.7310	arceager (unfinished)
+	5	0.0456	0.0633	0.1527	0.1356	0.7285	arceager13 (unfinished)
+
+	Conclusion: no significant difference with 13 versions.  archybrid
+	better but we are not using s0h.  We should try arceager with s0h. (TODO)
+	
+	>> run_static('archybrid', 'conll07EnglishToken_bansal100', 'fv808')
+	epoch	stat	move	head	word	sent
+	1	0.0492	0.0591	0.1523	0.1374	0.7411
+	2	0.0448	0.0551	0.1424	0.1285	0.7134
+	3	0.0438	0.0538	0.1386	0.1251	0.7054
+	4	0.0431	0.0536	0.1380	0.1246	0.7054
+	5	0.0430	0.0531	0.1373	0.1241	0.7044
+	6	0.0430	0.0532	0.1374	0.1245	0.7059
+	
+	* run_featselect.m: (++short.q) Try backward feature selection.
+	Running on split conll07 trn.
+	
+	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv018'); aefsjihmbv:done
+	>> run_featselect('archybrid', 'conll07EnglishToken_bansal100', 'fv084', 'fv018'); lnaumcolef:stopped
+	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv084'); nslylpeu
+	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv039'); lvmbqppcab
+	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv012'); izvlcazmsj
+	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv034'); vkuvhmnnsm
+	
+	The first backtrack immediately gives a relative order of
+	features.  However we can get misleading results for redundant
+	features.  We need to pick one of +-1 (exists/doesn't), +-9 (head
+	exists/doesn't), +-{2,5,6} encodings for children, {3,7,-7}
+	encodings for distance, skip 0 and -3 (token features, which are
+	concatenations of word+context).  We can try alternatives later.
+	fv084 picks = encoding for children and >= encoding for distances,
+	but has both bits for 1 and 9.
+	
+	The fv084 starting features on wiki100 give 0.0799762 for conll07
+	trn split into sec02 dev and the rest trn with archybrid.  This is
+	under 0.05 for best feature combination.  A lot of starting
+	features have negative effect. (++y00)(++i02)
+
+	Here is fv084 (all) vs fv017 (best):			(bansal100)
+	best(84): 0.0799762	    best(17): 0.0476108		best(16): 0.0473616
+	[-196]    'n0w'   	    [-203]    'n0w'   		[-217]    'n0w'       '[0 0 4]'  
+	[-119]    's0w'   	    [-125]    's0w'   		[-161]    's0w'       '[-1 0 4]' 
+	[ -73]    'n1w'   	    [ -59]    's1w'   		[ -74]    's1w'       '[-2 0 4]' 
+	[ -43]    's1w'   	    [ -59]    'n1w'   		[ -50]    'n1w'       '[1 0 4]'  
+	[ -20]    'n0l1w' 	    [ -41]    'n0l1w' 		[ -43]    'n0l1w'     '[0 -1 4]' 
+								[ -26]    's0c'       '[-1 0 -4]'
+	[ -20]    'n0c'   	    [ -17]    'n0c'   		[ -23]    's0l1w'     '[-1 -1 4]'
+	[ -19]    'n1c'   	    [ -15]    'n1c'   		[ -20]    's1ac'      '[-2 0 -8]'
+	[ -16]    's0c'   	    [ -16]    's0c'   		[ -20]    's1r1l='    '[-2 1 -2]'
+	[ -11]    's0l1w' 	    [ -21]    's0l1w' 		[ -20]    's0r1w'     '[-1 1 4]' 
+	[ -10]    's1c'   	    [ -13]    's1c'   		[ -16]    'n0c'       '[0 0 -4]' 
+								[ -15]    's1c'       '[-2 0 -4]'
+	[  -8]    's2l1c' 	    				[ -15]    'n0l1c'     '[0 -1 -4]'
+	[  -8]    's0l1c' 	    [ -12]    's0l1c' 		[ -13]    'n1c'       '[1 0 -4]' 
+	[  -8]    'n0l1c' 	    [ -11]    'n0l1c' 		[  -9]    's0d>'      '[-1 0 7]' 
+	[  -7]    's2l1r='	    				[  -2]    's0r1c'     '[-1 1 -4]'
+	[  -7]    's2aw'  	    				
+	[  -7]    's1r1+' 	    				
+	[  -7]    's0ac'  	    
+	[  -7]    's0d>'  
+	[  -6]    's0l1+' 
+	[  -6]    's0aw'  
+	[  -5]    's2c'   					
+	[  -5]    's2w'   	    [ -12]    's2w'   
+	[  -5]    's1l1c' 
+	[  -5]    's0r1w' 	    [ -21]    's0r1w' 		
+	[  -4]    's2ac'  
+	[  -4]    'n0l1+' 
+	[  -3]    's2-'   
+	[  -3]    's2d>'  
+	[  -3]    's2r1w' 
+	[  -3]    's1l1w' 
+	[  -3]    's1aw'  
+	[  -3]    's1r1r='
+	[  -2]    's1l1l='
+	[  -2]    's0l1l='
+	[  -1]    's1ac'  
+	[  -1]    's0l1r='
+	[  -1]    's0r1c' 	    [ -12]    's0r1c' 		
+	[   0]    's2r1c' 
+	[   0]    's0r='  
+	[   1]    's2l1w' 
+	[   1]    's2h+'  
+	[   1]    's2r1+' 
+	[   1]    's1r1c' 
+	[   1]    's1r1w' 
+	[   1]    's0-'   
+	[   1]    's0r1l='	    [ -19]    's0r1l='		
+	[   1]    's0r1r='
+	[   1]    'n0-'   
+	[   2]    's2r1l='
+	[   2]    's2r1r='
+	[   2]    's1l1r='
+	[   2]    's1-'   
+	[   2]    's1d>'  
+	[   2]    's1h+'  
+	[   2]    's0h+'  
+	[   3]    's2l1+' 
+	[   3]    's2l='  
+	[   3]    's0l1-' 
+	[   3]    's0r1+' 
+	[   3]    'n0l1l='
+	[   3]    'n0l1r='
+	[   3]    'n1-'   
+	[   4]    's1l1-' 
+	[   4]    's1l1+' 
+	[   5]    's2l1l='
+	[   5]    's2l1-' 
+	[   5]    'n0l='  
+	[   7]    's1r1l='		[ -30]    's1r1l='	
+	[   7]    's1r1-' 
+	[   8]    's2r='  
+	[   8]    's1r='  
+	[   9]    's1l='  
+	[   9]    's0l='  
+	[   9]    'n0l1-' 
+	[  11]    's0h-'  
+	[  11]    's0+'   
+	[  11]    's0r1-' 
+	[  12]    'n0+'   
+	[  14]    's2r1-' 
+	[  14]    's1+'   
+	[  14]    'n1+'   
+	[  15]    's2h-'  
+	[  15]    's2+'   
+	[  15]    's1h-'  
+	
+	
+2014-08-08  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run_static: testing other embeddings on conll07 using archybrid
+	and fv008w.  Using full conll07 trn (no dev split) and tst in
+	multi-epoch static training.  wiki is better than bansal?!
+
+	epoch	stat	move	head	word	sent	corpus
+	5	0.0470	0.0574	0.1481	0.1333	0.7523	conll07EnglishToken_wikipedia2MUNK-100
+	7	0.0470	0.0603	0.1501	0.1372	0.7897	conll07EnglishToken_rcv1UNK100
+	4	0.0477	0.0603	0.1505	0.1395	0.7430	conll07EnglishToken_bansal100
+	4	0.0481	0.0594	0.1503	0.1372	0.7617	conll07EnglishToken_wikipedia2MUNK-50
+	6	0.0517	0.0639	0.1573	0.1465	0.7617	conll07EnglishToken_stratos100k5000scaled01
+	4	0.0545	0.0656	0.1679	0.1560	0.7664	conll07EnglishToken_cw100scaled
+	4	0.0578	0.0696	0.1763	0.1594	0.7570	conll07EnglishToken_hlbl100scaled
+	9	0.0607	0.0755	0.1909	0.1821	0.8411	conll07EnglishToken_stratos100k200scaled01
+	11	0.0640	0.0797	0.2029	0.1878	0.8318	conll07EnglishToken_hpca100scaled01
+	
+	* run_max_beam_score.m: We can calculate an upper bound on beam
+	parser for an existing model by comparing the total score of the
+	correct tree with the total score of the predicted tree.  Using
+	the last static model from mxrep.
+
+	>> load mxrep_m1
+	>> load mxrep_dev
+	% confirmed stat=3.1627 on dev.
+	>> [~,devparse] = vectorparser(m1, dev, 'update', 0);
+	>> eval_conll(dev, devparse);
+	% confirmed move=3.85 head=10.09
+	>> [~,devdump.score] = perceptron(devdump.x, devdump.y, m1, 'update', 0);
+	% mxrep_devdump does not have scores
+	>> [sy,sz,sumy,sumz] = run_max_beam_score(dev, devdump, devparse);
+	>> numel(find(sy>sz))/numel(sy) % 0.4895: pct of moves where gold score is better than guess
+	>> numel(find(sy==sz))/numel(sy) % 0.0023
+	>> numel(find(sy<sz))/numel(sy) % 0.5082
+	>> numel(find(sumy>sumz))/numel(sumy) % 0.4465: pct of sentences where total gold score is better than guess
+	>> numel(find(sumy==sumz))/numel(sumy) % 0.0082
+	>> numel(find(sumy<sumz))/numel(sumy) % 0.5453
+
+	This means our answers would change (at least) in 44% of the
+	sentences, possibly for the better.
+
+	* vectorparser.m: Debugging the update rule. --i30
+	
+	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
+	c = p.oracle_cost(h);
+	scores(c==inf) = -inf;
+	[~,move] = max(scores);
+	[mincost, bestmove] = min(c);
+	if c(move) > mincost % update
+	
+	- vectorparser has:
+	cost = p.oracle_cost(h);
+	[mincost, mincostmove] = min(cost);
+	[maxscore, maxscoremove] = max(score);
+	if cost(maxscoremove) > mincost % update
+	
+	- Experiment with conll07 dev vs tst for speed.  Using fv808.
+	- Static training.  13-epoch, 6.6820 tst err.
+	- vectorparser Dynamic training.  1-epoch:
+	epoch	stat	move	head	word	sent
+	1	0.0685	0.0776	0.1935	0.1782	0.7991
+	- vectorparser_dbg (same as trainparser_gpu), 1-epoch:
+	epoch	stat	move	head	word	sent
+	1	0.0689	0.0782	0.1949	0.1798	0.7991
+	- confirm same as trainparser_gpu... done.
+	- vectorparser 5-epochs: (no help at all?)
+	epoch	stat	move	head	word	sent
+	0	0.0668	0.0764	0.1903	0.1769	0.7850
+	1	0.0685	0.0776	0.1935	0.1782	0.7991
+	2	0.0690	0.0787	0.1951	0.1800	0.7991
+	3	0.0680	0.0783	0.1937	0.1794	0.7991
+	4	0.0683	0.0780	0.1941	0.1800	0.7944
+	5	0.0687	0.0784	0.1951	0.1807	0.8037
+	- vectorparser_dbg 5-epochs:
+	epoch	stat	move	head	word	sent
+	0	0.0668	0.0764	0.1903	0.1769	0.7850
+	1	0.0689	0.0782	0.1949	0.1798	0.7991
+	2	0.0687	0.0781	0.1941	0.1791	0.7991
+	3	0.0686	0.0790	0.1963	0.1810	0.7991
+	4	0.0688	0.0787	0.1955	0.1805	0.8037
+	5	0.0684	0.0780	0.1943	0.1789	0.8037
+	
+	- At this size dynamic oracle training does not seem to help.  To
+	see the difference we need a bigger size problem.
+
+
+	
+==> run_max_beam_score.m <==
+function [sy, sz, sumy, sumz] = run_max_beam_score(dev, devdump, devparse)
+y = devdump.y;
+z = devparse.z;
+sy = devdump.score(sub2ind(size(devdump.score), y, 1:numel(y)));
+sum_sy = sum(sy)
+sz = devparse.score(sub2ind(size(devparse.score), z, 1:numel(z)));
+sum_sz = sum(sz)
+
+ns = numel(dev)
+nw = 0;
+nt = 0;
+for s=1:ns
+  w = numel(dev{s}.head);
+  t = 2*w-2;
+  at = nt + 1;
+  bt = nt + t;
+  sumy(s) = sum(sy(at:bt));
+  sumz(s) = sum(sz(at:bt));
+  nw = nw + w;
+  nt = nt + t;
+end
+
+	
+
+==> run_sort_bestfeats.m <==
+function fsorted = run_sort_bestfeats(cache, imin)
+
+nfeats = 199;
+bestfeats = cell(1,nfeats);
+besterror = inf(1,nfeats);
+cachekeys = keys(cache);
+for i=1:numel(cachekeys)
+  fstr = cachekeys{i};
+  ferr = cache(fstr);
+  flen = size(eval(fstr), 1);
+  if ferr < besterror(flen)
+    besterror(flen) = ferr;
+    bestfeats{flen} = fstr;
+  end
+end
+
+if nargin < 2
+  [emin, imin] = min(besterror);
+end
+emin = besterror(imin);
+fmin = eval(bestfeats{imin});
+fprintf('best(%d): %g\n', imin, emin);
+
+for i=1:imin
+  fsorted{i,1} = 0;
+  fsorted{i,2} = fsymbol(fmin(i,:));
+  fnew = fmin;
+  fnew(i,:) = [];
+  fk = mat2str(sortrows(fnew));
+  if isKey(cache, fk)
+    ferr = cache(fk);
+    fsorted{i,1} = round(10000 * (emin - ferr));
+  end
+end
+
+fsorted = sortrows(fsorted, 1);
+
+end
+
 	
 2014-08-07  Deniz Yuret  <dyuret@ku.edu.tr>
 
-++b43	
-	
 	* run_fs_conll07_arceager13.m: featselect with arceager13 starting
 	at fv008 using fv136 (head features), conll07 trn split into trn
-	and dev, bansal100 encoding.
+	and dev, bansal100 encoding. (--b43)
 	
-++b42	
+
 	* run_fs_conll07_aug7: featselect stopped and restarted from a
 	better initial state: fv008.  Still using conll07a_ variables
 	(conll07 trn split into dev and trn, bansal100 token encoding).
@@ -50,7 +516,8 @@
 	as well.  Remove single-choice moves from training:done. Speed is
 	about 100 secs per feature.  We can try 864 features a day.  That
 	decides roughly six features a day.  Started at Aug 7 10:00AM.
-
+	(--b42)
+	
 	dev 1989 sent -> 92290 move -> 87202 multi-choice move
 	trn 16588 sent -> 763702 move -> 720961 multi-choice move
 
@@ -76,27 +543,75 @@
 
 	- NOTE: The first feature picked to add to fv008 is s1r1w, which
 	was not picked in the previous featselect (but was part of fv804).
-	Hopefully this will discover a good combo for conll07:
-	>> load 'fs_conll07_aug7.mat'
-	>> run_sort_bestfeats(cache)
-	emin=0.0551 (9)
-	[-309]    'n0w'  
-	[-294]    's0w'  
-	[-263]    's1w'  
-	[ -73]    'n0l1w'
-	[ -71]    'n1w'  
-	[ -44]    's0r1w'
-	[ -39]    's1r1w'
-	[ -22]    's0c'  
-	[ -14]    'n0c'  
+	It got rid of both n0c and s0c and replaced them with word
+	features s1r1w and s0l1w.  Hopefully this will discover a good
+	combo for conll07.
+	
+	>> load 'fs_conll07_aug7.mat' (archybrid)		
+	>> run_sort_bestfeats(cache)				
+	best(11): 0.0515011   	best(12): 0.0509621	best(13): 0.0502282	best(14): 0.0498842
+	[-367]    'n0w'       	[-360]    'n0w'  	[-359]    'n0w'   			
+	[-238]    's0w'       	[-229]    's0w'  	[-230]    's0w'   			
+	[-106]    's1w'       	[-100]    's1w'  	[-104]    's1w'   			
+	[ -94]    'n1w'       	[ -94]    'n1w'  	[ -82]    'n1w'   			
+	[ -81]    'n0l1w'     	[ -63]    'n0l1w'	[ -65]    'n0l1w' 			
+	[ -39]    's1r1w'     	[ -41]    's0r1w'	[ -45]    's1r1w' 			
+	[ -26]    's0r1w'     	[ -36]    's1r1w'	[ -31]    's0l1w' 			
+	[ -26]    'n0c'       	[ -25]    's1c'  	[ -30]    'n0c'   			
+	[ -25]    's1c'       	[ -20]    's0l1w'	[ -28]    's0r1w' 			
+	[ -24]    's0l1w'     	[ -16]    'n0c'  	[ -26]    's1c'   		
+	[  -8]    's0r1l<'    	[ -12]    's2l=' 	[ -15]    's2l='  	
+				[ -12]    'n0l>' 	[  -8]    'n0l>'  	
+							[  -7]    's0r1l<'	
+
+	>> load 'fs_conll07_arceager13.mat'		
+	>> run_sort_bestfeats(cache)			
+	best(9): 0.0560545	best(10): 0.0542881	best(11): 0.0538064	best(12): 0.0534164	best(13): 0.0526593
+	[-494]    'n0w'   	[-510]    'n0w'   	[-502]    'n0w'   	[-507]    'n0w'   	
+	[-324]    's0w'   	[-337]    's0w'   	[-313]    's0w'   	[-268]    's0w'   	
+	[-181]    'n1w'   	[-187]    'n1w'   	[-189]    'n1w'   	[-184]    'n1w'   	
+	[-179]    's1r1r<'	[-177]    's1r1r<'	[-175]    's1r1r<'	[-155]    's1r1r<'	
+	[ -71]    'n0l1w' 	[ -54]    'n0l1w' 	[ -54]    's1w'   	[ -45]    'n0l1w' 	
+	[ -36]    's1w'   	[ -53]    's1w'   	[ -45]    'n0l1w' 	[ -32]    's0r1w' 	
+	[ -32]    's0r1w' 	[ -42]    's0r1w' 	[ -41]    's0l1w' 	[ -31]    'n2c'   	
+	[ -15]    's0l1w' 	[ -36]    'n2c'   	[ -39]    's0r1w' 	[ -28]    's0l1w' 	
+	[ -15]    'n2c'   	[ -25]    's0l1w' 	[ -35]    'n2c'   	[ -24]    's1w'   	
+				[ -18]    'n0l1r<'	[ -12]    'n0l1r<'	[ -16]    'n0l1r<'	
+							[  -5]    'n0l1c' 	[ -14]    'n0l1c' 	
+										[  -4]    's1c'   	
 	
 	
-++b40	
+	* conll07b: rerun conll07 experiments with fv808 and new code.  bansal100 encoding.
+	- try scode instead of bansal?
+	- g&n13 hybrid-static is 86.43=13.57 head.
+	- g&n13 hybrid-dynamic goes to 87.62=12.38 head.
+	- feature optimization for conll07 & difft arctypes skipping single-choice.
+	- fix featselect so it doesn't backup shorter than initfeats.
+	- use the whole training set after determining epochs and feats.
+	--b41
+	
+	Dynamic oracle:
+	epoch	gmove	move	head	word	sent
+	(8)	0.0425	0.0526	0.1362	0.1235	0.7049 (last static epoch)
+	1tst	0.0444	0.0567	0.1417	0.1324	0.7383 (1st dynamic epoch on test set)
+	1	0.0451	0.0535	0.1389	0.1262	0.7205 rest of the results on dev set
+	2	0.0451	0.0522	0.1351	0.1229	0.7094
+	3	0.0456	0.0518	0.1337	0.1221	0.7084
+	4	0.0456	0.0510	0.1320	0.1205	0.7074
+	5	0.0454	0.0504	0.1303	0.1193	0.7019
+	6	0.0458	0.0502	0.1295	0.1189	0.7014
+	7	0.0459	0.0500	0.1288	0.1183	0.7024
+	8	0.0458	0.0495	0.1277	0.1174	0.6983
+	9	0.0455	0.0490	0.1265	0.1164	0.6948
+	10	0.0458	0.0487	0.1257	0.1157	0.6933	best-dynamic-epoch
+	11	0.0460	0.0489	0.1266	0.1166	0.6928	
+	0	0.0484	0.0540	0.1347	0.1270	0.7383	final-testing
 	
 	* mxrep: replicate mx experiments with new code.  Note that the
 	difference in the last static model is due to the older experiment
-	removing single choice moves from training.  One epoch takes about
-	7 hours which is consistent with before.
+	removing single choice moves from training.  In dynamic training
+	older code ignored scores of impossible moves completely.  One
+	epoch takes about 7 hours which is consistent with before. --b40.
 
 	Dynamic oracle:
 	epoch	gmove	move	head	word	sent
@@ -105,6 +620,12 @@
 	2	0.0382	0.0368	0.0977	0.0865	0.6200
 	3	0.0383	0.0359	0.0955	0.0843	0.6165
 	4	0.0382	0.0350	0.0930	0.0822	0.6118
+	5	0.0382	0.0346	0.0925	0.0816	0.6100
+	6	0.0381	0.0344	0.0917	0.0808	0.6065
+	7	0.0382	0.0344	0.0916	0.0811	0.6076
+	8	0.0383	0.0342	0.0904	0.0800	0.6071
+	9	0.0381	0.0339	0.0897	0.0792	0.6059
+	10	out-of-memory
 	
 	Compare to original mx results:
 	--i11			TEST				TRAIN
@@ -118,24 +639,6 @@
 	mx5d6	302335	?	3.99	3.39	8.96	7.92	1.83	5.24	4.67
 	mx5d7	314292	?	4.00	3.37	8.90	7.88	1.71	4.92	4.40
 
-++b41	
-	
-	* conll07b: rerun conll07 experiments with fv808 and new code.
-	- try scode instead of bansal?
-	- g&n13 hybrid-static is 86.43=13.57 head.
-	- g&n13 hybrid-dynamic goes to 87.62=12.38 head.
-	- feature optimization for conll07 & difft arctypes skipping single-choice.
-	- fix featselect so it doesn't backup shorter than initfeats.
-	- use the whole training set after determining epochs and feats.
-	
-	Dynamic oracle:
-	epoch	gmove	move	head	word	sent
-	(8)	0.0425	0.0526	0.1362	0.1235	0.7049 (last static epoch)
-	1tst	0.0444	0.0567	0.1417	0.1324	0.7383 (1st dynamic epoch on test set)
-	1	0.0451	0.0535	0.1389	0.1262	0.7205
-	2	0.0451	0.0522	0.1351	0.1229	0.7094
-	
-	
 ==> run/run_conll07_dbg.m <==
 % function run_conll07_dbg(parser, feats, trn, dev, tst, savefile)
 function run_conll07_dbg(savefile)
@@ -435,7 +938,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	filter the multi-choice instances.
 
 	* DONE:
-	+ Let ++i00 finish so we can use the dumps.
+	+ Let --i00 finish so we can use the dumps.
 	- Verify the dumps.
 	- Run regular perceptron training.
 	- Figure out the difference between PTB and conll.
@@ -939,7 +1442,7 @@ end
 	sentences, 48134 tokens.  We'll save it as split.  Just concat dev
 	and trn to get original data.
 	
-	* run_arctype_comparison2.m: ++i00: Determine which arctype is
+	* run_arctype_comparison2.m: --i00: Determine which arctype is
 	best.  The scores *c are cost based, *a are answer based.  trn and
 	tst are from conll07, dev is from conllWSJToken.  All after one
 	epoch cost-based training with perceptron.m with features
@@ -1520,7 +2023,7 @@ while (1) {
 
 	recovered the normal score.
 
-	* run_featselect_bansal5k.m: running on ++biyofiz.q.  Something
+	* run_featselect_bansal5k.m: running on --biyofiz.q.  Something
 	seems wrong with arceager.
 	+ check the featselect moves for arceager: backtracking seems ok.  except the first round multiple repeats.
 	+ put actual feature vectors in cache
@@ -1652,12 +2155,12 @@ end
 	+ use mat2str(sortrows(fv)) to get a string representation of feature vectors for caching.
 	+ for that to work change fv from 3xn to nx3.
 	+ actually that doesn't work, we need to use indices into fidx.
-	+ run_loadCoNLL on top two token and type (do we need type? we can just filter using fv!) on ++b40,42,43.
+	+ run_loadCoNLL on top two token and type (do we need type? we can just filter using fv!) on --b40,42,43.
 	+ confirm that conll_bansal100 is identical to the first half of conllWSJToken_bansal100.
-	++ yes except for some 0 vectors (unknowns?) in conll_bansal100.
+	= yes except for some 0 vectors (unknowns?) in conll_bansal100.
 	+ what if fidx is out of order and featselect is doing logical indexing?
-	++ fine, fidx is never out of order, f (index into fidx) might be but that is no problem.
-	x debug run on ++b41.
+	= fine, fidx is never out of order, f (index into fidx) might be but that is no problem.
+	x debug run on --b41.
 	x Saved dump data as trnhybrid.mat and devhybrid.mat. (fv808 arceager), but need fidx!
 	x logs/trndump.mat includes the fv102 arceager dumps of trn1 and dev1 from conllToken_wikipedia2MUNK-50.
 	+ use fv130 which separates all tokens into word/context and includes s2/n2.
@@ -1798,7 +2301,7 @@ save(outfile, 'trn', 'dev', 'tst', '-v7.3');
 	* DONE:
 
 	+ Try ArcEager.  -- should be easy 1-epoch, needs code
-	++ need feature optimization again!
+	= need feature optimization again!
 	+ Nivre says it is important not to put the root on the left?
 	+ multipe versions of archybrid, arceager (one root-child vs many, see readings in Nivre's mail)
 
@@ -2384,7 +2887,7 @@ end % for i=1:numel(em)
 
 	score:0.172941	conll_turkishSKETCH-25 (n:87228)
 	
-	++i02 ++i03
+	--i02 --i03: still oom, do this on balina
 	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
 	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
 	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
