@@ -1,3 +1,133 @@
+fv015a = [-3 0 8;-2 0 -4;-2 0 4;-2 1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+fv031a = [-3 0 -8;-3 0 -4;-3 0 -1;-3 0 8;-3 1 -4;-3 1 4;-2 -1 -4;-2 -1 4;-2 0 -8;-2 0 -4;-2 0 4;-2 0 8;-2 1 1;-2 1 2;-1 -1 -4;-1 -1 1;-1 -1 4;-1 0 -8;-1 0 -4;-1 0 2;-1 0 4;-1 0 8;-1 1 -4;-1 1 4;0 -1 -4;0 -1 1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+
+fv034 = [];
+for a=-3:1
+  for b=-1:1
+    if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
+    if ((a > 0)  && (b < 0)) continue; end   % no ldeps for buffer words other than n0
+    if ((a <= -2) && (b < 0)) continue; end  % not interested in ldeps beyond s0
+    if ((a <= -3) && (b > 0)) continue; end  % not interested in rdeps beyond s1
+    for c=-9:9
+      if ((c == 0) || (c == -3)) continue; end  % do not use the word+context combination, keep them separate
+      if (abs(c) == 5 || abs(c) == 6) continue; end  % just use = encoding for child count
+      if ((abs(c) == 2) && (b ~= 0)) continue; end % not interested in grand children
+      if (abs(c) == 1) continue; end % existence not useful
+      if (abs(c) == 9) continue; end % head not useful in archybrid
+      if ((c == 3) || (c == -7)) continue; end  % just use >= encoding for distance
+      if ((a > 0) && ~ismember(c, [1,-1,4,-4])) continue; end      % no deps/dist/in-between/head for a>0
+      if ((a == 0) && (b == 0) && ~ismember(c, [1,-1,4,-4,-2,-5,-6])) continue; end  % no rdeps/dist/in-between/head for a=0
+      if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8,9,-9])) continue; end  % no dist/in-between/head for deps
+      fv034 = [fv034; [a b c]];
+    end
+  end
+end
+
+
+
+fv039 = [
+0 0 4; 		% [-196]    'n0w'       
+-1 0 4; 	% [-119]    's0w'       
+1 0 4; 		% [ -73]    'n1w'       
+-2 0 4; 	% [ -43]    's1w'       
+0 -1 4; 	% [ -20]    'n0l1w'     
+0 0 -4; 	% [ -20]    'n0c'       
+1 0 -4; 	% [ -19]    'n1c'       
+-1 0 -4; 	% [ -16]    's0c'       
+-1 -1 4; 	% [ -11]    's0l1w'     
+-2 0 -4; 	% [ -10]    's1c'       
+-3 -1 -4;     	% [  -8]    's2l1c'     
+-1 -1 -4;     	% [  -8]    's0l1c'     
+0 -1 -4; 	% [  -8]    'n0l1c'     
+-3 -1 2; 	% [  -7]    's2l1r='    
+-3 0 8; 	% [  -7]    's2aw'      
+-2 1 1; 	% [  -7]    's1r1+'     
+-1 0 -8; 	% [  -7]    's0ac'      
+-1 0 7; 	% [  -7]    's0d>'      
+-1 -1 1; 	% [  -6]    's0l1+'     
+-1 0 8; 	% [  -6]    's0aw'      
+-3 0 -4; 	% [  -5]    's2c'       
+-3 0 4; 	% [  -5]    's2w'       
+-2 -1 -4;     	% [  -5]    's1l1c'     
+-1 1 4; 	% [  -5]    's0r1w'     
+-3 0 -8; 	% [  -4]    's2ac'      
+0 -1 1; 	% [  -4]    'n0l1+'     
+-3 0 -1; 	% [  -3]    's2-'       
+-3 0 7; 	% [  -3]    's2d>'      
+-3 1 4; 	% [  -3]    's2r1w'     
+-2 -1 4; 	% [  -3]    's1l1w'     
+-2 0 8; 	% [  -3]    's1aw'      
+-2 1 2; 	% [  -3]    's1r1r='    
+-2 -1 -2;     	% [  -2]    's1l1l='    
+-1 -1 -2;     	% [  -2]    's0l1l='    
+-2 0 -8; 	% [  -1]    's1ac'      
+-1 -1 2; 	% [  -1]    's0l1r='    
+-1 1 -4; 	% [  -1]    's0r1c'     
+-3 1 -4; 	% [   0]    's2r1c'     
+-1 0 2; 	% [   0]    's0r='      
+];
+
+
+fv012 = [
+0 0 4; 		% [-203]    n0w       
+-1 0 4; 	% [-125]    s0w       
+-2 0 4; 	% [ -59]    s1w       
+1 0 4; 		% [ -59]    n1w       
+0 -1 4; 	% [ -41]    n0l1w     
+-1 -1 4;	% [ -21]    s0l1w     
+
+0 0 -4; 	% [ -17]    n0c       
+-1 0 -4;	% [ -16]    s0c       
+-2 0 -4;	% [ -13]    s1c       
+1 0 -4; 	% [ -15]    n1c       
+0 -1 -4; 	% [ -11]    n0l1c     
+-1 -1 -4;	% [ -12]    s0l1c     
+];
+
+
+fv017 = [       % 0.0476108, 'archybrid', 'conll07EnglishToken_wikipedia2MUNK-100'
+0 0 4; 		% [-203]    n0w       
+-1 0 4; 	% [-125]    s0w       
+-2 0 4; 	% [ -59]    s1w       
+1 0 4; 		% [ -59]    n1w       
+0 -1 4; 	% [ -41]    n0l1w     
+-2 1 -2;	% [ -30]    s1r1l=    
+-1 -1 4;	% [ -21]    s0l1w     
+-1 1 4; 	% [ -21]    s0r1w     
+-1 1 -2;	% [ -19]    s0r1l=    
+0 0 -4; 	% [ -17]    n0c       
+-1 0 -4;	% [ -16]    s0c       
+1 0 -4; 	% [ -15]    n1c       
+-2 0 -4;	% [ -13]    s1c       
+-3 0 4; 	% [ -12]    s2w       
+-1 -1 -4;	% [ -12]    s0l1c     
+-1 1 -4; 	% [ -12]    s0r1c     
+0 -1 -4; 	% [ -11]    n0l1c     
+];
+
+
+fv018 = [       % another version of fv808 that splits token features to word + context
+    0 0 4;
+    0 0 -4;
+    -1 0 4;
+    -1 0 -4;
+    -2 0 4;
+    -2 0 -4;
+    1 0 4;
+    1 0 -4;
+    0 -1 4;
+    0 -1 -4;
+    -1 1 4;
+    -1 1 -4;
+    -2 1 -2;
+    -1 -1 4;
+    -1 -1 -4;
+    -1 1 -2;
+    -3 0 4;
+    -3 0 -4;
+];
+
+
 fv084 = [];
 for a=-3:1
   for b=-1:1
