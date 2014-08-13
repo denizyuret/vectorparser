@@ -1,6 +1,63 @@
+2014-08-13  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* beamparser.m: Training.
+	- We do not update until parse is over.
+	- At that point we update if the heads do not match gold.
+	- We have the (wrong) z move sequence with its features.
+	- We need to compute the correct y sequence with its features.
+	- If a state belongs to both y and z and the moves are different we do the usual update.
+	- If a state is only in y or in z do we update?  Do we check what the model would have done?
+
+	- early stopping?
+
+	- graph based parser: score agenda states rather than candidate moves?  difference?
+	
+	* TODO: does static pre-training really help?
+	- embedding: fselect starting with fv015a+archybrid.
+	- features
+	- kernel: fselect starting with fv015a+archybrid.
+	- arctype: fselect starting with fv015a
+	- perceptron: with or without static training
+	
+2014-08-12  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* beamparser.m: profiling:
+	% http://www.mathworks.com/help/matlab/matlab_prog/profiling-for-improving-performance.html
+	>> !taskset -pc 0 18893  % set affinity to single cpu
+	>> profile -timer real
+	>> profile -timer cpu
+	% modify score function to return random matrix
+	% calling without gpu
+	>> profile on
+	>> [a,b]=beamparser(m1, wiki.dev(1:10), 'update', 0, 'beam', 10, 'gpu', 0);
+	>> profile off
+	>> p=profile('info')
+	>> profsave(p)
+	% profile info saved in html under profile_results.
+
+	* beamparser.m: Computing candidate scores in bulk rather than one
+	at a time:
+	
+	For 10 sentences, 189 words, 358 moves, 95686 sv, 1401 xdims:
+	beam	old	new	wps
+	0	8.5	-	22	(vectorparser)
+	1	15	12	15.75
+	2	23	26	7.27
+	5	46	28	6.75
+	8	-	29	6.52
+	10	86	31	6.10
+	16	-	33	5.73
+	32	-	40	4.73
+	64	475	54	3.50
+
+	
+	
 2014-08-11  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* run_featselect.m: conll07b with bansal100 and fv808 ended with:
+	* run_featselect.m: ++short.q It does not look like we are going
+	to get a better feature set with backward elimination.
+	
+	conll07b with bansal100 and fv808 ended with:
 	epoch	gmove	move	head	word	sent
 	1	0.0492	0.0591	0.1523	0.1374	0.7411	first-static-epoch on dev
 	8	0.0425	0.0526	0.1362	0.1235	0.7049	best-static-epoch on dev 
@@ -15,12 +72,12 @@
 	
 	>> load 'archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat'
 	>> [a,b,c] = run_sort_bestfeats(cache);
-	best(17): 0.0476108
+	best(15): 0.0473399
 	>> [find(isfinite(b')) 100*b(isfinite(b))']
 
 	11.0000    5.2476
 	12.0000    4.9539	izvlcazmsj (start:5.4892)
-	13.0000    4.9160
+	13.0000    4.9149
 	14.0000    4.7925
         15.0000    4.7340	izvlcazmsj (switch to diarnxtnht)
 
@@ -30,7 +87,7 @@
 	19.0000    4.7925
 
 	29.0000    5.0601	vkuvhmnnsm (switch to bxofpzrjcr)
-	30.0000    5.1869
+	30.0000    4.8521
 	31.0000    4.8304	lvmbqppcab (last)
 	32.0000    4.8651
 	33.0000    4.8857
@@ -42,17 +99,48 @@
 	38.0000    5.2281
 	39.0000    5.3007	lvmbqppcab (start:5.3007)
 	
-	80.0000    7.4353	nslylpeu (last)
+	80.0000    7.4093	nslylpeu (last)
 	81.0000    7.5729
 	82.0000    7.6433
 	83.0000    7.8448
 	84.0000    7.9976	nslylpeu (start:7.9976)
 
-
+	--b40: see if we can improve over fv015a by testing other features
+	from fv130.
+	
+	It turns out not: Numbers below show 1/100 percentage points lost
+	(-) or gained (+) from deleting (-) or adding (+) a feature to
+	fv015a.
+	archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv130_fs.log
+	
+	>> load 'archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat'
+	>> run_sort_bestfeats(cache) best(15): 0.0473399
+	
+	[-201]    '-n0w'   [   0]    '+s0h+'   [  -7]    '+s0ac'   [ -10]    '+s1l1l>' [ -13]    '+s1ac'   [ -17]    '+s0r1-'  [ -22]    '+s2d='   [ -35]    '+s2r1l<' [ -59]    '+n0l1l<'
+	[-139]    '-s0w'   [   0]    '+s1h+'   [  -7]    '+n0l1l>' [ -10]    '+s1r1l>' [ -13]    '+s2r>'   [ -17]    '+s1r1c'  [ -24]    '+n0l1-'  [ -37]    '+s1+'    [ -68]    '+s0l1r<'
+	[ -71]    '-s1w'   [   0]    '+s2h+'   [  -8]    '+s0l1c'  [ -10]    '+s0r1r>' [ -14]    '+n0l1l=' [ -17]    '+s2l1r=' [ -24]    '+n2w'    [ -37]    '+s1h-'   [ -75]    '+s1l1l<'
+	[ -48]    '-n1w'   [  -1]    '+s0r1r=' [  -8]    '+s1l1c'  [ -10]    '+n0l1r>' [ -14]    '+s2l1l=' [ -17]    '+s2l1w'  [ -25]    '+s1l1+'  [ -37]    '+s2+'    [ -80]    '+s1l1r<'
+	[ -46]    '-n0l1w' [  -2]    '+s0l1r>' [  -8]    '+s1-'    [ -11]    '+s0aw'   [ -14]    '+s2ac'   [ -17]    '+s0r1r<' [ -25]    '+s0l1-'  [ -37]    '+s2h-'   [ -83]    '+s2l1l<'
+	[ -35]    '-s0l1w' [  -2]    '+s0r1l>' [  -8]    '+s2r1w'  [ -11]    '+s2r1c'  [ -14]    '+s2r1l>' [ -17]    '+s1l>'   [ -25]    '+s1r>'   [ -39]    '+n1+'    [ -85]    '+s2l1r<'
+	[ -32]    '-s1r1+' [  -3]    '+s0r>'   [  -9]    '+s1r1r=' [ -11]    '+s2r1r=' [ -14]    '+s2r1r>' [ -18]    '+s1aw'   [ -25]    '+s1r1l<' [ -39]    '+s1d>'   [-110]    '+s2l<'  
+	[ -26]    '-s0r1w' [  -4]    '+s1r1w'  [  -9]    '+s2l1l>' [ -11]    '+s2l1c'  [ -15]    '+s1l1l=' [ -18]    '+s2r='   [ -28]    '+s0l='   [ -39]    '+s2r1r<' [-131]    '+s1l<'  
+	[ -25]    '-n1c'   [  -5]    '+n0l>'   [  -9]    '+s0l1l>' [ -11]    '+n2-'    [ -15]    '+s2l1+'  [ -18]    '+s1d='   [ -28]    '+s2l>'   [ -43]    '+n0+'    [-134]    '+s2r<'  
+	[ -19]    '-n0l1c' [  -6]    '+s1l1r=' [ -10]    '+s0-'    [ -12]    '+n1-'    [ -15]    '+s2-'    [ -19]    '+s0r='   [ -29]    '+s2l1-'  [ -43]    '+n2+'    [-145]    '+s1r<'  
+	[ -18]    '-s2aw'  [  -6]    '+s1l1w'  [ -10]    '+n0l1+'  [ -12]    '+s2l='   [ -15]    '+s1l1r>' [ -20]    '+s2r1l=' [ -29]    '+s1r1r<' [ -44]    '+s0+'    [-157]    '+s0l<'  
+	[ -17]    '-n0c'   [  -6]    '+s0l1r=' [ -10]    '+n0-'    [ -12]    '+n2c'    [ -16]    '+s0l1+'  [ -20]    '+s0r1l<' [ -32]    '+s1r1-'  [ -44]    '+s0d>'   [-163]    '+n0l<'  
+	[ -16]    '-s1c'   [  -6]    '+s0r1+'  [ -10]    '+s1r1l=' [ -12]    '+s1r1r>' [ -16]    '+s2r1+'  [ -21]    '+s1l1-'  [ -34]    '+s2d>'   [ -44]    '+s0h-'   [-171]    '+s0r<'  
+	[ -15]    '-s0c'   [  -6]    '+n0l1r=' [ -10]    '+s2c'    [ -13]    '+s1l='   [ -16]    '+s2l1r>' [ -21]    '+n0l='   [ -34]    '+s2r1-'  [ -50]    '+n0l1r<' [-238]    '+s2d<'  
+	[  -6]    '-s0r1c' [  -7]    '+s0r1l=' [ -10]    '+s2w'    [ -13]    '+s0l1l=' [ -16]    '+s0d='   [ -21]    '+s0l>'   [ -35]    '+s1r='   [ -58]    '+s0l1l<' [-267]    '+s1d<'  
+																				       [-300]    '+s0d<'  
+																				       
+	++b40:
+	run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv130', 'fv031a');
+	13-Aug-2014 08:36:39 Loading archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv130_dump.mat
+	
 	* beamparser: can we gpu parallelize the beam score calculation?
 	we only compute move scores for parent, not the children!?  can we
-	do kernel hashing?  ++b43.  Experimenting with conll07b_m2 and
-	dev (fv808 bansal encoding trn split run_conll07_dbg.m):
+	do kernel hashing?  Experimenting with conll07b_m2 and dev (fv808
+	bansal encoding trn split run_conll07_dbg.m):
 
 	>> load conll07b_m2.mat
 	epoch	stat	move	head	word	sent
@@ -99,7 +187,48 @@
 	
 	+ higher beams have progressively worse head error.  unless there
 	  is a bug, seems we can't use a model not trained with beamsearch.
-	- would it matter if we used only static training? try with final model in ++43.
+	
+	- would it matter if we used only static training? 
+	
+	>> m1 = run_static('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv015a');
+	epoch	nsv	trnerr		deverr
+	1	57809	0.0753553	0.0473399
+	2	74079	0.0447845	0.0438292
+	3	82786	0.0343079	0.0429624
+	4	88578	0.0275631	0.0424423
+	5	92618	0.0229998	0.0423773
+	6	95686	0.0193832	0.0421606	best
+	7	98266	0.0169831	0.0422256
+	>> wiki = load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv015a_dump.mat')
+	>> eval_model(m1, wiki.dev, wiki.devdump)
+	epoch	stat	move	head	word	sent
+	6	0.0422	0.0523	0.1350	0.1203	0.7084
+	% compare with conll07b_m2 (bansal100,dynamic10,fv808) stat:4.58 head:12.57
+	>> tic;[m10,e10] = beamparser(m1, wiki.dev(1:10), 'update', 0, 'beam', 10);toc;	
+	Elapsed time is 85.803560 seconds.
+	>> eval_conll(wiki.dev(1:10), e10);
+	head_pct: 0.2116  sum(e10.s1):1.6775e+09
+	>> tic;[m5,e5] = beamparser(m1, wiki.dev(1:10), 'update', 0, 'beam', 5);toc;	
+	Elapsed time is 46.477789 seconds.
+	>> eval_conll(wiki.dev(1:10), e5);
+	head_pct: 0.2328  sum(e5.s1):1.6575e+09
+	% Beam search helped this time?  It was a fluke.  Here is the full table:
+	>> dmp = {e0,e1,e2,e5,e10,e64};
+	>> for i=1:10 fprintf('%d',i); for j=1:6 dj=dmp{j}; fprintf('\t%.2e', sentence_score(dj,i)); end; fprintf('\n'); end
+	
+	s(len)	vparser(13s)	b1(15s)		b2(23s)		b5(46s)		b10(86s)	b64(475s)
+	1	3.67e+08	3.67e+08	3.83e+08	4.17e+08	4.19e+08	4.21e+08
+	2	2.69e+07	2.69e+07	2.69e+07	2.69e+07	2.69e+07	2.69e+07
+	3	1.97e+08	1.97e+08	2.04e+08	1.99e+08	2.04e+08	2.19e+08
+	4	8.10e+07	8.10e+07	8.10e+07	8.10e+07	8.10e+07	8.10e+07
+	5	2.73e+08	2.73e+08	2.73e+08	2.81e+08	2.86e+08	2.97e+08
+	6	1.45e+08	1.45e+08	1.45e+08	1.45e+08	1.45e+08	1.58e+08
+	7	6.80e+07	6.80e+07	7.24e+07	7.24e+07	7.24e+07	7.24e+07
+	8	7.01e+07	7.01e+07	7.01e+07	7.01e+07	7.01e+07	7.01e+07
+	9	1.10e+08	1.10e+08	1.18e+08	1.18e+08	1.20e+08	1.23e+08
+	10	2.26e+08	2.26e+08	2.12e+08	2.47e+08	2.52e+08	2.58e+08
+	head	0.1429		0.1429		0.1958		0.2328		0.2116		0.2751
+	
 	- figure out how to make it faster.
 	
 	
@@ -125,8 +254,8 @@
 
 	Doing featselect based on first epoch may not be a good idea!
 	
-	Another multi-epoch experiment comparing: ++b40 ++b41
 	Will the larger feature set win with more epochs?
+	Another multi-epoch experiment comparing:
         15.0000    4.7340	fv015a
 	31.0000    4.8304	fv031a
 	
@@ -137,13 +266,21 @@
 	3	0.0430	0.0528	0.1362	0.1209	0.7200
 	4	0.0424	0.0524	0.1351	0.1198	0.7114
 	5	0.0424	0.0528	0.1360	0.1211	0.7104
-	6	0.0422	0.0523	0.1350	0.1203	0.7084
-
+	6	0.0422	0.0523	0.1350	0.1203	0.7084	best stat
+	7	0.0422	0.0518	0.1347	0.1201	0.7104
+	
 	fv031a
 	epoch	stat	move	head	word	sent
 	1	0.0483	0.0621	0.1587	0.1433	0.7547
 	2	0.0448	0.0588	0.1507	0.1357	0.7366
+	3	0.0434	0.0562	0.1443	0.1296	0.7240
+	4	0.0425	0.0555	0.1424	0.1282	0.7210
+	5	0.0421	0.0552	0.1413	0.1272	0.7134	best stat
+	6	0.0424	0.0549	0.1416	0.1274	0.7169
 
+	- As anticipated, the larger feature set starts a bit worse and
+	closes the gap in multi-epoch, but the advantage is too small to
+	be worth trying multi-epoch feature selection.
 	
 2014-08-10  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -234,7 +371,7 @@
 	5	0.0430	0.0531	0.1373	0.1241	0.7044
 	6	0.0430	0.0532	0.1374	0.1245	0.7059
 	
-	* run_featselect.m: (++short.q) Try backward feature selection.
+	* run_featselect.m: Try backward feature selection.
 	Running on split conll07 trn.
 	
 	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv018'); aefsjihmbv:done
@@ -256,7 +393,7 @@
 	The fv084 starting features on wiki100 give 0.0799762 for conll07
 	trn split into sec02 dev and the rest trn with archybrid.  This is
 	under 0.05 for best feature combination.  A lot of starting
-	features have negative effect. (++y00)(++i02)
+	features have negative effect.
 
 	Here is fv084 (all) vs fv017 (best):			(bansal100)
 	best(84): 0.0799762	    best(17): 0.0476108		best(16): 0.0473616
