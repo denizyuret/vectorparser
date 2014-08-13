@@ -5,6 +5,7 @@
 *.job
 *.out
 *.err
+profile_results*
 run_*
 foo*
 matlab.sh
