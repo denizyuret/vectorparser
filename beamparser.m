@@ -12,27 +12,35 @@ function [model, dump] = beamparser_dbg(model, corpus, varargin)
 
 m = beamparser_init(varargin, nargout);
 agenda = cell(m.beam * m.nmove, 2);
+fmatrix = zeros(m.ndims, m.beam);
 fprintf('Processing sentences...\n');
 
 for snum=1:numel(corpus)
   sentence = corpus{snum};
   parser = feval(m.parser, numel(sentence.head));
-  candidates = {0, struct('parser', parser)};
-  while 1
+  candidates = {0, struct('parser', parser)}; % score,state
+
+  while sum(candidates{1,2}.parser.valid_moves) > 0
     nagenda = 0;
-    for cnum = 1:size(candidates, 1)
+    ncandidates = size(candidates, 1);
+
+    for cnum = 1:ncandidates
       [score, state] = candidates{cnum,:};
-      parser = state.parser;
-      valid = parser.valid_moves();
-      if (sum(valid) == 0) continue; end;
-      state.feats = features(parser, sentence, m.feats)';
-      state.score = compute_scores(m, state.feats)';
-      state.cost  = parser.oracle_cost(sentence.head);
+      state.feats = features(state.parser, sentence, m.feats)';
+      state.cost  = state.parser.oracle_cost(sentence.head);
       candidates{cnum,2} = state;
+      fmatrix(:,cnum) = state.feats;
+    end
+
+    scores = compute_scores(m, fmatrix(:,1:ncandidates)); % nc,nb
+
+    for cnum = 1:ncandidates
+      candidates{cnum,2}.score = scores(:,cnum);
+      [score, state] = candidates{cnum,:};
       for move = 1:m.nmove
-        if ~valid(move) continue; end;
+        if isinf(state.cost(move)) continue; end;
         newscore = score + state.score(move);
-        newstate = struct('parser', copy(parser), 'prev', state);
+        newstate = struct('parser', copy(state.parser), 'prev', state);
         newstate.parser.transition(move);
         newstate.move = move;
         nagenda = nagenda + 1;
@@ -99,14 +107,13 @@ m.compute_scores  = m.update || m.predict;
 assert(isfield(model,'parser'), 'Please specify model.parser.');
 tmp_s = corpus{1};
 tmp_p = feval(model.parser, numel(tmp_s.head));
-nc = tmp_p.NMOVE;
-m.nmove = nc;
+m.nmove = tmp_p.NMOVE;
 
 if m.compute_features
   assert(isfield(model,'feats'), 'Please specify model.feats.');
   assert(size(model.feats, 2) == 3, 'The feats matrix needs 3 columns.');
   tmp_f = features(tmp_p, tmp_s, model.feats);
-  nd = numel(tmp_f);
+  m.ndims = numel(tmp_f);
 end
 
 if m.compute_scores
@@ -124,20 +131,18 @@ if m.compute_scores
 
   if ~isfield(model,'SV') || isempty(model.SV)
     if m.update
-      m.svtr = zeros(0, nd);
-      m.betatr = zeros(0, nc);
-      m.betatr2 = zeros(0, nc);
+      m.svtr = zeros(0, m.ndims);
+      m.beta = zeros(0, m.nmove);
+      m.beta2 = zeros(0, m.nmove);
     else
       error('Please specify model.SV');
     end
   else
-    assert(size(model.SV, 1) == nd);
-    assert(size(model.beta, 1) == nc);
+    assert(size(model.SV, 1) == m.ndims);
+    assert(size(model.beta, 1) == m.nmove);
     assert(size(model.SV, 2) == size(model.beta, 2));
     assert(all(size(model.beta) == size(model.beta2)));
     m.svtr = model.SV';
-    m.betatr = model.beta';
-    m.betatr2 = model.beta2';
   end
 
   if ~isfield(m, 'gpu')
@@ -147,10 +152,11 @@ if m.compute_scores
   if m.gpu
     assert(gpuDeviceCount()>0, 'No GPU detected.');
     fprintf('Loading model on GPU.\n');
-    gpuDevice(1);
+    gdev = gpuDevice();
+    reset(gdev);
     m.svtr = gpuArray(m.svtr);
-    m.betatr = gpuArray(m.betatr);
-    m.betatr2 = gpuArray(m.betatr2);
+    m.beta = gpuArray(m.beta);
+    m.beta2 = gpuArray(m.beta2);
   end
 
 end % if m.compute_scores
@@ -220,26 +226,14 @@ end % beamparser
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Same matrix operation has different costs on gpu:
-% score = gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
-% Matrix multiplication is less efficient than array mult:
-% score = gather(b + beta * (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree); % 17310us
-% Even the transpose makes a difference:
-% score = gather(b + sum(bsxfun(@times, beta, (hp.gamma * (f * sv) + hp.coef0).^hp.degree),1)); % 11364us
-
-function score = compute_scores(m, ftr)
-if 0 %DBG
-  score = rand(1, size(m.betatr, 2));
-  return;
-end
+function scores = compute_scores(m, x)
 hp = m.kerparam;
-if isempty(m.svtr)
-  score = zeros(1, size(m.betatr, 2));
-elseif m.average
-  score = gather(sum(bsxfun(@times, m.betatr2, (hp.gamma * full(m.svtr * ftr) + hp.coef0).^hp.degree),1));
+if m.average
+  beta = m.beta2;
 else
-  score = gather(sum(bsxfun(@times, m.betatr, (hp.gamma * full(m.svtr * ftr) + hp.coef0).^hp.degree),1));
+  beta = m.beta;
 end
+scores = gather(beta * (hp.gamma * (m.svtr * x) + hp.coef0) .^ hp.degree);
 end % compute_scores
 
 
