@@ -85,7 +85,8 @@ end % transition
 % children: (s0,b) + (b\n0,s0) + (s1 or 0,s0)
 
 function c = oracle_cost(p, gold)
-assert(numel(gold) == p.nword);
+
+if (numel(gold) ~= p.nword) error('Number of words do not match'); end;
 c = Inf(1, p.NMOVE);
 n0 = p.wptr;
 
@@ -114,8 +115,9 @@ if (p.sptr >= 1)
 end
 
 v = valid_moves(p);
-assert(all(isfinite(c(v))) && all(isinf(c(~v))),...
-       '[%s] [%s]', num2str(v), num2str(c));
+if ~(all(isfinite(c(v))) && all(isinf(c(~v))))
+  error('[%s] [%s]', num2str(v), num2str(c));
+end
 end % oracle_cost
 
 
