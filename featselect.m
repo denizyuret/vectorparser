@@ -1,4 +1,4 @@
-function featselect_gpu(m0, trn, dev, cachefile, initfeats)
+function featselect(m0, trn, dev, cachefile, initfeats)
 
 % Algorithm SFFS from P. Somol, P. Pudil, J. Novovicova, and
 % P. Paclik.  Adaptive floating search methods in feature
@@ -23,75 +23,86 @@ function featselect_gpu(m0, trn, dev, cachefile, initfeats)
 %  'parser', @archybrid, 'feats', fv102, 'step', 100000, 'batchsize', 1000);
 % [~,trndump] = vectorparser(m0, trn, 'update', 0, 'predict', 0);
 % [~,devdump] = vectorparser(m0, dev, 'update', 0, 'predict', 0);
-% featselect_gpu(m0,trndump,devdump,'foo.mat');
+% featselect(m0,trndump,devdump,'foo.mat');
 
-[cache,bestfeats,besterror,start,nfeats,nstart] = featselect_init(nargin);
+cache = [];
+featselect_init(nargin);
 
+start_changed = true;
+while start_changed
+  start_changed = false;
 
-while nstart < nfeats
+  msg('# starting(%d) with %s', nstart, fstr(start));
 
-  if (nstart > 1)
+  if nstart > 0
     start_err = err(start);
     if (start_err < besterror(nstart))
       bestfeats{nstart} = fkey(start);
       besterror(nstart) = start_err;
-      fprintf('# newbest(%d)\t%g\t%s\n', nstart, start_err, fstr(start));
+      msg('# newbest(%d)\t%g\t%s', nstart, start_err, fstr(start));
     end
   end
 
-  backtrack = 1;
-  while ((nstart > numel(start0)) && backtrack)
-    fprintf('# backtracking(%d) with %s\n', nstart, fstr(start));
-    best_try_i = 0;
-    best_try_err = inf;
-    for try_i=1:nstart
-      new_features = start;
-      new_features(try_i) = [];
-      new_err = err(new_features);
-      if new_err < best_try_err
-        best_try_err = new_err;
-        best_try_i = try_i;
+  if nstart > 1
+    msg('# backtracking(%d) with %s', nstart, fstr(start));
+    best = struct('i', 0, 'e', inf, 'f', []);
+    for curr_i=1:nstart
+      curr_f = start;
+      curr_f(curr_i) = [];
+      curr_e = err(curr_f);
+      if curr_e < best.e
+        best = struct('i', curr_i, 'e', curr_e, 'f', curr_f);
+        msg('# better(%d)\t%g\t-%s\t%s', nstart-1, ...
+            best.e, fstr(start(best.i)), fstr(best.f));
       end %if
     end %for
-    if best_try_err < besterror(nstart-1)
+    if best.e < besterror(nstart-1)
+      msg('# newbest(%d)\t%g\t-%s\t%s', nstart-1, ...
+          best.e, fstr(start(best.i)), fstr(best.f));
+      bestfeats{nstart-1} = fkey(best.f);
+      besterror(nstart-1) = best.e;
+    end
+    if best.e <= start_err
       nstart = nstart-1;
-      start(best_try_i) = [];
-      bestfeats{nstart} = fkey(start);
-      besterror(nstart) = best_try_err;
-      fprintf('# newbest(%d)\t%g\t%s\n', nstart, best_try_err, fstr(start));
-    else
-      backtrack = 0;
+      start(best.i) = [];
+      start_changed = true;
+      continue;
     end
   end
 
-  best_try = 0;
-  best_try_err = inf;
-  fprintf('# children(%d) of %s\n', nstart, fstr(start));
-  for feature_to_try=1:nfeats
-    if ismember(feature_to_try, start) continue; end
-    new_features = start;
-    new_features(end+1) = feature_to_try;
-    new_err = err(new_features);
-    if new_err < best_try_err
-      best_try = feature_to_try;
-      best_try_err = new_err;
+  if nstart < nfeats
+    best = struct('i', 0, 'e', inf, 'f', []);
+    msg('# children(%d) of %s', nstart, fstr(start));
+    for curr_i=1:nfeats
+      if ismember(curr_i, start) continue; end
+      curr_f = start;
+      curr_f(end+1) = curr_i;
+      curr_e = err(curr_f);
+      if curr_e < best.e
+        best = struct('i', curr_i, 'e', curr_e, 'f', curr_f);
+        msg('# better(%d)\t%g\t+%s\t%s', nstart+1, ...
+            best.e, fstr(best.i), fstr(best.f));
+      end
+    end % for
+    if best.e < besterror(nstart)
+      msg('# newbest(%d)\t%g\t+%s\t%s', nstart+1, ...
+          best.e, fstr(best.i), fstr(best.f));
+      bestfeats{nstart+1} = fkey(best.f);
+      besterror(nstart+1) = best.e;
     end
-  end % for
-  nstart = nstart + 1;
-  start(end+1) = best_try;
-  assert(nstart == length(start));
+    if best.e < start_err
+      nstart = nstart + 1;
+      start(end+1) = best.i;
+      start_changed = true;
+    elseif ~strcmp(fkey(start), bestfeats{nstart})
+      msg('# reverting(%d) from %g %s to %g %s', nstart, ...
+          start_err, fstr(start), besterror(nstart), bestfeats{nstart});
+      start = key2f(bestfeats{nstart});
+      start_changed = true;
+    end
+  end % if nstart < nfeats
 
-  if best_try_err < besterror(nstart)
-    bestfeats{nstart} = fkey(start);
-    besterror(nstart) = best_try_err;
-    fprintf('# newbest(%d)\t%g\t%s\n', nstart, best_try_err, fstr(start));
-  elseif ~strcmp(fkey(start), bestfeats{nstart})
-    fprintf('# reverting(%d) from %g %s to %g %s\n', nstart, best_try_err, ...
-            fstr(start), besterror(nstart), bestfeats{nstart});
-    start = key2f(bestfeats{nstart});
-  end
-
-end  % while nstart < nfeats
+end  % while nstart <= nfeats
 
 
 %%%%%%%%%%%%%%%%%%%%%%
@@ -123,7 +134,7 @@ function s=err(f)                       % f is an array of indices into trn.fidx
 
 fk = fkey(f);
 if ~isKey(cache, fk)                    % x matrix has an instance with all features in each column
-  fprintf('Computing err for %s\n', fstr(f));
+  msg('Computing err for %s', fstr(f));
   idx = logical([]);                    % idx is a boolean index into the rows of x matrix (features)
   for j=1:numel(f)
     fj=f(j);
@@ -139,23 +150,22 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   x_tr = trn.x(idx,:);
   
   t0 = tic;
-  gpuDevice(1);
   m1 = perceptron(x_tr, trn.y, m0);
   [~,~,e1] = perceptron(x_te, dev.y, m1, 'update', 0, 'average', 1);
   t1 = toc(t0);
   nsv = size(m1.beta, 2);
-  fprintf('%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fstr(f));
+  fprintf('==>\t%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fstr(f));
   cache(fk) = e1;
-  save(cachefile, 'cache');
+  update_cachefile();
 else
-  fprintf('%g\t%d\t%g\t%s\n', cache(fk), 0, 0, fstr(f));
+  fprintf('==>\t%g\t%d\t%g\t%s\n', cache(fk), 0, 0, fstr(f));
 end % if ~isKey(cache, fk)
 s = cache(fk);
 end % err
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
-function [cache,bestfeats,besterror,start,nfeats,nstart] = featselect_init(nargin_save)
+function featselect_init(nargin_save)
 
 % Check to make sure model m0 and dumps trn and dev have all we want:
 assert(isfield(m0, 'parser'), 'Please specify the parser type m0.parser.\n');
@@ -171,19 +181,55 @@ assert(size(dev.x, 1) == size(trn.x, 1));
 % m0.step = 200;
 % m0.batchsize = 500;
 
-% Init cache
-if exist(cachefile, 'file')
-  load(cachefile);
-  assert(exist('cache') ~= 0, '%s does not contain a cache.\n', cachefile);
-else
-  cache = containers.Map();
-  save(cachefile, 'cache');
-end
-
-% Init bestfeats
 nfeats = numel(trn.fidx);
 bestfeats = cell(1,nfeats);
 besterror = inf(1,nfeats);
+cache = containers.Map();
+update_cachefile();
+
+% Initialize starting feature combination
+if nargin_save >= 5
+  start = key2f(mat2str(sortrows(initfeats)));
+elseif any(isfinite(besterror));
+  [~,nstart] = min(besterror);
+  start = bestfeats{nstart};
+else
+  start = [];
+end
+nstart = numel(start);
+fprintf('==>\tavg\tnsv\ttime\tfeats\n');
+
+end % featselect_init
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function update_cachefile()
+
+% Check if someone else added data to our cachefile
+% and merge with our cache if they did.
+if exist(cachefile, 'file')
+  tmp = load(cachefile);
+  assert(isfield(tmp,'cache'), '%s does not contain a cache.\n', cachefile);
+  cachekeys = keys(tmp.cache);
+  for i=1:numel(cachekeys)
+    key = cachekeys{i};
+    if isKey(cache, key)
+      assert(cache(key) == tmp.cache(key), ...
+             'Cache mismatch: %g~=%g for %s', ...
+             cache(key), tmp.cache(key), key);
+    else
+      cache(key) = tmp.cache(key);
+    end
+  end
+end
+
+% Try to save cache in a threadsafe manner
+threadtemp = [tempname '.mat'];
+save(threadtemp, 'cache');
+runme = sprintf('flock -x %s -c ''mv %s %s''', cachefile, threadtemp, cachefile);
+system(runme);
+
+% Update bestfeats
 cachekeys = keys(cache);
 for i=1:numel(cachekeys)
   fstr = cachekeys{i};
@@ -195,17 +241,8 @@ for i=1:numel(cachekeys)
   end
 end
 
-% Initialize starting feature combination
-if nargin_save < 5
-  start0 = [];
-else
-  start0 = key2f(mat2str(sortrows(initfeats)));
-end
-start = start0;
-nstart = numel(start);
 
-fprintf('avg\tnsv\ttime\tfeats\n');
+end % update_cachefile
 
-end % featselect_init
+end % featselect
 
-end % featselect_gpu
