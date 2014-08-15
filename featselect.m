@@ -32,10 +32,9 @@ start_changed = true;
 while start_changed
   start_changed = false;
 
-  msg('# starting(%d) with %s', nstart, fstr(start));
-
   if nstart > 0
     start_err = err(start);
+    msg('# starting(%d)\t%g\t%s', nstart, start_err, fstr(start));
     if (start_err < besterror(nstart))
       bestfeats{nstart} = fkey(start);
       besterror(nstart) = start_err;
