@@ -12,6 +12,7 @@ function [model, dump] = vectorparser(model, corpus, varargin)
 
 vectorparser_init(varargin, nargout);
 fprintf('Processing sentences...\n');
+t0 = tic;
 
 for snum=1:numel(corpus)
   s = corpus{snum};
@@ -84,9 +85,9 @@ for snum=1:numel(corpus)
     dump.pred{end+1} = p.head;
   end
 
-  fprintf('.');
+  dot(snum, numel(corpus), t0);
 end % for s1=corpus
-fprintf('\n');
+
 
 if opts.update
   model.SV = gather(svtr)';
@@ -235,5 +236,18 @@ if opts.compute_scores
   dump.score(:,end+1) = score;
 end
 end % update_dump
+
+%%%%%%%%%%%%%%%%%%%%%%
+function dot(cur, tot, t0)
+t1 = toc(t0);
+if cur == tot
+  fprintf(' %d/%d (%.2fs %gx/s)\n', cur, tot, t1, cur/t1);
+elseif mod(cur,10) == 0
+  fprintf('.');
+  if mod(cur, 100) == 0
+    fprintf(' %d/%d (%.2fs %gx/s)\n', cur, tot, t1, cur/t1);
+  end
+end
+end % dot
 
 end % vectorparser
