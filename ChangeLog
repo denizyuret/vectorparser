@@ -1,3 +1,105 @@
+2014-08-15  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* TODO:
+	- featselect finished, check archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat
+	- check run_conll07_ablation on b40.
+	
+	* beamparser_dbg.m (TODO):
+	- implement early stopping
+	- implement path construction
+	- implement perceptron update
+	- implement dump update
+	- check beamparser_init
+	- implement kernel cache
+	
+	* vectorparser.m: Implement kernel cache and test on vectorparser.
+	Static training should set most of the SVs and leave a cache for
+	the oracle path states using those SVs.  At the beginning of each
+	epoch, vectorparser can use the states visited in the last epoch
+	and the SVs from the last epoch to construct a new cache in 300
+	secs.  The new SVs go into a different matrix
+	(use svtr2 again).  Whenever there is a cache hit no need to
+	recalculate the scores with the big matrix.  model.X should store
+	the instances from the last epoch.  Use mat2str of X vectors for
+	keys?
+
+	Before kernel cache:
+	w = load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv015a_dump.mat')
+	% w.trn: 763702 inst, 398439 word, 16588 sent
+	newFeatureVectors
+	m0 = struct('kerparam', struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3),...
+                       'parser', @archybrid, 'feats', fv015a, 'step', 1e5, 'batchsize', 1e3);
+	m1 = perceptron(w.trndump.x, w.trndump.y, m0);   % 223 secs 57809 unique sv
+	m2 = vectorparser(m1, w.trn(1:200));  % 97.58 secs for the first 100 sentences
+
+	After kernel cache:
+	>> m1.X = w.trndump.x;
+	>> m2b = vectorparser_dbg(m1, w.trn(1:200));
+	% 319.54 secs to run the perceptron and compute 763702 cache scores
+	% Hopelessly slow trying to cache with mat2str keys.
+
+	For faster cache, use dot product with a random vector:
+	>> r = rand(1, 1401);
+	>> a = r * w.trndump.x;  % 1,1401 * 1401,763702
+	>> size(a)  % 1,763702
+	>> min(a)   % -6.9922
+	>> max(a)   % 8.9943
+	>> mean(a)  % 0.7074
+	>> std(a)   % 1.7632 and the distribution is almost gaussian
+	>> ux = unique(w.trndump.x', 'rows');  % 756727,1401
+	% almost all x vectors are unique
+	% how do you map gaussian to uniform?
+	>> b = normcdf(a, mean(a), std(a)); % now b is uniform in [0,1]
+	>> c = round(b*1e6); % c is uniform int in [0,1e6]
+	>> d = unique(c);  % gives 530540 unique values
+	>> numel(unique(round(b*1e6)))  % 530540 (70.11%)
+	>> numel(unique(round(b*1e7)))  % 728396 (96.26%)
+	>> numel(unique(round(b*1e8)))  % 753765 (99.61%)
+	>> numel(unique(round(b*1e9)))  % 756470 (99.97%)
+	>> numel(unique(round(b*1e10))) % 756710
+	>> numel(unique(round(b*1e11))) % 756727 (100.00%)
+
+	Trying again:
+	>> [m2c,tmp] = vectorparser_dbg(m1, w.trn(1:200));
+	% 326 seconds to compute kernel cache scores
+	% 12 seconds to initialize the hash table
+	% 65.31 seconds for the first 100 sentences
+	% need to profile on an empty machine:
+	m2 = vectorparser(m1, w.trn(1:200));  % 36.87 secs for the first 100 sentences
+	[m2c,tmp] = vectorparser_dbg(m1, w.trn(1:200));  % 19.65 secs for first 100
+	tmp.cache.hit  % 6636
+	tmp.cache.miss % 3234
+
+	% it turns out score1 is best computed on the gpu (in case of cache miss)
+	% and score2 on the cpu.  At 200 sentences profiling shows:
+	score1(gpu): 18.294  score1(cpu):82.748 
+	score2(cpu): 2.095   score2(gpu):10.794
+
+	% and here is mtimes vs bsxfun:
+	score1(bsxfun): 18.294  score1(mtimes): 34.101 
+	score2(bsxfun): 2.095   score2(mtimes): 2.179
+
+	% Final version gets 6 sentences or 153 words per second, which
+	means one epoch should be less than an hour!  Now let's run this
+	for 15 epochs and see what happens.
+	
+2014-08-14  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* GN13: Fig 1 shows that running too many static training
+	iterations is not good, they only do it for k=1 epoch.  They do a
+	total of 15 epochs (14 dynamic).  Also in dynamic oracle training
+	they pick the model move with p=0.9.  Finally they shuffle
+	sentences every iteration. (TODO)
+
+	* run/run_conll07_ablation.m: ++b40.
+	- embedding: fselect starting with fv015a+archybrid.
+	- features: anything between fv015a and fv031a?
+	- kernel: fselect k=1..9 starting with fv015a+archybrid.
+	- arctype: fselect starting with fv015a
+	- perceptron: with or without static training 
+	[actually GN13 suggests 1 epoch]
+	[Yoav says k=0 and p=1 is also ok, which corresponds to no static]
+
 2014-08-13  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* beamparser.m: Training.
@@ -7,17 +109,13 @@
 	- We need to compute the correct y sequence with its features.
 	- If a state belongs to both y and z and the moves are different we do the usual update.
 	- If a state is only in y or in z do we update?  Do we check what the model would have done?
-
+	- Yue says he does update if only in y or z.  Try different variations.
+	
 	- early stopping?
 
 	- graph based parser: score agenda states rather than candidate moves?  difference?
-	
-	* TODO: does static pre-training really help?
-	- embedding: fselect starting with fv015a+archybrid.
-	- features
-	- kernel: fselect starting with fv015a+archybrid.
-	- arctype: fselect starting with fv015a
-	- perceptron: with or without static training
+
+	- pa may be worth looking at again for fast convergence.
 	
 2014-08-12  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -105,12 +203,12 @@
 	83.0000    7.8448
 	84.0000    7.9976	nslylpeu (start:7.9976)
 
-	--b40: see if we can improve over fv015a by testing other features
-	from fv130.
-	
-	It turns out not: Numbers below show 1/100 percentage points lost
-	(-) or gained (+) from deleting (-) or adding (+) a feature to
-	fv015a.
+	* fv015a: is a local minimum.
+
+	See if we can improve over fv015a by testing other features from
+	fv130. It turns out not: Numbers below show 1/100 percentage
+	points lost (-) or gained (+) from deleting (-) or adding (+) a
+	feature to fv015a.
 	archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv130_fs.log
 	
 	>> load 'archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat'
@@ -133,9 +231,11 @@
 	[  -6]    '-s0r1c' [  -7]    '+s0r1l=' [ -10]    '+s2w'    [ -13]    '+s0l1l=' [ -16]    '+s0d='   [ -21]    '+s0l>'   [ -35]    '+s1r='   [ -58]    '+s0l1l<' [-267]    '+s1d<'  
 																				       [-300]    '+s0d<'  
 																				       
-	++b40:
+																				       
+	* fv031a: is also a local minimum
 	run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv130', 'fv031a');
 	13-Aug-2014 08:36:39 Loading archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv130_dump.mat
+	
 	
 	* beamparser: can we gpu parallelize the beam score calculation?
 	we only compute move scores for parent, not the children!?  can we
