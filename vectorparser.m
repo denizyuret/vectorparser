@@ -10,62 +10,50 @@
 
 function [model, dump] = vectorparser(model, corpus, varargin)
 
-vectorparser_init(varargin, nargout);
-fprintf('Processing sentences...\n');
+msg('Initializing...');
+m = vectorparser_init(model, corpus, varargin, nargout);
+msg('Processing sentences...');
 t0 = tic;
 
 for snum=1:numel(corpus)
   s = corpus{snum};
   h = s.head;
   n = numel(h);
-  p = feval(model.parser, n);
+  p = feval(m.parser, n);
 
   while 1                               % parse one sentence
     valid = p.valid_moves();
     if ~any(valid) break; end
 
-    if opts.compute_costs
+    if m.compute_costs
       cost = p.oracle_cost(h); 		% 1019us
       [mincost, mincostmove] = min(cost);
     end
 
-    if opts.compute_features
-      f = features(p, s, model.feats);  % 1153us
+    if m.compute_features
+      f = features(p, s, m.feats);  % 1153us
       ftr = f';                         % f is a row vector, ftr column vector
     end
 
-    if opts.compute_scores
-      if isempty(svtr)
-        score = zeros(1, p.NMOVE);
-      elseif opts.average
-        score = gather(sum(bsxfun(@times, betatr2, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1));
-      else
-        score = gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1));
-      end
+    if m.compute_scores
+      score = compute_scores(m, ftr);
       [maxscore, maxscoremove] = max(score); % 925us
-
-      % Same matrix operation has different costs on gpu:
-      % score = gather(sum(bsxfun(@times, betatr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
-      % Matrix multiplication is less efficient than array mult:
-      % score = gather(b + beta * (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree); % 17310us
-      % Even the transpose makes a difference:
-      % score = gather(b + sum(bsxfun(@times, beta, (hp.gamma * (f * sv) + hp.coef0).^hp.degree),1)); % 11364us
-
     end
 
-    if opts.update
-      betatr2 = betatr2 + betatr;
+    if m.update
+      m.bavg1 = m.bavg1 + m.bfin1;
+      m.bavg2 = m.bavg2 + m.bfin2;
       if cost(maxscoremove) > mincost
-        svtr(end+1,:) = f;
+        m.svtr2(end+1,:) = f;
         newbeta = zeros(1, p.NMOVE);
         newbeta(mincostmove) = 1;
         newbeta(maxscoremove) = -1;
-        betatr(end+1,:) = newbeta;
-        betatr2(end+1,:) = newbeta;
+        m.bfin2(:,end+1) = newbeta;
+        m.bavg2(:,end+1) = newbeta;
       end
-    end % if opts.update
+    end % if m.update
 
-    if ~opts.predict
+    if ~m.predict
       execmove = mincostmove;
     elseif valid(maxscoremove)
       execmove = maxscoremove;
@@ -77,171 +65,233 @@ for snum=1:numel(corpus)
 
     p.transition(execmove);
 
-    if opts.dump update_dump(); end
+    if m.dump 
+      m = update_dump(m, ftr, mincostmove, cost, execmove, score); 
+    end
 
   end % while 1
 
-  if opts.dump && opts.predict
-    dump.pred{end+1} = p.head;
+  if m.dump && m.predict
+    m.pred{end+1} = p.head;
   end
 
   dot(snum, numel(corpus), t0);
 end % for s1=corpus
 
 
-if opts.update
-  model.SV = gather(svtr)';
-  model.beta = gather(betatr)';
-  model.beta2 = gather(betatr2)';
+if m.update
+  model.X = m.X;
+  model.SV = [gather(m.svtr1') gather(m.svtr2')];
+  model.beta = [gather(m.bfin1) gather(m.bfin2)];
+  model.beta2 = [gather(m.bavg1) gather(m.bavg2)];
   model = compactify(model);
 end
 
-if opts.dump && opts.compute_features
-  dump.feats = model.feats;
-  [~,dump.fidx] = features(p, s, model.feats);
+if m.dump 
+  if m.compute_features
+    [~,m.fidx] = features(p, s, m.feats);
+  end
+  dump = m;
+end
+
+end % vectorparser
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function score = compute_scores(m, ftr)
+
+% Same matrix operation has different costs on gpu:
+% score = gather(sum(bsxfun(@times, btr, (hp.gamma * full(svtr * ftr) + hp.coef0).^hp.degree),1)); % 7531us
+% Matrix multiplication is less efficient than array mult:
+% score = gather(b + beta * (hp.gamma * (svtr * ftr) + hp.coef0).^hp.degree); % 17310us
+% Even the transpose makes a difference:
+% score = gather(b + sum(bsxfun(@times, beta, (hp.gamma * (f * sv) + hp.coef0).^hp.degree),1)); % 11364us
+
+hp = m.kerparam;
+if m.average
+  b1tr = m.bavg1';
+  b2 = m.bavg2;
+else
+  b1tr = m.bfin1';
+  b2 = m.bfin2;
+end
+score1 = [];
+if isfield(m, 'cache')
+  score1 = m.cache.get(ftr);
+end
+if isempty(score1)
+  % score1 = gather(b1 * (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree);
+  score1 = gather(sum(bsxfun(@times, b1tr, (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree),1))';
+end
+score2 = gather(b2 * (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree);
+score = score1 + score2;
 end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function vectorparser_init(varargin_save, nargout_save)
+function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
 
-opts = struct();      % opts is a struct of options.
+m = model;      % m is a copy of model with extra information
 
 for vi = 1:2:numel(varargin_save)
   v = varargin_save{vi};
   v1 = varargin_save{vi+1};
   switch v
    case 'predict' 
-    opts.predict = v1;
+    m.predict = v1;
    case 'update'  
-    opts.update  = v1;
+    m.update  = v1;
    case 'average' 
-    opts.average = v1;
+    m.average = v1;
    case 'gpu'     
-    opts.gpu     = v1;
+    m.gpu     = v1;
    otherwise 
-    error('Usage: [model, dump] = vectorparser(model, corpus, opts)');
+    error('Usage: [model, dump] = vectorparser(model, corpus, m)');
   end
 end
 
-if ~isfield(opts, 'predict')
-  opts.predict = true;  % predict: use the model for prediction (default), otherwise follow gold moves
+if ~isfield(m, 'predict')
+  m.predict = true;  % predict: use the model for prediction (default), otherwise follow gold moves
 end
  
-if ~isfield(opts, 'update')
-  opts.update = true;   % update: train the model (default), otherwise model is not updated
+if ~isfield(m, 'update')
+  m.update = true;   % update: train the model (default), otherwise model is not updated
 end
 
-opts.dump = (nargout_save >= 2);
-opts.compute_costs = opts.update || opts.dump || ~opts.predict;
-opts.compute_features = opts.update || opts.dump || opts.predict;
-opts.compute_scores  = opts.update || opts.predict;
+m.dump = (nargout_save >= 2);
+m.compute_costs = m.update || m.dump || ~m.predict;
+m.compute_features = m.update || m.dump || m.predict;
+m.compute_scores  = m.update || m.predict;
 
-assert(isfield(model,'parser'), 'Please specify model.parser.');
+assert(isfield(m,'parser'), 'Please specify model.parser.');
 tmp_s = corpus{1};
-tmp_p = feval(model.parser, numel(tmp_s.head));
+tmp_p = feval(m.parser, numel(tmp_s.head));
 nc = tmp_p.NMOVE;
 
-if opts.compute_features
-  assert(isfield(model,'feats'), 'Please specify model.feats.');
-  assert(size(model.feats, 2) == 3, 'The feats matrix needs 3 columns.');
-  tmp_f = features(tmp_p, tmp_s, model.feats);
+if m.compute_features
+  assert(isfield(m,'feats'), 'Please specify model.feats.');
+  assert(size(m.feats, 2) == 3, 'The feats matrix needs 3 columns.');
+  tmp_f = features(tmp_p, tmp_s, m.feats);
   nd = numel(tmp_f);
 end
 
-if opts.compute_scores
-  assert(isfield(model,'kerparam') && ...
-         strcmp(model.kerparam.type,'poly'), ...
+if m.compute_scores
+  assert(isfield(m,'kerparam') && ...
+         strcmp(m.kerparam.type,'poly'), ...
          'Please specify poly kernel in model.kerparam.\n');
-  hp = model.kerparam;
+  hp = m.kerparam;
 
-  if ~isfield(opts,'average')
-    opts.average = (isfield(model,'beta2') && ~isempty(model.beta2) && ~opts.update);
-  elseif opts.average
-    assert(isfield(model,'beta2') && ~isempty(model.beta2),...
+  if ~isfield(m,'average')
+    m.average = (isfield(m,'beta2') && ~isempty(m.beta2) && ~m.update);
+  elseif m.average
+    assert(isfield(m,'beta2') && ~isempty(m.beta2),...
            'Please set model.beta2 for averaged model.');
   end
 
-  if ~isfield(model,'SV') || isempty(model.SV)
-    if opts.update
-      svtr = zeros(0, nd);
-      betatr = zeros(0, nc);
-      betatr2 = zeros(0, nc);
+  % We are using 1 and 2 for the old and the new SV blocks
+  % For the final vs average model we'll use beta and zeta
+
+  if ~isfield(m,'SV') || isempty(m.SV)
+    if m.update
+      m.svtr1 = zeros(0, nd);
+      m.svtr2 = zeros(0, nd);
+      m.bfin1 = zeros(nc, 0);
+      m.bfin2 = zeros(nc, 0);
+      m.bavg1 = zeros(nc, 0);
+      m.bavg2 = zeros(nc, 0);
     else
       error('Please specify model.SV');
     end
   else
-    assert(size(model.SV, 1) == nd);
-    assert(size(model.beta, 1) == nc);
-    assert(size(model.SV, 2) == size(model.beta, 2));
-    assert(all(size(model.beta) == size(model.beta2)));
-    svtr = model.SV';
-    betatr = model.beta';
-    betatr2 = model.beta2';
+    assert(size(m.SV, 1) == nd);
+    assert(size(m.beta, 1) == nc);
+    assert(size(m.SV, 2) == size(m.beta, 2));
+    assert(all(size(m.beta) == size(m.beta2)));
+    m.svtr1 = m.SV';
+    m.svtr2 = zeros(0, nd);
+    m.bfin1 = m.beta;
+    m.bfin2 = zeros(nc, 0);
+    m.bavg1 = m.beta2;
+    m.bavg2 = zeros(nc, 0);
   end
 
-  if ~isfield(opts, 'gpu')
-    opts.gpu = gpuDeviceCount(); % Use the gpu if there is one
+  if isfield(m, 'X')
+    msg('Computing cache scores.');tmp=tic;
+    [~,scores] = perceptron(m.X, [], m, 'update', 0, 'average', m.average);
+    msg('Initializing kernel cache.');toc(tmp);tmp=tic;
+    m.cache = kernelcache(m.X, scores);
+    msg('done');toc(tmp);
   end
 
-  if opts.gpu
+  if ~isfield(m, 'gpu')
+    m.gpu = gpuDeviceCount(); % Use the gpu if there is one
+  end
+
+  if m.gpu
     assert(gpuDeviceCount()>0, 'No GPU detected.');
     fprintf('Loading model on GPU.\n');
     gpuDevice(1);
-    svtr = gpuArray(svtr);
-    betatr = gpuArray(betatr);
-    betatr2 = gpuArray(betatr2);
+
+    m.svtr1 = gpuArray(m.svtr1);
+    m.bfin1 = gpuArray(m.bfin1);
+    m.bavg1 = gpuArray(m.bavg1);
+
+    % These work faster on the cpu:
+    % m.svtr2 = gpuArray(m.svtr2);
+    % m.bfin2 = gpuArray(m.bfin2);
+    % m.bavg2 = gpuArray(m.bavg2);
   end
 
-end % if opts.compute_scores
+end % if m.compute_scores
 
-if opts.predict
+if m.predict
   fprintf('Using predicted moves.\n');
 else
   fprintf('Using gold moves.\n');
-end % if opts.predict
+end % if m.predict
 
-if opts.dump
+if m.dump
   fprintf('Dumping results.\n');
-  if opts.compute_features
-    dump.x = [];
+  if m.compute_features
+    m.X = [];
   end
-  if opts.compute_costs
-    dump.y = [];
-    dump.cost = [];
+  if m.compute_costs
+    m.y = [];
+    m.cost = [];
   end
-  if opts.compute_scores
-    dump.z = [];
-    dump.score = [];
+  if m.compute_scores
+    m.z = [];
+    m.score = [];
   end
-  if opts.predict
-    dump.pred = {};
+  if m.predict
+    m.pred = {};
   end
-end % if opts.dump
+end % if m.dump
 
 end % vectorparser_init
 
 
 %%%%%%%%%%%%%%%%%%%%%%
-function update_dump()
-if opts.compute_features
-  dump.x(:,end+1) = ftr;
+function m = update_dump(m, ftr, mincostmove, cost, execmove, score)
+if m.compute_features
+  m.X(:,end+1) = ftr;
 end
-if opts.compute_costs
-  dump.y(end+1) = mincostmove;
-  dump.cost(:,end+1) = cost;
+if m.compute_costs
+  m.y(end+1) = mincostmove;
+  m.cost(:,end+1) = cost;
 end
-if opts.compute_scores
-  dump.z(end+1) = execmove;
-  dump.score(:,end+1) = score;
+if m.compute_scores
+  m.z(end+1) = execmove;
+  m.score(:,end+1) = score;
 end
 end % update_dump
 
-%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
 function dot(cur, tot, t0)
 t1 = toc(t0);
 if cur == tot
-  fprintf(' %d/%d (%.2fs %gx/s)\n', cur, tot, t1, cur/t1);
+  fprintf('. %d/%d (%.2fs %gx/s)\n', cur, tot, t1, cur/t1);
 elseif mod(cur,10) == 0
   fprintf('.');
   if mod(cur, 100) == 0
@@ -250,4 +300,3 @@ elseif mod(cur,10) == 0
 end
 end % dot
 
-end % vectorparser
