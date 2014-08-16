@@ -121,6 +121,8 @@ end % while j < nx
 fprintf('%d\t%.4f\t%d\t%d\t%.2f\t%.2e\n', j, 100*m.nerr/j, ns, nk, toc(t0), gmem);
 
 if opts.update
+  model.x = X;
+  model.y = Y;
   model.beta = gather(m.beta);
   model.beta2 = gather(m.beta2);
   model.SV = [ gather(m.svtr1)', gather(m.svtr2)' ];
