@@ -48,8 +48,8 @@ for snum=1:numel(corpus)
         newbeta = zeros(1, p.NMOVE);
         newbeta(mincostmove) = 1;
         newbeta(maxscoremove) = -1;
-        m.bfin2(:,end+1) = newbeta;
-        m.bavg2(:,end+1) = newbeta;
+        m.bfin2(end+1,:) = newbeta;
+        m.bavg2(end+1,:) = newbeta;
       end
     end % if m.update
 
@@ -66,7 +66,11 @@ for snum=1:numel(corpus)
     p.transition(execmove);
 
     if m.dump 
-      m = update_dump(m, ftr, mincostmove, cost, execmove, score); 
+      if m.compute_scores
+        m = update_dump(m, ftr, mincostmove, cost, execmove, score);
+      else
+        m = update_dump(m, ftr, mincostmove, cost, execmove);
+      end
     end
 
   end % while 1
@@ -80,10 +84,10 @@ end % for s1=corpus
 
 
 if m.update
-  model.X = m.X;
+  model.x = m.x;
   model.SV = [gather(m.svtr1') gather(m.svtr2')];
-  model.beta = [gather(m.bfin1) gather(m.bfin2)];
-  model.beta2 = [gather(m.bavg1) gather(m.bavg2)];
+  model.beta = [gather(m.bfin1') gather(m.bfin2')];
+  model.beta2 = [gather(m.bavg1') gather(m.bavg2')];
   model = compactify(model);
 end
 
@@ -109,11 +113,11 @@ function score = compute_scores(m, ftr)
 
 hp = m.kerparam;
 if m.average
-  b1tr = m.bavg1';
-  b2 = m.bavg2;
+  b1tr = m.bavg1;
+  b2tr = m.bavg2;
 else
-  b1tr = m.bfin1';
-  b2 = m.bfin2;
+  b1tr = m.bfin1;
+  b2tr = m.bfin2;
 end
 score1 = [];
 if isfield(m, 'cache')
@@ -123,7 +127,8 @@ if isempty(score1)
   % score1 = gather(b1 * (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree);
   score1 = gather(sum(bsxfun(@times, b1tr, (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree),1))';
 end
-score2 = gather(b2 * (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree);
+% score2 = gather(b2 * (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree);
+score2 = gather(sum(bsxfun(@times, b2tr, (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree),1))';
 score = score1 + score2;
 end
 
@@ -195,10 +200,10 @@ if m.compute_scores
     if m.update
       m.svtr1 = zeros(0, nd);
       m.svtr2 = zeros(0, nd);
-      m.bfin1 = zeros(nc, 0);
-      m.bfin2 = zeros(nc, 0);
-      m.bavg1 = zeros(nc, 0);
-      m.bavg2 = zeros(nc, 0);
+      m.bfin1 = zeros(0, nc);
+      m.bfin2 = zeros(0, nc);
+      m.bavg1 = zeros(0, nc);
+      m.bavg2 = zeros(0, nc);
     else
       error('Please specify model.SV');
     end
@@ -209,17 +214,17 @@ if m.compute_scores
     assert(all(size(m.beta) == size(m.beta2)));
     m.svtr1 = m.SV';
     m.svtr2 = zeros(0, nd);
-    m.bfin1 = m.beta;
-    m.bfin2 = zeros(nc, 0);
-    m.bavg1 = m.beta2;
-    m.bavg2 = zeros(nc, 0);
+    m.bfin1 = m.beta';
+    m.bfin2 = zeros(0, nc);
+    m.bavg1 = m.beta2';
+    m.bavg2 = zeros(0, nc);
   end
 
-  if isfield(m, 'X')
+  if m.update && isfield(m, 'x')
     msg('Computing cache scores.');tmp=tic;
-    [~,scores] = perceptron(m.X, [], m, 'update', 0, 'average', m.average);
+    [~,scores] = perceptron(m.x, [], m, 'update', 0, 'average', m.average);
     msg('Initializing kernel cache.');toc(tmp);tmp=tic;
-    m.cache = kernelcache(m.X, scores);
+    m.cache = kernelcache(m.x, scores);
     msg('done');toc(tmp);
   end
 
@@ -236,10 +241,10 @@ if m.compute_scores
     m.bfin1 = gpuArray(m.bfin1);
     m.bavg1 = gpuArray(m.bavg1);
 
-    % These work faster on the cpu:
-    % m.svtr2 = gpuArray(m.svtr2);
-    % m.bfin2 = gpuArray(m.bfin2);
-    % m.bavg2 = gpuArray(m.bavg2);
+    % These work faster on the cpu when small:
+    m.svtr2 = gpuArray(m.svtr2);
+    m.bfin2 = gpuArray(m.bfin2);
+    m.bavg2 = gpuArray(m.bavg2);
   end
 
 end % if m.compute_scores
@@ -253,7 +258,7 @@ end % if m.predict
 if m.dump
   fprintf('Dumping results.\n');
   if m.compute_features
-    m.X = [];
+    m.x = [];
   end
   if m.compute_costs
     m.y = [];
@@ -274,7 +279,7 @@ end % vectorparser_init
 %%%%%%%%%%%%%%%%%%%%%%
 function m = update_dump(m, ftr, mincostmove, cost, execmove, score)
 if m.compute_features
-  m.X(:,end+1) = ftr;
+  m.x(:,end+1) = ftr;
 end
 if m.compute_costs
   m.y(end+1) = mincostmove;
