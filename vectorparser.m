@@ -66,11 +66,7 @@ for snum=1:numel(corpus)
     p.transition(execmove);
 
     if m.dump 
-      if m.compute_scores
-        m = update_dump(m, ftr, mincostmove, cost, execmove, score);
-      else
-        m = update_dump(m, ftr, mincostmove, cost, execmove);
-      end
+      update_dump();
     end
 
   end % while 1
@@ -97,6 +93,23 @@ if m.dump
   end
   dump = m;
 end
+
+
+%%%%%%%%%%%%%%%%%%%%%%
+function update_dump()
+if m.compute_features
+  m.x(:,end+1) = ftr;
+end
+if m.compute_costs
+  m.y(end+1) = mincostmove;
+  m.cost(:,end+1) = cost;
+end
+if m.compute_scores
+  m.z(end+1) = execmove;
+  m.score(:,end+1) = score;
+end
+end % update_dump
+
 
 end % vectorparser
 
@@ -271,22 +284,6 @@ if m.dump
 end % if m.dump
 
 end % vectorparser_init
-
-
-%%%%%%%%%%%%%%%%%%%%%%
-function m = update_dump(m, ftr, mincostmove, cost, execmove, score)
-if m.compute_features
-  m.x(:,end+1) = ftr;
-end
-if m.compute_costs
-  m.y(end+1) = mincostmove;
-  m.cost(:,end+1) = cost;
-end
-if m.compute_scores
-  m.z(end+1) = execmove;
-  m.score(:,end+1) = score;
-end
-end % update_dump
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
