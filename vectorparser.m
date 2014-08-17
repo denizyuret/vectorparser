@@ -164,7 +164,7 @@ if ~isfield(m, 'update')
 end
 
 m.dump = (nargout_save >= 2);
-m.compute_costs = m.update || m.dump || ~m.predict;
+m.compute_costs = m.update || ~m.predict;
 m.compute_features = m.update || m.dump || m.predict;
 m.compute_scores  = m.update || m.predict;
 
