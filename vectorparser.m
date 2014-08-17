@@ -85,9 +85,9 @@ end % for s1=corpus
 
 if m.update
   model.x = m.x;
-  model.SV = [gather(m.svtr1') gather(m.svtr2')];
-  model.beta = [gather(m.bfin1') gather(m.bfin2')];
-  model.beta2 = [gather(m.bavg1') gather(m.bavg2')];
+  model.SV = [gather(m.svtr1); gather(m.svtr2)]';
+  model.beta = [gather(m.bfin1); gather(m.bfin2)]';
+  model.beta2 = [gather(m.bavg1); gather(m.bavg2)]';
   model = compactify(model);
 end
 
@@ -236,12 +236,9 @@ if m.compute_scores
     assert(gpuDeviceCount()>0, 'No GPU detected.');
     fprintf('Loading model on GPU.\n');
     gpuDevice(1);
-
     m.svtr1 = gpuArray(m.svtr1);
     m.bfin1 = gpuArray(m.bfin1);
     m.bavg1 = gpuArray(m.bavg1);
-
-    % These work faster on the cpu when small:
     m.svtr2 = gpuArray(m.svtr2);
     m.bfin2 = gpuArray(m.bfin2);
     m.bavg2 = gpuArray(m.bavg2);
