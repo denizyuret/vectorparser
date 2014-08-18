@@ -3,7 +3,7 @@
 % Goldberg, Yoav; Nivre, Joakim. Training Deterministic Parsers with Non-Deterministic Oracles. TACL 2013.
 % Modified valid_moves to output a single root-child.
 
-classdef arceager < handle
+classdef arceager < matlab.mixin.Copyable
 
 properties (Constant = true)
 NMOVE 	= 4;
