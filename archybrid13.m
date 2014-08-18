@@ -2,7 +2,7 @@
 % http://honnibal.wordpress.com/2013/12/18/a-simple-fast-algorithm-for-natural-language-dependency-parsing
 % Goldberg, Yoav; Nivre, Joakim. Training Deterministic Parsers with Non-Deterministic Oracles. TACL 2013.
 
-classdef archybrid13 < handle
+classdef archybrid13 < matlab.mixin.Copyable
 
 properties (Constant = true)
 NMOVE = 3;
