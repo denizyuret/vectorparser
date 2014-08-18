@@ -1,9 +1,49 @@
-2014-08-15  Deniz Yuret  <dyuret@ku.edu.tr>
+2014-08-18  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* TODO:
-	- featselect finished, check archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat
-	- check run_conll07_ablation on b40.
-	
+
+	- rbf kernel with gpu?
+	-- Optimize and try rbf kernel calculation and fselect.
+	-- Other kernel degrees with featselect.
+	- look at train/test performance to validate model and decide if
+	higher orders are worth trying.
+
+	- vectorparser.m: Debugging the update rule.  --i30
+	-- try vectorparser only ignore single choice as well, i.e. three options.
+	-- no diff with small data, try bigger data or without static pre-training.
+
+	- featselect_par: --balina. left for later.
+
+	- Implement arceasy.
+
+	- Embeddings:
+	-- test more on conll07.
+	-- debug conllWSJToken_dep-100 (good train bad test)
+	-- debug out-of-memory on levy, murphy50, mikolovGoogleNews300
+
+	- write matlab gpu tutorial on blog
+	OK, another matlab bug: if we have an SV matrix more than half the
+	size of gpu memory, we can't add anything to it, we can't change
+	it etc. etc. Everything I try (concat, subasgn etc.) ends up
+	trying to create a copy.  This is the third bug I found in matlab
+	(after max and skinny multiply problems), should send a bug
+	report.
+
+	- Old code:
+	- trainparser_primal.m: broken, upgrade to use new code.
+	- model_sparsify.m: broken, updgreade to use new code.
+
+	--i02 --i03: still oom, do this on balina
+	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
+	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
+	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
+	score:0.99 conllWSJToken_murphy50 (out of memory at 1182126, sv:494871, nk:85, g:9.4e7)
+	score:0.99 conllWSJToken_murphy50scaled01 (out of memory at 1289463, sv:494698, nk:85, g:9.4e7)
+
+
+
+2014-08-17  Deniz Yuret  <dyuret@ku.edu.tr>
+
 	* beamparser_dbg.m (TODO):
 	- implement early stopping
 	- implement path construction
@@ -11,7 +51,220 @@
 	- implement dump update
 	- check beamparser_init
 	- implement kernel cache
+	- try pa for faster convergence
+
+	Debugging:
+
+ 	w = load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv015a_dump.mat')
+	% w.trn: 763702 inst, 398439 word, 16588 sent
+	newFeatureVectors;
+	m0 = struct('kerparam', struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3),...
+                    'parser', @archybrid, 'feats', fv015a, 'step', 1e5, 'batchsize', 1e3);
+	m1 = perceptron(w.trndump.x, w.trndump.y, m0);   % 223 secs 57809 unique sv
+	m1nox=rmfield(m1,{'x','y'});
+	[m2,d2] = vectorparser(m1nox, w.trn(1:200));  % 3.85x/s with cache, 2.65 without, the rest without cache
+	[m2a,d2a] = beamparser_dbg(m1nox, w.trn(1:200), 'beam', 1);
+
+	% They do not match because of early stopping!
+	% Also beamparser updates at sentence end.
+	% Need to compare them in test mode.  The following all match:
+	% However beamparser_dbg is much slower, should look into it.
+
+	% Testing with averaged model:
+	[m3,d3] = vectorparser(m1nox, w.trn(1:200), 'update', 0, 'predict', 1);  % 3.01x/s
+	[m3a,d3a] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 0, 'predict', 1, 'beam', 1);  % 1.74x/s, 3.01x/s after bsxfun hack
+
+	% This is not identical due to larger beam:
+	[m3b,d3b] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 0, 'predict', 1, 'beam', 10);  % 0.46x/s
+
+	% Testing with final model:
+	[m4,d4] = vectorparser(m1nox, w.trn(1:200), 'update', 0, 'predict', 1, 'average', 0);  % 3.06x/s
+	[m4a,d4a] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 0, 'predict', 1, 'beam', 1, 'average', 0);  % 1.66x/s
+
+	% Dumping features:
+	[m5,d5] = vectorparser(m1nox, w.trn(1:200), 'update', 0, 'predict', 0);  % 29.2x/s
+	[m5a,d5a] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 0, 'predict', 0, 'beam', 1);  % 17.2x/s
+
+	% This should match (no effect of beam if we are not predicting) but doesn't:
+	[m5b,d5b] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 0, 'predict', 0, 'beam', 10); % 1.47x/s
+
+	% It turns out beam=10 finds better solutions to non-projective sentences.
+	% Sentences 10:35 are projective (0 cost) and these match:
+	% We shoud output pred in dump mode!
+	[m7,d7] = vectorparser(m1nox, w.trn(10:35), 'update', 0, 'predict', 0);  % 39.5x/s
+	[m7a,d7a] = beamparser_dbg(m1nox, w.trn(10:35), 'update', 0, 'predict', 0, 'beam', 1);  % 15.1x/s
+	[m7b,d7b] = beamparser_dbg(m1nox, w.trn(10:35), 'update', 0, 'predict', 0, 'beam', 10); % 2.04x/s
+
+	% Static oracle training:
+	% These should match but don't:
+	[m6,d6] = vectorparser(m1nox, w.trn(1:200), 'update', 1, 'predict', 0);  % 2.67x/s
+	[m6a,d6a] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 1, 'predict', 0, 'beam', 1);  % 1.55x/s
+
+	% Actually they shouldn't: vectorparser updates after every move,
+	beamparser waits until the end of the sentence.  So their training
+	is not comparable.  I did confirm however that everything except
+	score matches.
+
+	% This doesn't match at all because it picks different oracle y to follow:
+	[m6b,d6b] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 1, 'predict', 0, 'beam', 10); % 0.40x/s
+
+	% Starting profile
+	[m5,d5] = vectorparser(m1nox, w.trn(1:200), 'update', 0, 'predict', 0);
+	[m5a,d5a] = beamparser_dbg(m1nox, w.trn(1:200), 'update', 0, 'predict', 0, 'beam', 1);
+
+	@@i13 @@i30
+	DONE: profile
+	DONE: use struct array instead of cell array?
+	DONE: profile beam=10 testing
+	TODO: make eval_conll work again
+	TODO: kernelcache
+
+
+
+	* run/run_conll07_ablation.m:
+	= kernel: fselect d=2..9 starting with fv015a+archybrid.
+	d=2		d=3		d=4		d=5 		d=6 @@b40.
+	(15) 0.0607758	(15) 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844
+	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(14) 0.0484885
+	(16) 0.058988	(16) 0.047340	(16) 0.0455954	(16) 0.0460613	(13) 0.0489327
+	(15) 0.0592914	(17) 0.047611	(15) 0.0464406	(15) 0.0467981	(15) 0.0471665
+	(17) 0.0578719			(17) 0.0455629	(17) 0.0454437
+	(16) 0.0587713			(18) 0.0455629	(16) 0.0459096
+	(18) 0.0575144					(18) 0.0449453
+	(19) 0.056745					(19) 0.0449453
+	(20) 0.0566259
+
+	- d=2 hopeless, Restarting from d=4.
+	- d=4 better, other degrees? rbf? embeddings?
+
+
+	* run_conll07_15epoch.m: Final version of vectorparser with kernel
+	caching gets 6 sentences or 153 words per second, which means one
+	epoch should be less than an hour!  Now let's run this for 15
+	epochs and see what happens.  Until now we always stopped when the
+	improvement stopped for one epoch.  Compare to GN13 hybrid-dynamic
+	goes to 87.62=12.38 head.
+
+	epoch	stat	move	head	word	sent	nsv(fin-uniq)	time(*)
+	1	0.0469	0.0586	0.1477	0.1370	0.7664	63668-63359	255s (static)
+	2	0.0524	0.0512	0.1305	0.1229	0.7523	113001-102704	14509s (dynamic)
+	3	0.0508	0.0501	0.1259	0.1170	0.7430	143697-129767	13400s
+	4	0.0519	0.0503	0.1259	0.1175	0.7477	165416-150682	13881s
+	5	0.0513	0.0497	0.1237	0.1150	0.7430	182066-167586	13707s
+	6	0.0523	0.0511	0.1271	0.1172	0.7523	195499-181295	13799s
+	7	0.0532	0.0512	0.1259	0.1156	0.7477	206538-193049	13616s
+	8	0.0535	0.0513	0.1273	0.1177	0.7570	215773-202974	13453s
+	9	0.0544	0.0511	0.1267	0.1170	0.7523	223486-211556	13007s
+	10	0.0549	0.0516	0.1257	0.1166	0.7477	229936-218751	12937s
+	11	0.0545	0.0512	0.1263	0.1168	0.7477	236054-225312	12703s
+	12	0.0544	0.0525	0.1301	0.1200	0.7383	240978-230814	8823s
+	13	0.0541	0.0513	0.1261	0.1163	0.7383	245332-235830	9401s
+	14	0.0551	0.0517	0.1267	0.1172	0.7383	248927-240056	9781s
+	15	0.0553	0.0519	0.1271	0.1179	0.7336	252237-243952	10152s
+
+	- No improvement after epoch 5.
 	
+	(*) --b41.  Note that the times given are on a half busy gpu,
+	around 1.5 sent/sec.  On an empty machine it should run at twice
+	this speed.
+
+	- run_conll07_15epoch.mat: models
+	- run_conll07_data.mat: data
+
+	TODO: If this doesn't work:
+	- Try other kernel?
+	- Try shuffling?
+	- Try other vectorparser update methods?
+	- Try p=0.9?
+	- Try to find better feature set?
+	- Try bansal?
+	- Try pa
+	- Try fv031a
+	- Check train vs test, overfitting?
+	- Try starting featselect from best 14, 13, etc.
+
+
+	* featselect:
+	- finish implementing beam parser and compare with ZN11.  First
+	step: run featselect starting fv018 on conllWSJToken_wikipedia2MUNK-100.
+	- other kernels? d=4 is better in conll07.  test rbf?
+
+	>> run_featselect22('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv130', 'fv018');
+	(18) 0.0361038	(16) 0.0357524
+	(17) 0.0353489	(15) 0.0359997
+	(16) 0.0357524	@@b42
+	(18) 0.0353750
+
+
+2014-08-16  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conllWSJToken:
+	- test-split: the 02 directory in conllWSJToken files contain:
+	sec	lines			tokens	sentences
+	00	48372 (1-48372)		46451	1921 (1-1921)
+	01	49626 (48373-97998)	47633	1993 (1922-3914)
+	23	59100 (98999-157098)	56684	2416 (3915-6330)
+	24	34199 (157099-191297)	32853	1346 (6331-7676)
+
+	- the 00 directory contains contents of 02-21
+	- the 01 directory contains contents of 22
+	sec	lines	tokens	sentences
+	02-21	989860	950028	39832
+	22	41817	40117	1700
+
+
+	* ZN11: Zhang and Nivre, ACL 2011 report 92.9.
+	- 02-21 training, 22 devel, 23 testing.
+	- using Penn2Malt for dependency conversion.
+	- beamsize: 64.
+	- sec22 UAS:93.14 LAS:?    UEM:50.12
+	- sec23 UAS:92.9  LAS:91.8 UEM:48.0
+	- best cited K&C10 model 1: UAS:93.0
+
+
+	* run_conll07_15epoch.m: Final version of vectorparser with kernel
+	caching gets 6 sentences or 153 words per second, which means one
+	epoch should be less than an hour!  Now let's run this for 15
+	epochs and see what happens.  Until now we always stopped when the
+	improvement stopped for one epoch.  Compare to GN13 hybrid-dynamic
+	goes to 87.62=12.38 head.
+
+	epoch	stat	move	head	word	sent	nsv(fin-uniq)	time(*)
+	1	0.0469	0.0586	0.1477	0.1370	0.7664	63668-63359	255s (static)
+	2	0.0524	0.0512	0.1305	0.1229	0.7523	113001-102704	14509s (dynamic)
+	3	0.0508	0.0501	0.1259	0.1170	0.7430	143697-129767	13400s
+	4	0.0519	0.0503	0.1259	0.1175	0.7477	165416-150682	13881s
+	5	0.0513	0.0497	0.1237	0.1150	0.7430	182066-167586	13707s
+	6	0.0523	0.0511	0.1271	0.1172	0.7523	195499-181295	13799s
+	7	0.0532	0.0512	0.1259	0.1156	0.7477	206538-193049	13616s
+
+	(*) Note that the times given are on a half busy gpu, around 1.5
+	sent/sec.  On an empty machine it should run at twice this speed.
+
+	- run_conll07_15epoch.mat: models
+	- run_conll07_data.mat: data
+
+
+	* run/run_conll07_ablation.m:
+
+	+ embedding: fselect bansal100 starting with fv015a+archybrid.
+	No significant difference.
+	bansal100 best(17): 0.046939
+	wiki100   best(15): 0.047339 (fv015a)
+	diff: -s0r1c(6) +s1l=(15) +s1r1r<(14) +s1r<(2)
+
+	TODO: features: anything between fv015a and fv031a? starting with 13,14?
+
+	TODO: kernel
+
+	TODO: arctype: fselect starting with fv015a
+
+	TODO: perceptron: with or without static training
+
+
+
+2014-08-15  Deniz Yuret  <dyuret@ku.edu.tr>
+
 	* vectorparser.m: Implement kernel cache and test on vectorparser.
 	Static training should set most of the SVs and leave a cache for
 	the oracle path states using those SVs.  At the beginning of each
@@ -26,7 +279,7 @@
 	Before kernel cache:
 	w = load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv015a_dump.mat')
 	% w.trn: 763702 inst, 398439 word, 16588 sent
-	newFeatureVectors
+	newFeatureVectors;
 	m0 = struct('kerparam', struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3),...
                        'parser', @archybrid, 'feats', fv015a, 'step', 1e5, 'batchsize', 1e3);
 	m1 = perceptron(w.trndump.x, w.trndump.y, m0);   % 223 secs 57809 unique sv
@@ -72,17 +325,34 @@
 
 	% it turns out score1 is best computed on the gpu (in case of cache miss)
 	% and score2 on the cpu.  At 200 sentences profiling shows:
-	score1(gpu): 18.294  score1(cpu):82.748 
-	score2(cpu): 2.095   score2(gpu):10.794
+	score1(gpu,3236): 18.294  score1(cpu):82.748
+	score2(cpu,9870): 2.095   score2(gpu):10.794
 
 	% and here is mtimes vs bsxfun:
-	score1(bsxfun): 18.294  score1(mtimes): 34.101 
-	score2(bsxfun): 2.095   score2(mtimes): 2.179
+	score1(gpu,bsxfun): 18.294  score1(gpu,mtimes): 34.101
+	score2(cpu,bsxfun): 2.095   score2(cpu,mtimes): 2.179
 
-	% Final version gets 6 sentences or 153 words per second, which
-	means one epoch should be less than an hour!  Now let's run this
-	for 15 epochs and see what happens.
-	
+	% After 12K/18K it is at half speed.  Maybe we should have kept
+	score2 in the gpu as well.  How many new SVs are we getting?
+	20-50K per epoch.  At that size gpu will win.  Putting everything
+	back on gpu.  In a more realistic experiment where svtr1 has 100K
+	and svtr2 has 30K support vectors we have for 200 sentences:
+
+	bsxfun:
+	score1(gpu,3067):26.591		score1(cpu):181.869
+	score2(gpu,9870):34.035		score2(cpu):164.859
+	mtimes:
+	score1(gpu,3059):52.574 	score1(cpu,3070):396.305
+	score2(gpu,9870):59.453 	score2(cpu,9870):547.821
+
+	- no cache: 135.78s for 200sent, nsv: 130242-130067
+	- with cache: 78.07s.
+
+	* DONE:
+	+ featselect finished, check archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat
+	+ check run_conll07_ablation on b40: kernel started.
+
+
 2014-08-14  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* GN13: Fig 1 shows that running too many static training
@@ -90,19 +360,13 @@
 	total of 15 epochs (14 dynamic).  Also in dynamic oracle training
 	they pick the model move with p=0.9.  Finally they shuffle
 	sentences every iteration. (TODO)
-
-	* run/run_conll07_ablation.m: ++b40.
-	- embedding: fselect starting with fv015a+archybrid.
-	- features: anything between fv015a and fv031a?
-	- kernel: fselect k=1..9 starting with fv015a+archybrid.
-	- arctype: fselect starting with fv015a
-	- perceptron: with or without static training 
 	[actually GN13 suggests 1 epoch]
 	[Yoav says k=0 and p=1 is also ok, which corresponds to no static]
 
+
 2014-08-13  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* beamparser.m: Training.
+	* beamparser.m: Training. (TODO)
 	- We do not update until parse is over.
 	- At that point we update if the heads do not match gold.
 	- We have the (wrong) z move sequence with its features.
@@ -110,13 +374,13 @@
 	- If a state belongs to both y and z and the moves are different we do the usual update.
 	- If a state is only in y or in z do we update?  Do we check what the model would have done?
 	- Yue says he does update if only in y or z.  Try different variations.
-	
+
 	- early stopping?
 
 	- graph based parser: score agenda states rather than candidate moves?  difference?
 
 	- pa may be worth looking at again for fast convergence.
-	
+
 2014-08-12  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* beamparser.m: profiling:
@@ -135,7 +399,7 @@
 
 	* beamparser.m: Computing candidate scores in bulk rather than one
 	at a time:
-	
+
 	For 10 sentences, 189 words, 358 moves, 95686 sv, 1401 xdims:
 	beam	old	new	wps
 	0	8.5	-	22	(vectorparser)
@@ -148,26 +412,26 @@
 	32	-	40	4.73
 	64	475	54	3.50
 
-	
-	
+
+
 2014-08-11  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* run_featselect.m: ++short.q It does not look like we are going
-	to get a better feature set with backward elimination.
-	
+	* run_featselect.m: It does not look like we are going to get a
+	better feature set with backward elimination.
+
 	conll07b with bansal100 and fv808 ended with:
 	epoch	gmove	move	head	word	sent
 	1	0.0492	0.0591	0.1523	0.1374	0.7411	first-static-epoch on dev
-	8	0.0425	0.0526	0.1362	0.1235	0.7049	best-static-epoch on dev 
+	8	0.0425	0.0526	0.1362	0.1235	0.7049	best-static-epoch on dev
 	10	0.0458	0.0487	0.1257	0.1157	0.6933	best-dynamic-epoch on dev
 	1tst	0.0444	0.0567	0.1417	0.1324	0.7383	first-dynamic-epoch on tst
 	0tst	0.0484	0.0540	0.1347	0.1270	0.7383	best-dynamic-epoch on tst
-	
+
 	- GN13 hybrid-static is 86.43=13.57 head.
 	- GN13 hybrid-dynamic goes to 87.62=12.38 head.
 	There must be better feature/embedding combinations.
 	However note also that my experiments are not using the whole training set.
-	
+
 	>> load 'archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat'
 	>> [a,b,c] = run_sort_bestfeats(cache);
 	best(15): 0.0473399
@@ -184,19 +448,20 @@
 	18.0000    4.7611	aefsjihmbv (start:4.8532,done)
 	19.0000    4.7925
 
+	28.0000    5.0005
 	29.0000    5.0601	vkuvhmnnsm (switch to bxofpzrjcr)
 	30.0000    4.8521
 	31.0000    4.8304	lvmbqppcab (last)
-	32.0000    4.8651
+	32.0000    4.8304
 	33.0000    4.8857
 	34.0000    4.9409	vkuvhmnnsm (start:5.6658)
-	
+
 	35.0000    5.0406
 	36.0000    5.0406
 	37.0000    5.0515
 	38.0000    5.2281
 	39.0000    5.3007	lvmbqppcab (start:5.3007)
-	
+
 	80.0000    7.4093	nslylpeu (last)
 	81.0000    7.5729
 	82.0000    7.6433
@@ -210,33 +475,33 @@
 	points lost (-) or gained (+) from deleting (-) or adding (+) a
 	feature to fv015a.
 	archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv130_fs.log
-	
+
 	>> load 'archybrid_conll07EnglishToken_wikipedia2MUNK-100_cache.mat'
 	>> run_sort_bestfeats(cache) best(15): 0.0473399
-	
+
 	[-201]    '-n0w'   [   0]    '+s0h+'   [  -7]    '+s0ac'   [ -10]    '+s1l1l>' [ -13]    '+s1ac'   [ -17]    '+s0r1-'  [ -22]    '+s2d='   [ -35]    '+s2r1l<' [ -59]    '+n0l1l<'
 	[-139]    '-s0w'   [   0]    '+s1h+'   [  -7]    '+n0l1l>' [ -10]    '+s1r1l>' [ -13]    '+s2r>'   [ -17]    '+s1r1c'  [ -24]    '+n0l1-'  [ -37]    '+s1+'    [ -68]    '+s0l1r<'
 	[ -71]    '-s1w'   [   0]    '+s2h+'   [  -8]    '+s0l1c'  [ -10]    '+s0r1r>' [ -14]    '+n0l1l=' [ -17]    '+s2l1r=' [ -24]    '+n2w'    [ -37]    '+s1h-'   [ -75]    '+s1l1l<'
 	[ -48]    '-n1w'   [  -1]    '+s0r1r=' [  -8]    '+s1l1c'  [ -10]    '+n0l1r>' [ -14]    '+s2l1l=' [ -17]    '+s2l1w'  [ -25]    '+s1l1+'  [ -37]    '+s2+'    [ -80]    '+s1l1r<'
 	[ -46]    '-n0l1w' [  -2]    '+s0l1r>' [  -8]    '+s1-'    [ -11]    '+s0aw'   [ -14]    '+s2ac'   [ -17]    '+s0r1r<' [ -25]    '+s0l1-'  [ -37]    '+s2h-'   [ -83]    '+s2l1l<'
 	[ -35]    '-s0l1w' [  -2]    '+s0r1l>' [  -8]    '+s2r1w'  [ -11]    '+s2r1c'  [ -14]    '+s2r1l>' [ -17]    '+s1l>'   [ -25]    '+s1r>'   [ -39]    '+n1+'    [ -85]    '+s2l1r<'
-	[ -32]    '-s1r1+' [  -3]    '+s0r>'   [  -9]    '+s1r1r=' [ -11]    '+s2r1r=' [ -14]    '+s2r1r>' [ -18]    '+s1aw'   [ -25]    '+s1r1l<' [ -39]    '+s1d>'   [-110]    '+s2l<'  
-	[ -26]    '-s0r1w' [  -4]    '+s1r1w'  [  -9]    '+s2l1l>' [ -11]    '+s2l1c'  [ -15]    '+s1l1l=' [ -18]    '+s2r='   [ -28]    '+s0l='   [ -39]    '+s2r1r<' [-131]    '+s1l<'  
-	[ -25]    '-n1c'   [  -5]    '+n0l>'   [  -9]    '+s0l1l>' [ -11]    '+n2-'    [ -15]    '+s2l1+'  [ -18]    '+s1d='   [ -28]    '+s2l>'   [ -43]    '+n0+'    [-134]    '+s2r<'  
-	[ -19]    '-n0l1c' [  -6]    '+s1l1r=' [ -10]    '+s0-'    [ -12]    '+n1-'    [ -15]    '+s2-'    [ -19]    '+s0r='   [ -29]    '+s2l1-'  [ -43]    '+n2+'    [-145]    '+s1r<'  
-	[ -18]    '-s2aw'  [  -6]    '+s1l1w'  [ -10]    '+n0l1+'  [ -12]    '+s2l='   [ -15]    '+s1l1r>' [ -20]    '+s2r1l=' [ -29]    '+s1r1r<' [ -44]    '+s0+'    [-157]    '+s0l<'  
-	[ -17]    '-n0c'   [  -6]    '+s0l1r=' [ -10]    '+n0-'    [ -12]    '+n2c'    [ -16]    '+s0l1+'  [ -20]    '+s0r1l<' [ -32]    '+s1r1-'  [ -44]    '+s0d>'   [-163]    '+n0l<'  
-	[ -16]    '-s1c'   [  -6]    '+s0r1+'  [ -10]    '+s1r1l=' [ -12]    '+s1r1r>' [ -16]    '+s2r1+'  [ -21]    '+s1l1-'  [ -34]    '+s2d>'   [ -44]    '+s0h-'   [-171]    '+s0r<'  
-	[ -15]    '-s0c'   [  -6]    '+n0l1r=' [ -10]    '+s2c'    [ -13]    '+s1l='   [ -16]    '+s2l1r>' [ -21]    '+n0l='   [ -34]    '+s2r1-'  [ -50]    '+n0l1r<' [-238]    '+s2d<'  
-	[  -6]    '-s0r1c' [  -7]    '+s0r1l=' [ -10]    '+s2w'    [ -13]    '+s0l1l=' [ -16]    '+s0d='   [ -21]    '+s0l>'   [ -35]    '+s1r='   [ -58]    '+s0l1l<' [-267]    '+s1d<'  
-																				       [-300]    '+s0d<'  
-																				       
-																				       
+	[ -32]    '-s1r1+' [  -3]    '+s0r>'   [  -9]    '+s1r1r=' [ -11]    '+s2r1r=' [ -14]    '+s2r1r>' [ -18]    '+s1aw'   [ -25]    '+s1r1l<' [ -39]    '+s1d>'   [-110]    '+s2l<'
+	[ -26]    '-s0r1w' [  -4]    '+s1r1w'  [  -9]    '+s2l1l>' [ -11]    '+s2l1c'  [ -15]    '+s1l1l=' [ -18]    '+s2r='   [ -28]    '+s0l='   [ -39]    '+s2r1r<' [-131]    '+s1l<'
+	[ -25]    '-n1c'   [  -5]    '+n0l>'   [  -9]    '+s0l1l>' [ -11]    '+n2-'    [ -15]    '+s2l1+'  [ -18]    '+s1d='   [ -28]    '+s2l>'   [ -43]    '+n0+'    [-134]    '+s2r<'
+	[ -19]    '-n0l1c' [  -6]    '+s1l1r=' [ -10]    '+s0-'    [ -12]    '+n1-'    [ -15]    '+s2-'    [ -19]    '+s0r='   [ -29]    '+s2l1-'  [ -43]    '+n2+'    [-145]    '+s1r<'
+	[ -18]    '-s2aw'  [  -6]    '+s1l1w'  [ -10]    '+n0l1+'  [ -12]    '+s2l='   [ -15]    '+s1l1r>' [ -20]    '+s2r1l=' [ -29]    '+s1r1r<' [ -44]    '+s0+'    [-157]    '+s0l<'
+	[ -17]    '-n0c'   [  -6]    '+s0l1r=' [ -10]    '+n0-'    [ -12]    '+n2c'    [ -16]    '+s0l1+'  [ -20]    '+s0r1l<' [ -32]    '+s1r1-'  [ -44]    '+s0d>'   [-163]    '+n0l<'
+	[ -16]    '-s1c'   [  -6]    '+s0r1+'  [ -10]    '+s1r1l=' [ -12]    '+s1r1r>' [ -16]    '+s2r1+'  [ -21]    '+s1l1-'  [ -34]    '+s2d>'   [ -44]    '+s0h-'   [-171]    '+s0r<'
+	[ -15]    '-s0c'   [  -6]    '+n0l1r=' [ -10]    '+s2c'    [ -13]    '+s1l='   [ -16]    '+s2l1r>' [ -21]    '+n0l='   [ -34]    '+s2r1-'  [ -50]    '+n0l1r<' [-238]    '+s2d<'
+	[  -6]    '-s0r1c' [  -7]    '+s0r1l=' [ -10]    '+s2w'    [ -13]    '+s0l1l=' [ -16]    '+s0d='   [ -21]    '+s0l>'   [ -35]    '+s1r='   [ -58]    '+s0l1l<' [-267]    '+s1d<'
+																				       [-300]    '+s0d<'
+
+
 	* fv031a: is also a local minimum
 	run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv130', 'fv031a');
 	13-Aug-2014 08:36:39 Loading archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv130_dump.mat
-	
-	
+
+
 	* beamparser: can we gpu parallelize the beam score calculation?
 	we only compute move scores for parent, not the children!?  can we
 	do kernel hashing?  Experimenting with conll07b_m2 and dev (fv808
@@ -250,12 +515,12 @@
 	Elapsed time is 106.003019 seconds.
 	>> tic;[c,d] = vectorparser(m2, dev(1:10), 'update', 0);toc;
 	Elapsed time is 16.087695 seconds.
-	
+
 	First version of beamparser: can only parse with existing model, no training.
-	
+
 	Way too slow!
 	Approx linear with beam size.  Approx eq to vectorparser at beam=1.
-	
+
 	Make it output scores and moves. done.
 
 	Comparison on 100 sentences of dev with vectorparser:
@@ -276,7 +541,7 @@
 	9 (17)	3.86e+14	3.86e+14	3.93e+14	3.90e+14	3.95e+14	4.06e+14
 	10 (25)	3.94e+14	3.94e+14	3.99e+14	4.02e+14	4.06e+14	4.06e+14
 	head	0.1164		0.1164		0.1693		0.2434		0.2698		0.3175
-	
+
 	+ vectorparser and beam=1 are equal, good.
 	+ generally sentence scores increase with beam size, good.
 	+ beam=2 is worse than beam=1 in sent=5?
@@ -284,12 +549,12 @@
 	+ beam=5 is worse than beam=2 in sent=9?
 	+ it is totally normal for larger beams to lose the correct answer.
 	+ only inf beam guaranteed higher score.
-	
+
 	+ higher beams have progressively worse head error.  unless there
 	  is a bug, seems we can't use a model not trained with beamsearch.
-	
-	- would it matter if we used only static training? 
-	
+
+	- would it matter if we used only static training?
+
 	>> m1 = run_static('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv015a');
 	epoch	nsv	trnerr		deverr
 	1	57809	0.0753553	0.0473399
@@ -304,18 +569,18 @@
 	epoch	stat	move	head	word	sent
 	6	0.0422	0.0523	0.1350	0.1203	0.7084
 	% compare with conll07b_m2 (bansal100,dynamic10,fv808) stat:4.58 head:12.57
-	>> tic;[m10,e10] = beamparser(m1, wiki.dev(1:10), 'update', 0, 'beam', 10);toc;	
+	>> tic;[m10,e10] = beamparser(m1, wiki.dev(1:10), 'update', 0, 'beam', 10);toc;
 	Elapsed time is 85.803560 seconds.
 	>> eval_conll(wiki.dev(1:10), e10);
 	head_pct: 0.2116  sum(e10.s1):1.6775e+09
-	>> tic;[m5,e5] = beamparser(m1, wiki.dev(1:10), 'update', 0, 'beam', 5);toc;	
+	>> tic;[m5,e5] = beamparser(m1, wiki.dev(1:10), 'update', 0, 'beam', 5);toc;
 	Elapsed time is 46.477789 seconds.
 	>> eval_conll(wiki.dev(1:10), e5);
 	head_pct: 0.2328  sum(e5.s1):1.6575e+09
 	% Beam search helped this time?  It was a fluke.  Here is the full table:
 	>> dmp = {e0,e1,e2,e5,e10,e64};
 	>> for i=1:10 fprintf('%d',i); for j=1:6 dj=dmp{j}; fprintf('\t%.2e', sentence_score(dj,i)); end; fprintf('\n'); end
-	
+
 	s(len)	vparser(13s)	b1(15s)		b2(23s)		b5(46s)		b10(86s)	b64(475s)
 	1	3.67e+08	3.67e+08	3.83e+08	4.17e+08	4.19e+08	4.21e+08
 	2	2.69e+07	2.69e+07	2.69e+07	2.69e+07	2.69e+07	2.69e+07
@@ -328,11 +593,11 @@
 	9	1.10e+08	1.10e+08	1.18e+08	1.18e+08	1.20e+08	1.23e+08
 	10	2.26e+08	2.26e+08	2.12e+08	2.47e+08	2.52e+08	2.58e+08
 	head	0.1429		0.1429		0.1958		0.2328		0.2116		0.2751
-	
+
 	- figure out how to make it faster.
-	
-	
-	* multi-epoch-featselect: 
+
+
+	* multi-epoch-featselect:
 	>> run_static('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv034');
 	Try and see if multiple epochs will get rid of irrelevant features. --b42
 
@@ -353,12 +618,12 @@
 	5	0.0435	0.0538	0.1370	0.1224	0.7144
 
 	Doing featselect based on first epoch may not be a good idea!
-	
+
 	Will the larger feature set win with more epochs?
 	Another multi-epoch experiment comparing:
         15.0000    4.7340	fv015a
 	31.0000    4.8304	fv031a
-	
+
 	fv015a
 	epoch	stat	move	head	word	sent
 	1	0.0473	0.0580	0.1490	0.1332	0.7441
@@ -368,7 +633,7 @@
 	5	0.0424	0.0528	0.1360	0.1211	0.7104
 	6	0.0422	0.0523	0.1350	0.1203	0.7084	best stat
 	7	0.0422	0.0518	0.1347	0.1201	0.7104
-	
+
 	fv031a
 	epoch	stat	move	head	word	sent
 	1	0.0483	0.0621	0.1587	0.1433	0.7547
@@ -381,60 +646,20 @@
 	- As anticipated, the larger feature set starts a bit worse and
 	closes the gap in multi-epoch, but the advantage is too small to
 	be worth trying multi-epoch feature selection.
-	
+
 2014-08-10  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* TODO:	
-
-	- look at train/test performance to validate model and decide if
-	higher orders are worth trying.
-	
+	* DONE:
 	+ write script to run featselect on short.q.  job id can be random so we can check.
 	+ try backward elimination instead of forward selection.
 	+ run_static should take corpus, parser name and feature name as args.
 	+ check to see if it can load existing mat files.
 	+ also compare bansal and wiki on fv808.
-	
-	- beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
-	-- Beam search parser: read paper.  read redshift.  minibatch?
-	-- we can start by writing a beam decoder to parse with existing models.  no training.
+
+	= beam search training may not need dynamic oracle (which cannot be minibatch'ed)!  needs code.
+	+ Beam search parser: read paper.  read redshift.  minibatch?
+	+ we can start by writing a beam decoder to parse with existing models.  no training.
 	+ how often does the gold sequence have a total score better than greedy sequence?
-
-	- vectorparser.m: Debugging the update rule.  --i30
-	-- try vectorparser only ignore single choice as well, i.e. three options.
-	-- no diff with small data, try bigger data or without static pre-training.
-	
-	- featselect_par: --balina. left for later.
-	
-	- Implement arceasy.
-
-	- Embeddings:
-	-- test more on conll07.
-	-- debug conllWSJToken_dep-100 (good train bad test)
-	-- debug out-of-memory on levy, murphy50, mikolovGoogleNews300
-
-	- rbf kernel with gpu?
-	-- Optimize and try rbf kernel calculation and fselect.
-	-- Other kernel degrees with featselect.
-
-	- write matlab gpu tutorial on blog
-	OK, another matlab bug: if we have an SV matrix more than half the
-	size of gpu memory, we can't add anything to it, we can't change
-	it etc. etc. Everything I try (concat, subasgn etc.) ends up
-	trying to create a copy.  This is the third bug I found in matlab
-	(after max and skinny multiply problems), should send a bug
-	report.
-
-	- Old code:
-	- trainparser_primal.m: broken, upgrade to use new code.
-	- model_sparsify.m: broken, updgreade to use new code.
-	
-	--i02 --i03: still oom, do this on balina
-	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
-	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
-	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
-	score:0.99 conllWSJToken_murphy50 (out of memory at 1182126, sv:494871, nk:85, g:9.4e7)
-	score:0.99 conllWSJToken_murphy50scaled01 (out of memory at 1289463, sv:494698, nk:85, g:9.4e7)
 
 
 2014-08-09  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -442,16 +667,16 @@
 	* run_static.m: take corpus, parser name and feature name as args.
 	also compare bansal and wiki (and others) on fv808.  running on
 	split conll07 trn.
-	
+
 	>> run_static('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv808');
-	
+
 	First Epoch
 	epoch	stat	move	head	word	sent	parser
 	1	0.0485	0.0597	0.1518	0.1360	0.7506	archybrid
 	1	0.0487	0.0592	0.1506	0.1353	0.7536	archybrid13
 	1	0.0505	0.0689	0.1649	0.1469	0.7622	arceager13
 	1	0.0512	0.0697	0.1682	0.1501	0.7717	arceager
-	
+
 	Fifth Epoch
 	epoch	stat	move	head	word	sent	parser
 	5	0.0435	0.0538	0.1370	0.1224	0.7144	archybrid (unfinished)
@@ -460,8 +685,8 @@
 	5	0.0456	0.0633	0.1527	0.1356	0.7285	arceager13 (unfinished)
 
 	Conclusion: no significant difference with 13 versions.  archybrid
-	better but we are not using s0h.  We should try arceager with s0h. (TODO)
-	
+	better but we are not using s0h.  We should try arceager with s0h.
+
 	>> run_static('archybrid', 'conll07EnglishToken_bansal100', 'fv808')
 	epoch	stat	move	head	word	sent
 	1	0.0492	0.0591	0.1523	0.1374	0.7411
@@ -470,17 +695,17 @@
 	4	0.0431	0.0536	0.1380	0.1246	0.7054
 	5	0.0430	0.0531	0.1373	0.1241	0.7044
 	6	0.0430	0.0532	0.1374	0.1245	0.7059
-	
+
 	* run_featselect.m: Try backward feature selection.
 	Running on split conll07 trn.
-	
+
 	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv018'); aefsjihmbv:done
 	>> run_featselect('archybrid', 'conll07EnglishToken_bansal100', 'fv084', 'fv018'); lnaumcolef:stopped
 	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv084'); nslylpeu
 	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv039'); lvmbqppcab
 	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv012'); izvlcazmsj
 	>> run_featselect('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv084', 'fv034'); vkuvhmnnsm
-	
+
 	The first backtrack immediately gives a relative order of
 	features.  However we can get misleading results for redundant
 	features.  We need to pick one of +-1 (exists/doesn't), +-9 (head
@@ -489,7 +714,7 @@
 	concatenations of word+context).  We can try alternatives later.
 	fv084 picks = encoding for children and >= encoding for distances,
 	but has both bits for 1 and 9.
-	
+
 	The fv084 starting features on wiki100 give 0.0799762 for conll07
 	trn split into sec02 dev and the rest trn with archybrid.  This is
 	under 0.05 for best feature combination.  A lot of starting
@@ -497,94 +722,94 @@
 
 	Here is fv084 (all) vs fv017 (best):			(bansal100)
 	best(84): 0.0799762	    best(17): 0.0476108		best(16): 0.0473616
-	[-196]    'n0w'   	    [-203]    'n0w'   		[-217]    'n0w'       '[0 0 4]'  
-	[-119]    's0w'   	    [-125]    's0w'   		[-161]    's0w'       '[-1 0 4]' 
-	[ -73]    'n1w'   	    [ -59]    's1w'   		[ -74]    's1w'       '[-2 0 4]' 
-	[ -43]    's1w'   	    [ -59]    'n1w'   		[ -50]    'n1w'       '[1 0 4]'  
-	[ -20]    'n0l1w' 	    [ -41]    'n0l1w' 		[ -43]    'n0l1w'     '[0 -1 4]' 
+	[-196]    'n0w'   	    [-203]    'n0w'   		[-217]    'n0w'       '[0 0 4]'
+	[-119]    's0w'   	    [-125]    's0w'   		[-161]    's0w'       '[-1 0 4]'
+	[ -73]    'n1w'   	    [ -59]    's1w'   		[ -74]    's1w'       '[-2 0 4]'
+	[ -43]    's1w'   	    [ -59]    'n1w'   		[ -50]    'n1w'       '[1 0 4]'
+	[ -20]    'n0l1w' 	    [ -41]    'n0l1w' 		[ -43]    'n0l1w'     '[0 -1 4]'
 								[ -26]    's0c'       '[-1 0 -4]'
 	[ -20]    'n0c'   	    [ -17]    'n0c'   		[ -23]    's0l1w'     '[-1 -1 4]'
 	[ -19]    'n1c'   	    [ -15]    'n1c'   		[ -20]    's1ac'      '[-2 0 -8]'
 	[ -16]    's0c'   	    [ -16]    's0c'   		[ -20]    's1r1l='    '[-2 1 -2]'
-	[ -11]    's0l1w' 	    [ -21]    's0l1w' 		[ -20]    's0r1w'     '[-1 1 4]' 
-	[ -10]    's1c'   	    [ -13]    's1c'   		[ -16]    'n0c'       '[0 0 -4]' 
+	[ -11]    's0l1w' 	    [ -21]    's0l1w' 		[ -20]    's0r1w'     '[-1 1 4]'
+	[ -10]    's1c'   	    [ -13]    's1c'   		[ -16]    'n0c'       '[0 0 -4]'
 								[ -15]    's1c'       '[-2 0 -4]'
 	[  -8]    's2l1c' 	    				[ -15]    'n0l1c'     '[0 -1 -4]'
-	[  -8]    's0l1c' 	    [ -12]    's0l1c' 		[ -13]    'n1c'       '[1 0 -4]' 
-	[  -8]    'n0l1c' 	    [ -11]    'n0l1c' 		[  -9]    's0d>'      '[-1 0 7]' 
+	[  -8]    's0l1c' 	    [ -12]    's0l1c' 		[ -13]    'n1c'       '[1 0 -4]'
+	[  -8]    'n0l1c' 	    [ -11]    'n0l1c' 		[  -9]    's0d>'      '[-1 0 7]'
 	[  -7]    's2l1r='	    				[  -2]    's0r1c'     '[-1 1 -4]'
-	[  -7]    's2aw'  	    				
-	[  -7]    's1r1+' 	    				
-	[  -7]    's0ac'  	    
-	[  -7]    's0d>'  
-	[  -6]    's0l1+' 
-	[  -6]    's0aw'  
-	[  -5]    's2c'   					
-	[  -5]    's2w'   	    [ -12]    's2w'   
-	[  -5]    's1l1c' 
-	[  -5]    's0r1w' 	    [ -21]    's0r1w' 		
-	[  -4]    's2ac'  
-	[  -4]    'n0l1+' 
-	[  -3]    's2-'   
-	[  -3]    's2d>'  
-	[  -3]    's2r1w' 
-	[  -3]    's1l1w' 
-	[  -3]    's1aw'  
+	[  -7]    's2aw'
+	[  -7]    's1r1+'
+	[  -7]    's0ac'
+	[  -7]    's0d>'
+	[  -6]    's0l1+'
+	[  -6]    's0aw'
+	[  -5]    's2c'
+	[  -5]    's2w'   	    [ -12]    's2w'
+	[  -5]    's1l1c'
+	[  -5]    's0r1w' 	    [ -21]    's0r1w'
+	[  -4]    's2ac'
+	[  -4]    'n0l1+'
+	[  -3]    's2-'
+	[  -3]    's2d>'
+	[  -3]    's2r1w'
+	[  -3]    's1l1w'
+	[  -3]    's1aw'
 	[  -3]    's1r1r='
 	[  -2]    's1l1l='
 	[  -2]    's0l1l='
-	[  -1]    's1ac'  
+	[  -1]    's1ac'
 	[  -1]    's0l1r='
-	[  -1]    's0r1c' 	    [ -12]    's0r1c' 		
-	[   0]    's2r1c' 
-	[   0]    's0r='  
-	[   1]    's2l1w' 
-	[   1]    's2h+'  
-	[   1]    's2r1+' 
-	[   1]    's1r1c' 
-	[   1]    's1r1w' 
-	[   1]    's0-'   
-	[   1]    's0r1l='	    [ -19]    's0r1l='		
+	[  -1]    's0r1c' 	    [ -12]    's0r1c'
+	[   0]    's2r1c'
+	[   0]    's0r='
+	[   1]    's2l1w'
+	[   1]    's2h+'
+	[   1]    's2r1+'
+	[   1]    's1r1c'
+	[   1]    's1r1w'
+	[   1]    's0-'
+	[   1]    's0r1l='	    [ -19]    's0r1l='
 	[   1]    's0r1r='
-	[   1]    'n0-'   
+	[   1]    'n0-'
 	[   2]    's2r1l='
 	[   2]    's2r1r='
 	[   2]    's1l1r='
-	[   2]    's1-'   
-	[   2]    's1d>'  
-	[   2]    's1h+'  
-	[   2]    's0h+'  
-	[   3]    's2l1+' 
-	[   3]    's2l='  
-	[   3]    's0l1-' 
-	[   3]    's0r1+' 
+	[   2]    's1-'
+	[   2]    's1d>'
+	[   2]    's1h+'
+	[   2]    's0h+'
+	[   3]    's2l1+'
+	[   3]    's2l='
+	[   3]    's0l1-'
+	[   3]    's0r1+'
 	[   3]    'n0l1l='
 	[   3]    'n0l1r='
-	[   3]    'n1-'   
-	[   4]    's1l1-' 
-	[   4]    's1l1+' 
+	[   3]    'n1-'
+	[   4]    's1l1-'
+	[   4]    's1l1+'
 	[   5]    's2l1l='
-	[   5]    's2l1-' 
-	[   5]    'n0l='  
-	[   7]    's1r1l='		[ -30]    's1r1l='	
-	[   7]    's1r1-' 
-	[   8]    's2r='  
-	[   8]    's1r='  
-	[   9]    's1l='  
-	[   9]    's0l='  
-	[   9]    'n0l1-' 
-	[  11]    's0h-'  
-	[  11]    's0+'   
-	[  11]    's0r1-' 
-	[  12]    'n0+'   
-	[  14]    's2r1-' 
-	[  14]    's1+'   
-	[  14]    'n1+'   
-	[  15]    's2h-'  
-	[  15]    's2+'   
-	[  15]    's1h-'  
-	
-	
+	[   5]    's2l1-'
+	[   5]    'n0l='
+	[   7]    's1r1l='		[ -30]    's1r1l='
+	[   7]    's1r1-'
+	[   8]    's2r='
+	[   8]    's1r='
+	[   9]    's1l='
+	[   9]    's0l='
+	[   9]    'n0l1-'
+	[  11]    's0h-'
+	[  11]    's0+'
+	[  11]    's0r1-'
+	[  12]    'n0+'
+	[  14]    's2r1-'
+	[  14]    's1+'
+	[  14]    'n1+'
+	[  15]    's2h-'
+	[  15]    's2+'
+	[  15]    's1h-'
+
+
 2014-08-08  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* run_static: testing other embeddings on conll07 using archybrid
@@ -601,7 +826,7 @@
 	4	0.0578	0.0696	0.1763	0.1594	0.7570	conll07EnglishToken_hlbl100scaled
 	9	0.0607	0.0755	0.1909	0.1821	0.8411	conll07EnglishToken_stratos100k200scaled01
 	11	0.0640	0.0797	0.2029	0.1878	0.8318	conll07EnglishToken_hpca100scaled01
-	
+
 	* run_max_beam_score.m: We can calculate an upper bound on beam
 	parser for an existing model by comparing the total score of the
 	correct tree with the total score of the predicted tree.  Using
@@ -627,20 +852,20 @@
 	sentences, possibly for the better.
 
 	* vectorparser.m: Debugging the update rule. --i30
-	
+
 	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
 	c = p.oracle_cost(h);
 	scores(c==inf) = -inf;
 	[~,move] = max(scores);
 	[mincost, bestmove] = min(c);
 	if c(move) > mincost % update
-	
+
 	- vectorparser has:
 	cost = p.oracle_cost(h);
 	[mincost, mincostmove] = min(cost);
 	[maxscore, maxscoremove] = max(score);
 	if cost(maxscoremove) > mincost % update
-	
+
 	- Experiment with conll07 dev vs tst for speed.  Using fv808.
 	- Static training.  13-epoch, 6.6820 tst err.
 	- vectorparser Dynamic training.  1-epoch:
@@ -666,12 +891,12 @@
 	3	0.0686	0.0790	0.1963	0.1810	0.7991
 	4	0.0688	0.0787	0.1955	0.1805	0.8037
 	5	0.0684	0.0780	0.1943	0.1789	0.8037
-	
+
 	- At this size dynamic oracle training does not seem to help.  To
 	see the difference we need a bigger size problem.
 
 
-	
+
 ==> run_max_beam_score.m <==
 function [sy, sz, sumy, sumz] = run_max_beam_score(dev, devdump, devparse)
 y = devdump.y;
@@ -695,7 +920,7 @@ for s=1:ns
   nt = nt + t;
 end
 
-	
+
 
 ==> run_sort_bestfeats.m <==
 function fsorted = run_sort_bestfeats(cache, imin)
@@ -737,13 +962,13 @@ fsorted = sortrows(fsorted, 1);
 
 end
 
-	
+
 2014-08-07  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* run_fs_conll07_arceager13.m: featselect with arceager13 starting
 	at fv008 using fv136 (head features), conll07 trn split into trn
 	and dev, bansal100 encoding. (--b43)
-	
+
 
 	* run_fs_conll07_aug7: featselect stopped and restarted from a
 	better initial state: fv008.  Still using conll07a_ variables
@@ -754,7 +979,7 @@ end
 	about 100 secs per feature.  We can try 864 features a day.  That
 	decides roughly six features a day.  Started at Aug 7 10:00AM.
 	(--b42)
-	
+
 	dev 1989 sent -> 92290 move -> 87202 multi-choice move
 	trn 16588 sent -> 763702 move -> 720961 multi-choice move
 
@@ -762,7 +987,7 @@ end
 	arctypes.  (maybe with the addition of s0r=(helps .1%) and s0h(not
 	for hybrid) and the constant 1(not helpful)).  Maybe best to wait
 	and do an actual fselect.
-	
+
 	- NOTE: we do not have a constant feature but we do have features
 	that are always on that will serve the same purpose: s0h- for
 	archybrid, s0+ are some of them.  It is probably not a good idea
@@ -783,41 +1008,41 @@ end
 	It got rid of both n0c and s0c and replaced them with word
 	features s1r1w and s0l1w.  Hopefully this will discover a good
 	combo for conll07.
-	
-	>> load 'fs_conll07_aug7.mat' (archybrid)		
-	>> run_sort_bestfeats(cache)				
-	best(11): 0.0515011   	best(12): 0.0509621	best(13): 0.0502282	best(14): 0.0498842
-	[-367]    'n0w'       	[-360]    'n0w'  	[-359]    'n0w'   			
-	[-238]    's0w'       	[-229]    's0w'  	[-230]    's0w'   			
-	[-106]    's1w'       	[-100]    's1w'  	[-104]    's1w'   			
-	[ -94]    'n1w'       	[ -94]    'n1w'  	[ -82]    'n1w'   			
-	[ -81]    'n0l1w'     	[ -63]    'n0l1w'	[ -65]    'n0l1w' 			
-	[ -39]    's1r1w'     	[ -41]    's0r1w'	[ -45]    's1r1w' 			
-	[ -26]    's0r1w'     	[ -36]    's1r1w'	[ -31]    's0l1w' 			
-	[ -26]    'n0c'       	[ -25]    's1c'  	[ -30]    'n0c'   			
-	[ -25]    's1c'       	[ -20]    's0l1w'	[ -28]    's0r1w' 			
-	[ -24]    's0l1w'     	[ -16]    'n0c'  	[ -26]    's1c'   		
-	[  -8]    's0r1l<'    	[ -12]    's2l=' 	[ -15]    's2l='  	
-				[ -12]    'n0l>' 	[  -8]    'n0l>'  	
-							[  -7]    's0r1l<'	
 
-	>> load 'fs_conll07_arceager13.mat'		
-	>> run_sort_bestfeats(cache)			
+	>> load 'fs_conll07_aug7.mat' (archybrid)
+	>> run_sort_bestfeats(cache)
+	best(11): 0.0515011   	best(12): 0.0509621	best(13): 0.0502282	best(14): 0.0498842
+	[-367]    'n0w'       	[-360]    'n0w'  	[-359]    'n0w'
+	[-238]    's0w'       	[-229]    's0w'  	[-230]    's0w'
+	[-106]    's1w'       	[-100]    's1w'  	[-104]    's1w'
+	[ -94]    'n1w'       	[ -94]    'n1w'  	[ -82]    'n1w'
+	[ -81]    'n0l1w'     	[ -63]    'n0l1w'	[ -65]    'n0l1w'
+	[ -39]    's1r1w'     	[ -41]    's0r1w'	[ -45]    's1r1w'
+	[ -26]    's0r1w'     	[ -36]    's1r1w'	[ -31]    's0l1w'
+	[ -26]    'n0c'       	[ -25]    's1c'  	[ -30]    'n0c'
+	[ -25]    's1c'       	[ -20]    's0l1w'	[ -28]    's0r1w'
+	[ -24]    's0l1w'     	[ -16]    'n0c'  	[ -26]    's1c'
+	[  -8]    's0r1l<'    	[ -12]    's2l=' 	[ -15]    's2l='
+				[ -12]    'n0l>' 	[  -8]    'n0l>'
+							[  -7]    's0r1l<'
+
+	>> load 'fs_conll07_arceager13.mat'
+	>> run_sort_bestfeats(cache)
 	best(9): 0.0560545	best(10): 0.0542881	best(11): 0.0538064	best(12): 0.0534164	best(13): 0.0526593
-	[-494]    'n0w'   	[-510]    'n0w'   	[-502]    'n0w'   	[-507]    'n0w'   	
-	[-324]    's0w'   	[-337]    's0w'   	[-313]    's0w'   	[-268]    's0w'   	
-	[-181]    'n1w'   	[-187]    'n1w'   	[-189]    'n1w'   	[-184]    'n1w'   	
-	[-179]    's1r1r<'	[-177]    's1r1r<'	[-175]    's1r1r<'	[-155]    's1r1r<'	
-	[ -71]    'n0l1w' 	[ -54]    'n0l1w' 	[ -54]    's1w'   	[ -45]    'n0l1w' 	
-	[ -36]    's1w'   	[ -53]    's1w'   	[ -45]    'n0l1w' 	[ -32]    's0r1w' 	
-	[ -32]    's0r1w' 	[ -42]    's0r1w' 	[ -41]    's0l1w' 	[ -31]    'n2c'   	
-	[ -15]    's0l1w' 	[ -36]    'n2c'   	[ -39]    's0r1w' 	[ -28]    's0l1w' 	
-	[ -15]    'n2c'   	[ -25]    's0l1w' 	[ -35]    'n2c'   	[ -24]    's1w'   	
-				[ -18]    'n0l1r<'	[ -12]    'n0l1r<'	[ -16]    'n0l1r<'	
-							[  -5]    'n0l1c' 	[ -14]    'n0l1c' 	
-										[  -4]    's1c'   	
-	
-	
+	[-494]    'n0w'   	[-510]    'n0w'   	[-502]    'n0w'   	[-507]    'n0w'
+	[-324]    's0w'   	[-337]    's0w'   	[-313]    's0w'   	[-268]    's0w'
+	[-181]    'n1w'   	[-187]    'n1w'   	[-189]    'n1w'   	[-184]    'n1w'
+	[-179]    's1r1r<'	[-177]    's1r1r<'	[-175]    's1r1r<'	[-155]    's1r1r<'
+	[ -71]    'n0l1w' 	[ -54]    'n0l1w' 	[ -54]    's1w'   	[ -45]    'n0l1w'
+	[ -36]    's1w'   	[ -53]    's1w'   	[ -45]    'n0l1w' 	[ -32]    's0r1w'
+	[ -32]    's0r1w' 	[ -42]    's0r1w' 	[ -41]    's0l1w' 	[ -31]    'n2c'
+	[ -15]    's0l1w' 	[ -36]    'n2c'   	[ -39]    's0r1w' 	[ -28]    's0l1w'
+	[ -15]    'n2c'   	[ -25]    's0l1w' 	[ -35]    'n2c'   	[ -24]    's1w'
+				[ -18]    'n0l1r<'	[ -12]    'n0l1r<'	[ -16]    'n0l1r<'
+							[  -5]    'n0l1c' 	[ -14]    'n0l1c'
+										[  -4]    's1c'
+
+
 	* conll07b: rerun conll07 experiments with fv808 and new code.  bansal100 encoding.
 	- try scode instead of bansal?
 	- g&n13 hybrid-static is 86.43=13.57 head.
@@ -826,7 +1051,7 @@ end
 	- fix featselect so it doesn't backup shorter than initfeats.
 	- use the whole training set after determining epochs and feats.
 	--b41
-	
+
 	Dynamic oracle:
 	epoch	gmove	move	head	word	sent
 	(8)	0.0425	0.0526	0.1362	0.1235	0.7049 (last static epoch)
@@ -841,9 +1066,9 @@ end
 	8	0.0458	0.0495	0.1277	0.1174	0.6983
 	9	0.0455	0.0490	0.1265	0.1164	0.6948
 	10	0.0458	0.0487	0.1257	0.1157	0.6933	best-dynamic-epoch
-	11	0.0460	0.0489	0.1266	0.1166	0.6928	
+	11	0.0460	0.0489	0.1266	0.1166	0.6928
 	0	0.0484	0.0540	0.1347	0.1270	0.7383	final-testing
-	
+
 	* mxrep: replicate mx experiments with new code.  Note that the
 	difference in the last static model is due to the older experiment
 	removing single choice moves from training.  In dynamic training
@@ -863,7 +1088,7 @@ end
 	8	0.0383	0.0342	0.0904	0.0800	0.6071
 	9	0.0381	0.0339	0.0897	0.0792	0.6059
 	10	out-of-memory
-	
+
 	Compare to original mx results:
 	--i11			TEST				TRAIN
 	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
@@ -1032,7 +1257,7 @@ save('run_fs_conll07_arceager13_trndump', 'trndump', '-v7.3');
 
 featselect_gpu(m0, trndump, devdump, 'fs_conll07_arceager13.mat', fv008);
 
-	
+
 ==> run_fs_conll07_aug7.m <==
 load mat/conll07a_trn.mat
 load mat/conll07a_dev.mat
@@ -1058,7 +1283,7 @@ save('run_fs_conll07_aug7_trndump', 'trndump', '-v7.3');
 
 featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 
-	
+
 
 2014-08-06  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -1066,7 +1291,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	results are better in gmove but .25 worse in parsing performance.
 	Difference?  Not using single option moves for training?  Some
 	other change from dumpfeatures/trainparser to vectorparser?
-	
+
 	Static oracle:
 	epoch	gmove	move	head	word	sent
 	1	0.0363	0.0431	0.1129	0.1002	0.6624
@@ -1082,7 +1307,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	mx3	4.11	860	150207	3.38	3.80	 9.96
 	mx4	3.54	930	161208	3.36	3.80	 9.88
 	mx5	3.21	963	169135	3.34	3.76	 9.83	8.63	best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
-	
+
 	- try removing single choice moves, results should be identical
 	-- instances go from 1820392 to 1720986
 	-- first epoch ends with 103524 sv (103062 unique).
@@ -1096,7 +1321,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	its capacity on useless instances.  for multichoice moves it
 	shouldn't matter what score is assigned to inf cost moves, since
 	vectorparser is not going to ask about them either?
-	
+
 	-- ok try to replicate the above result with cost based.
 	perceptron ignoring the single-choice moves itself.  Gives us
 	103286 sv.  3.77 gtrans.  It won't be exactly the same because
@@ -1111,11 +1336,11 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	Conclusion: it gains a bit to ignore single choice moves.  it does
 	not gain to ignore the score given to inf cost moves in the
 	multi-choice case.
-	
-	
+
+
 	* conll07b: rerun conll07 experiments with fv808 and new code.  --b41.
 	>> run_conll07_dbg('conll07b');
-	
+
 	Static oracle:
 	epoch	gmove	move	head	word	sent
 	1	0.0492	0.0591	0.1523	0.1374	0.7411
@@ -1128,18 +1353,18 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	(8)	0.0425	0.0526	0.1362	0.1235	0.7049
 	9	0.0426	0.0526	0.1362	0.1235	0.7029
 
-	
+
 	* rerun: featselect for conll07, archybrid, fv130, new train/dev
 	split.  (--b42) Note that fv130 does not include the new head
 	feature but that is not useful for archybrid.
-	
+
 	* DONE:
 	- copy run scripts to ChangeLog.
 	+ move run_* to logs. split log/run/mat.
 	+ stop featselect.
 	+ test 10-epoch best model for parsing
 	+ start dynamic oracle training
-	+ figure out conll07 diff, 
+	+ figure out conll07 diff,
 	+ rerun featselect.
 	+ rinse and repeat.
 
@@ -1147,12 +1372,12 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	- severe connections with dogma:
 	- remove model.n_cla and other useless fields from vectorparser.
 	- edit perceptron to do testing as well.
-	
+
 	* DONE: add a head feature for arceager and redo feature selection.
-	
+
 	* DONE: correct perceptron update rule when there can be more than
 	one maxscore and more than one mincost answer.
-	
+
 	* DONE: perceptron.m:
 	+ experiment with cost vs answer training.
 	+ skipping single choice answers?
@@ -1329,8 +1554,8 @@ if isempty(m3)
   if isempty(m2)
 
     m1 = getval('m1', @()[]);
-    if isempty(m1) 
-      m1 = m0; 
+    if isempty(m1)
+      m1 = m0;
       e1 = inf;
       epoch1 = 1;
     else
@@ -1363,7 +1588,7 @@ if isempty(m3)
 
   f2 = getval('f2', @()(error('No f2')));
   epoch2 = getval('epoch2', @()(error('No epoch2')));
-  
+
   fprintf('%s dynamic oracle training.\n', datestr(now));
   while epoch2 < 100
     m = vectorparser(m2, trn);
@@ -1428,7 +1653,7 @@ newFeatureVectors;
 load mat/conll07a_m0.mat
 m0.feats = fv136;
 
-	
+
 2014-08-05  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* run/run_conll07.m: 5 epochs of static oracle training best,
@@ -1436,13 +1661,13 @@ m0.feats = fv136;
 	with our old mx runs:
 
 	mx run:
-	corpus:ptb3 
+	corpus:ptb3
 	encoding:conllToken_wikipedia2MUNK-50
 	feats:fv808
 	parser:ArcHybrid
 	static-learner:k_perceptron_multi_train_gpu (run_multi_epoch2.m)
 	dynamic-learner:trainparser_gpu (run_dynamic_oracle2.m)
-	
+
 	Static Oracle:
 	model	aer	time	nsv	gtrans	ptrans	phead	whead	notes
 	mx1	6.09	314	104757	3.75	4.26	11.18		fv808 feature-set batch=1000
@@ -1471,15 +1696,15 @@ m0.feats = fv136;
 	static-learner:perceptron (run_conll07.m)
 	dynamic-learner:vectorparser (run_conll07.m)
 	evaluation:gtrans measured using cost, not correct answer!
-	
+
 	Note: in static oracle gtrans not equivalent to prev exp, it is
 	cost based (let's call this ctrans), prev was answer based
 	(gtrans).
-	
+
 	Note: in dynamic oracle ptrans=move_pct, phead=head_pct,
 	whead=word_pct, and the new sent_pct measures exact sentence match
 	error.
-	
+
 	Static Oracle: (run_conll07_experiment1.out)
 	epoch	ctrans
 	1	4.02
@@ -1535,10 +1760,10 @@ m0.feats = fv136;
 	3. 1-epoch perceptron vs k-perceptron, ctrans vs gtrans.
 	4. Look into perceptron update rule for cost/score ties.
 
-	
+
 	** 1-epoch-experiment: Compare the effect of different update
 	rules.
-	
+
 	1. k_perceptron:
 	Yi = gpuArray(int32(Y(i:j)) + model.n_cla*int32(0:ij-1)); % 1018us
 	tmp=val_f;                            % 922us
@@ -1549,7 +1774,7 @@ m0.feats = fv136;
 
 	2. perceptron(Y):
 	First converts Y into cost matrix and then applies the rule below:
-	
+
 	3. perceptron(cost):
 	score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
 	costij = Y(:,i:j);                  % costij(nc,nk): costs for X(:,i:j)
@@ -1566,16 +1791,16 @@ m0.feats = fv136;
 	4.1 But maxmove is arbitrary in case of tie?
 	4.2 It is not used for transition if its cost is inf.
 	4.3 All ties are broken picking the lowest numbered move.
-	
+
 	First experiment shows that using the cost for training
 	(naturally) gives best result in cost, but significantly worse in
 	guessing "correct" answer. (run_conll07_debug.m)
-	
+
 --i02	gtrans	ctrans	ptrans	phead	whead	sent	model
 	0.0471	0.0426	0.0605	0.1549	0.1397	0.7285	k_perceptron_multi_train
 	0.0476	0.0428	0.0612	0.1576	0.1418	0.7466	perceptron(y)
 	0.0581	0.0402	0.0752	0.1899	0.1668	0.7969	perceptron(cost)
-	
+
 	How do we decide "correct" other than arbitrarily during dump?
 	[mincost, bestmove] = min(cost);
 
@@ -1599,7 +1824,7 @@ m0.feats = fv136;
 	Try to normalize the updates: (perceptron2_dbg.m) This makes sense
 	if we assume one pair of mincost,maxscore entries is picked at
 	random and we are looking at the expected update.
-	
+
 	score = compute_scores();           % score(nc,nk): scores for X(:,i:j)
 	costij = cost(:,i:j);               % costij(nc,nk): costs for X(:,i:j)
 	maxscore = max(score);              % maxscore in each column of score
@@ -1610,7 +1835,7 @@ m0.feats = fv136;
 	decbeta = bsxfun(@rdivide, decbeta, sum(decbeta));   % normalize in case multiple maxscore answers
 	dbeta = incbeta - decbeta;          % this should cancel out if y_mincost = y_maxscore
 	updates = find(any(dbeta));         % nonzero columns of dbeta are the updates
-	
+
 	gtrans	ctrans	ptrans	phead	whead	sent	model
 	0.0471	0.0426	0.0605	0.1549	0.1397	0.7285	k_perceptron_multi_train
 	0.0476	0.0428	0.0612	0.1576	0.1418	0.7466	perceptron(y)
@@ -1619,20 +1844,20 @@ m0.feats = fv136;
 	0.0713	0.0533	0.0887	0.2324	0.2095	0.8421	perceptron_dbg(cost)
 	0.0481	0.0433	0.0619	0.1584	0.1424	0.7436	perceptron2_dbg(y)
 	0.0587	0.0408	0.0733	0.1864	0.1642	0.7924	perceptron2_dbg(cost)
-	
+
 	This version gives the same answers in y mode.  Why?  Different
 	beta, same SV?  Look at non-compactified version.
-	
+
 	However ptrans and the rest still bad, even worse when using cost
 	matrix.
 
-	Theories: 
+	Theories:
 	- Look at this cost matrix and make sure its contents are good.
 	- What kinds of instances have multiple correct answers or score ties?
 	- Can we just emulate k_perceptron_multi_train?
 	- Compare resulting beta with k_perceptron_multi_train?
 	- How do cost based algorithms in dogma do it?
-	- Does it have to do with move ordering (min picking the lowest)?  
+	- Does it have to do with move ordering (min picking the lowest)?
 	- If we sort them differently does the regular k_perceptron screw up?
 	- If it is important do we have the right ordering for other arctypes?
 	- Replicate the mx results with perceptron.m.
@@ -1650,11 +1875,11 @@ m0.feats = fv136;
       [~,zmove] = max(zscore);
       p.transition(zmove);
     else
-      [mincost, bestmove] = min(cost);	
+      [mincost, bestmove] = min(cost);
       p.transition(bestmove);
     end
 
-	
+
 ==> run/run_conll07_debug_eval.m <==
 function [gtrans, ctrans, ev] = run_conll07_debug_eval(model, dump, corpus)
 
@@ -1669,7 +1894,7 @@ ev = eval_conll(corpus,d);
 
 end
 
-	
+
 2014-08-04  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* fsymbol.m: get feature name from feature vector f(1,3).
@@ -1678,7 +1903,7 @@ end
 	decisions.  let us use sec02 for dev: top 50123 lines, 1989
 	sentences, 48134 tokens.  We'll save it as split.  Just concat dev
 	and trn to get original data.
-	
+
 	* run_arctype_comparison2.m: --i00: Determine which arctype is
 	best.  The scores *c are cost based, *a are answer based.  trn and
 	tst are from conll07, dev is from conllWSJToken.  All after one
@@ -1689,7 +1914,7 @@ end
 	update, a bad dev set and possibly bad features (because they were
 	optimized on the bad dev set albeit with the correct
 	k_perceptron_multi_train).  Need to rerun.
-	
+
 	1-epoch results: (run_arctype_comparison2.m)
 	arc	trnc	trna	devc	deva	tstc	tsta	feats
 	eager	2.76	4.69	7.78	9.14	4.23	6.41	17
@@ -1834,7 +2059,7 @@ run_conll07([], [], [], [], [], savefile);
 
 end
 
-	
+
 2014-08-03  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* run_arctype_comparison.m: --i00 running all arctypes with best
@@ -2053,8 +2278,8 @@ end
 	MST2	91.5	R McDonald and F Pereira. 2006. Online learning of approximate dependency parsing algorithms. In In Proc. of EACL, pages 81–88, Trento, Italy, April.
 	MST1	90.7	First order result according to MP06.
 
-	- conll07-ptb difference: 
-	
+	- conll07-ptb difference:
+
 	from conll-xi/data/english/ptb/doc/README:
 	The head and dependency relation fields were converted using the
 	algorithms described in
@@ -2064,7 +2289,7 @@ end
 	> http://www.lucas.lth.se/lt/pennconverter
 	This was run with the arguments: -conjAsHead -prepAsHead
 
-	new website:	
+	new website:
 	http://nlp.cs.lth.se/software/treebank_converter
 	http://fileadmin.cs.lth.se/nlp/software/pennconverter/pennconverter.jar
 
@@ -2125,7 +2350,7 @@ for arctype={'arceager', 'archybrid', 'arceager13', 'archybrid13'}
   save(savefile, 'model', 'trndump', 'devdump', 'tstdump', 'deveval', 'tsteval', '-v7.3');
 end
 
-	
+
 ==> run/run_convert_cache.m <==
 function run_convert_cache(trn, cachefile, newfile)
 
@@ -2158,7 +2383,7 @@ end % fkey
 
 end
 
-	
+
 ==> run/run_sort_bestfeats_dbg.m <==
 function fsorted = run_sort_bestfeats_dbg(bestfeats, besterror, cache)
 
@@ -2236,7 +2461,7 @@ while (1) {
     close($fh);
 }
 
-	
+
 2014-08-02  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* perceptron.m: The cost version.  Not really comparable to the
@@ -2279,31 +2504,31 @@ while (1) {
 	[-119]    's1w'   	[-106]    'n1w'   	[-155]    'n1w'   	[-104]    'n1w'
 	[-110]    'n1w'   	[ -98]    's1w'   	[-150]    's1r1r<'	[ -40]    'n0c'
 	[ -55]    'n0l1w' 	[ -52]    's0r1w' 	[ -45]    's0r1w' 	[ -35]    's0r1w'
-	
+
 	[ -38]    'n0l1c' 	[ -45]    'n0l1w' 	[ -44]    'n0c'   	[ -35]    'n0l1w'
 	[ -36]    's0r1w' 	[ -35]    's0r1r<'	[ -39]    's1w'   	[ -31]    's1w'
 	[ -32]    's0c'   	[ -32]    's0r1c' 	[ -39]    'n0l1w' 	[ -30]    's1r='
 	[ -32]    's0r='  	[ -30]    's0r='  	[ -28]    's0c'   	[ -28]    's0r='
 	[ -32]    'n0c'   	[ -30]    's0d>'  	[ -27]    's0l1w' 	[ -27]    's0l>'
-	
+
 	[ -27]    's2c'   	[ -29]    's1l1-' 	[ -27]    's0r1-' 	[ -26]    's0c'
 	[ -27]    's1d='  	[ -28]    's2r='  	[ -27]    'n2-'   	[ -24]    'n1c'
 	[ -27]    's0r1-' 	[ -28]    's0ac'  	[ -23]    's0r='  	[ -23]    's0r1r>'
 	[ -25]    's0l1l='	[ -28]    's0c'   	[ -22]    'n1-'   	[ -22]    's2r1-'
 	[ -25]    's0r1r<'	[ -28]    'n0c'   	[ -21]    's2l1r>'	[ -21]    's1-'
-	
+
 	[ -23]    's1r1r<'	[ -27]    'n0l1c' 	[ -21]    's2d>'  	[ -20]    's0-'
 	[ -18]    's2r1l<'	[ -23]    's1r1r<'	[ -21]    's0r1+' 	[ -18]    'n0l>'
 	[ -18]    's1l1l>'	[ -22]    's2c'   	[ -17]    's0l1r='	[ -16]    's1c'
 	[ -18]    'n0l>'  	[ -20]    's2l1r='	[ -16]    's0-'   	[ -15]    's1l>'
 	[ -16]    'n1-'   	[ -16]    's1r<'  	[ -15]    's2l='  	[ -15]    's1r1r='
-	
+
 	[ -15]    's1r1r>'	[ -14]    's1d>'  	[ -15]    's0l1l='	[ -13]    'n0l1l>'
 	[ -12]    's1r1l>'	[ -14]    's0r1l<'	[ -15]    's0l1-' 	[ -11]    's1r1l>'
 	[ -12]    's0r1l>'	[ -14]    'n1-'   	[ -14]    'n0l1l>'	[  -9]    's1r1-'
 	[ -11]    's2l1l>'	[ -13]    's0l1w' 	[ -13]    's2r>'  	[  -8]    'n0-'
 	[  -9]    's2r1r='	[ -11]    's2r1r='	[ -13]    's1r1r>'	[   0]    's2r1l='
-	
+
 	[  -8]    's0l1-' 	[ -11]    's0-'   	[ -12]    's2r1-'
 	[  -5]    'n0l1-' 	[ -10]    's2r1l>'	[ -12]    's0r1r>'
 				[ -10]    's2r1r>'	[ -11]    's2-'
@@ -2379,7 +2604,7 @@ fprintf('%s Starting featselect_gpu\n', datestr(now));
 fprintf('%s this will never happen :)\n', datestr(now));
 end
 
-	
+
 2014-08-01  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* features.m:
@@ -2450,7 +2675,7 @@ fprintf('%s Starting featselect_gpu\n', datestr(now));
 fprintf('%s this will never happen :)\n', datestr(now));
 end
 
-	
+
 ==> run/run_loadCoNLL.m <==
 function run_loadCoNLL(emi)
 
@@ -2532,7 +2757,7 @@ toc;
 outfile = ['logs/' emi '.mat'];
 save(outfile, 'trn', 'dev', 'tst', '-v7.3');
 
-	
+
 2014-07-30  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* DONE:
@@ -2639,8 +2864,8 @@ fprintf('score:%g\t%s\n', score, emi);
 #$ -e job_name.err
 #$ -M login_id@ku.edu.tr
 #$ -m bea
- 
-# We have a file named bigtest.m 
+
+# We have a file named bigtest.m
 /share/apps/matlab/R2011a/bin/matlab -nojvm -nodisplay -r bigtest > output.txt
 
 ==> run/run_embeddings2.m <==
@@ -2670,7 +2895,7 @@ for i=1:numel(em)
     % 'conllWSJToken_murphy50scaled01',	% error
     % 'conllWSJToken_murphy50'		% error
                       }))
-    continue; 
+    continue;
   end
   fprintf('Reading %s\n', emi);
   tic;
@@ -2820,7 +3045,7 @@ for i=1:numel(em)
 
                      }))
     fprintf('Skipping %s\n', emi);
-    continue; 
+    continue;
   end
 
   fprintf('Reading %s\n', emi);
@@ -2884,7 +3109,7 @@ for i=1:numel(em)
   fprintf('score:%g\t%s\n', score, emi);
 end % for i=1:numel(em)
 
-	
+
 2014-07-28  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* eval_conll.m: this is not giving the same result as
@@ -3123,7 +3348,7 @@ end % for i=1:numel(em)
 	score:0.13461	conll_swedish+f (n:131239)
 
 	score:0.172941	conll_turkishSKETCH-25 (n:87228)
-	
+
 	--i02 --i03: still oom, do this on balina
 	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
 	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
@@ -3391,7 +3616,7 @@ toc;tic;r10d10 = trainparser_gpu(m10d10, dev1, fv804)
 save -v7.3 logs/m10d10 m10d10 rt10d10 r10d10 a10d10
 
 
-	
+
 ==> run/run_multi_epoch2.m <==
 fv808 = [
 %n0 s0 s1 n1 n0l1 s0r1 s1r1l s0l1 s0r1l s2
@@ -3646,8 +3871,8 @@ toc;tic;gtrans20 = numel(find(a20 ~= dev_y))/numel(dev_y)
 toc;tic;r20=trainparser_gpu(m20, dev1, fv804)
 toc;tic;save -v7.3 logs/m20 m20 a20 b20 r20
 toc;
-	
-	
+
+
 2014-07-26  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* k_perceptron_multi_train_gpu.m: check to see if during
@@ -3795,7 +4020,7 @@ for bs=500:500:3000
              toc();
 end
 
-	
+
 2014-07-24  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* DONE:
@@ -4122,7 +4347,7 @@ show_r1=r1
 r1.nerr/r1.ntot
 r1.xerr/r1.xtot
 
-	
+
 2014-07-22  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* k_perceptron_multi_train_gpu.m: To optimize featselect we need
@@ -4257,7 +4482,7 @@ m4lst_err = numel(find(m4lst ~= y_te'))/numel(y_te)*100;
 fprintf('%.2f\t%.2f\t%d\t%.2f\tsvmtrain\n', ...
         m4lst_err, 0, m4nsv, m4ttm);
 
-	
+
 2014-07-21  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* trainparser_gpu.m: Profiling trainparser to find the ideal
@@ -5223,7 +5448,7 @@ for d=1:9
   fprintf('%d\t%.2f\t%.2f\t%d\t%.2f\n', hp.degree, last, avg, nsv, telapsed);
 end
 
-	
+
 2014-07-12  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* testparser.m: shows that 5.4% static error rate corresponds to 15%
@@ -5398,7 +5623,7 @@ avg = numel(find(pred_perceptron_av~=y_te))/numel(y_te)*100;
 nsv = size(model.beta, 2);
 end
 
-	
+
 ==> run/run_sparsify5000.m <==
 % load conllWSJToken_wikipedia2MUNK-50.mat;
 % Elapsed time is 9.625437 seconds.
@@ -5428,7 +5653,7 @@ numel(find(p0 ~= y_te))
 p = model_predict(x_te, m, 0);
 numel(find(p ~= y_te))
 
-	
+
 2014-07-11  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* sparsify5000.m: Saved as sparsify5000.log and
@@ -5560,7 +5785,7 @@ numel(find(p ~= y_te))
 
 ==> run/dump1000b.m <==
 % path('dogma', path);
-% 
+%
 
 tic();
 fprintf('Loading dump1000b dataset\n');
@@ -5949,7 +6174,7 @@ toc();
 
 ==> run/dump1000.m <==
 % path('dogma', path);
-% 
+%
 
 tic();
 fprintf('Loading dump1000 data set\n');
@@ -6100,7 +6325,7 @@ toc();
 % ylabel('Number of Support Vectors')
 % toc();
 
-	
+
 	* dump1000.m, k_perceptron_multi_train: Using first 10000 as test
 	and 37716 as train (1 epoch) using all 1752 features.  At 3
 	minutes and 90+ accuracy we can use this to do feature and kernel
