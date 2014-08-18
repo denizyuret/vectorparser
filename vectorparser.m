@@ -278,9 +278,7 @@ if m.dump
     m.z = [];
     m.score = [];
   end
-  if m.predict
-    m.pred = {};
-  end
+  m.pred = {};
 end % if m.dump
 
 end % vectorparser_init
