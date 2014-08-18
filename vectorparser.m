@@ -71,7 +71,7 @@ for snum=1:numel(corpus)
 
   end % while 1
 
-  if m.dump && m.predict
+  if m.dump
     m.pred{end+1} = p.head;
   end
 
