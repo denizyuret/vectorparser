@@ -1,4 +1,10 @@
+% This one does best on archybrid_conll07EnglishToken_wikipedia2MUNK-100_d5 (degree=5 kernel)
+fv018a = [-3 0 8;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-1 -1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
+
+% This one does best on archybrid_conll07EnglishToken_wikipedia2MUNK-100 (degree=3 kernel)
 fv015a = [-3 0 8;-2 0 -4;-2 0 4;-2 1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+
+% This one is a local minimum on archybrid_conll07EnglishToken_wikipedia2MUNK-100 (degree=3 kernel)
 fv031a = [-3 0 -8;-3 0 -4;-3 0 -1;-3 0 8;-3 1 -4;-3 1 4;-2 -1 -4;-2 -1 4;-2 0 -8;-2 0 -4;-2 0 4;-2 0 8;-2 1 1;-2 1 2;-1 -1 -4;-1 -1 1;-1 -1 4;-1 0 -8;-1 0 -4;-1 0 2;-1 0 4;-1 0 8;-1 1 -4;-1 1 4;0 -1 -4;0 -1 1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
 
 fv034 = [];
