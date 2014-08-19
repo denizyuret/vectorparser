@@ -33,11 +33,10 @@ while start_changed
   start_changed = false;
 
   if nstart > 0
+    update_bestfeats();
     start_err = err(start);
     msg('# starting(%d)\t%g\t%s', nstart, start_err, fstr(start));
-    if (start_err < besterror(nstart))
-      bestfeats{nstart} = fkey(start);
-      besterror(nstart) = start_err;
+    if (start_err <= besterror(nstart))
       msg('# newbest(%d)\t%g\t%s', nstart, start_err, fstr(start));
     end
   end
@@ -45,6 +44,7 @@ while start_changed
   if nstart > 1
     msg('# backtracking(%d) with %s', nstart, fstr(start));
     best = struct('i', 0, 'e', inf, 'f', []);
+    update_bestfeats();
     for curr_i=1:nstart
       curr_f = start;
       curr_f(curr_i) = [];
@@ -55,11 +55,9 @@ while start_changed
             best.e, fstr(start(best.i)), fstr(best.f));
       end %if
     end %for
-    if best.e < besterror(nstart-1)
+    if best.e <= besterror(nstart-1)
       msg('# newbest(%d)\t%g\t-%s\t%s', nstart-1, ...
           best.e, fstr(start(best.i)), fstr(best.f));
-      bestfeats{nstart-1} = fkey(best.f);
-      besterror(nstart-1) = best.e;
     end
     if best.e <= start_err
       nstart = nstart-1;
@@ -70,8 +68,9 @@ while start_changed
   end
 
   if nstart < nfeats
-    best = struct('i', 0, 'e', inf, 'f', []);
     msg('# children(%d) of %s', nstart, fstr(start));
+    best = struct('i', 0, 'e', inf, 'f', []);
+    update_bestfeats();
     for curr_i=1:nfeats
       if ismember(curr_i, start) continue; end
       curr_f = start;
@@ -83,12 +82,11 @@ while start_changed
             best.e, fstr(best.i), fstr(best.f));
       end
     end % for
-    if best.e < besterror(nstart)
+    if best.e < besterror(nstart+1)
       msg('# newbest(%d)\t%g\t+%s\t%s', nstart+1, ...
           best.e, fstr(best.i), fstr(best.f));
-      bestfeats{nstart+1} = fkey(best.f);
-      besterror(nstart+1) = best.e;
     end
+    update_bestfeats();
     if best.e < start_err
       nstart = nstart + 1;
       start(end+1) = best.i;
@@ -130,10 +128,10 @@ end % fstr
 
 %%%%%%%%%%%%%%%%%
 function s=err(f)                       % f is an array of indices into trn.fidx
-
 fk = fkey(f);
+update_cachefile();                     % in case another thread wrote
 if ~isKey(cache, fk)                    % x matrix has an instance with all features in each column
-  msg('Computing err for %s', fstr(f));
+  % msg('Computing err for %s', fstr(f));
   idx = logical([]);                    % idx is a boolean index into the rows of x matrix (features)
   for j=1:numel(f)
     fj=f(j);
@@ -155,7 +153,7 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   nsv = size(m1.beta, 2);
   fprintf('==>\t%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fstr(f));
   cache(fk) = e1;
-  update_cachefile();
+  update_cachefile();                   % to record the new result
 else
   fprintf('==>\t%g\t%d\t%g\t%s\n', cache(fk), 0, 0, fstr(f));
 end % if ~isKey(cache, fk)
@@ -163,7 +161,7 @@ s = cache(fk);
 end % err
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function featselect_init(nargin_save)
 
 % Check to make sure model m0 and dumps trn and dev have all we want:
@@ -185,6 +183,7 @@ bestfeats = cell(1,nfeats);
 besterror = inf(1,nfeats);
 cache = containers.Map();
 update_cachefile();
+update_bestfeats();
 
 % Initialize starting feature combination
 if nargin_save >= 5
@@ -228,7 +227,11 @@ save(threadtemp, 'cache');
 runme = sprintf('flock -x %s -c ''mv %s %s''', cachefile, threadtemp, cachefile);
 system(runme);
 
-% Update bestfeats
+end % update_cachefile
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function update_bestfeats()
 cachekeys = keys(cache);
 for i=1:numel(cachekeys)
   fstr = cachekeys{i};
@@ -239,9 +242,7 @@ for i=1:numel(cachekeys)
     bestfeats{flen} = fstr;
   end
 end
-
-
-end % update_cachefile
+end % update_bestfeats
 
 end % featselect
 
