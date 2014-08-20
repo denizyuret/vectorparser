@@ -1,10 +1,289 @@
+2014-08-20  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* gparser.m: object-oriented version of vectorparser.m with the
+	various improvements discussed below.
+	- Training debug running on @@i30.
+	- Test debug running on @@i12.
+	
+
+2014-08-19  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* gparser.m: We need to rethink the interface between various
+	scripts.  Create a dbg set and work out the new interface:
+
+	vectorparser_dbg.m
+	perceptron_dbg.m
+	beamparser_dbg.m
+	eval_conll_dbg.m: should be integrated into vectorparser?
+	featselect_dbg.m
+	eval_model_dbg.m: should be integrated into eval_conll?
+
+	- Forget about dump and input options.  Take whatever information
+	from the model, put whatever result into the model.
+	
+	- We have to figure out how to output multiple paths so both
+	vectorparser and beamparser can be evaluated.  There is a
+	mincostpath and a maxscorepath, beamparser follows both,
+	vectorparser follows one or the other.  Predicted heads are always
+	determined by the maxscorepath.  In fact vectorparser only follows
+	mincostpath (predict=0) in dump or static-train modes.  But I
+	guess we need possible preds as well.  To keep sane we should
+	prefix all related to mincost as y, and all related to maxscore as
+	z.  So we could possibly have yfeats, ymove, yscore, ycost, (one
+	per move), yhead, ysumscore (one per sentence) and their z
+	versions.  How about the mincostmove on a zpath or maxscoremove on
+	a ypath?  Do not output those.  People can compute them from
+	ymove, yscore etc.  The actual ymove, zmove should be the ones
+	that are actually executed to get from one state to the next along
+	the path.  Careful about feats, it is also used to specify which
+	features to use.  Let's rename that fmatrix.
+
+	- vectorparser has 6 steps, here are their prerequisites:
+	1. valid:  m.parser
+	2. cost:   m.parser, s.head
+	3. feats:  m.parser, m.feats, s.wvec
+	4. scores: m.SV, m.beta or  m.beta2, feats
+	5. update: m.SV, m.beta and m.beta2, feats, cost, scores
+	6. move:   m.parser, the rest depends on which move
+
+	- following mincostpath needs 2, 6.
+	- following maxscorepath needs 1, 3, 4, 6.
+	- test uses maxscorepath.
+	- eval also needs 2.
+	- train also needs 5 (i.e. all).
+	- dump follows mincostpath but also outputs feats (3).
+	- 1-3 are on/off.
+	- 4, 5 and 6 has different options.
+	- 4 options: averaged (beta2) or final (beta) coefficients.
+	- 5 options: no-update, and various ways of dealing with ties.
+	- 6 options: follow mincost or maxscore or some other if maxscore is invalid.
+	- we follow mincost for static train, test.
+	- however it is more efficient to dump before static train, test and use perceptron.m.
+	- that is one case when we need feats without scores.
+	- kernel caching needs to store feats but has to recalculate scores.
+	
+	- need to design a number of options to determine the choices:
+	- which way to move
+	- whether/how to update
+	- what to dump
+
+	- ok well we could simplify things by dumping everything we use
+	- (although for dump mode we don't use features so that has to be an option)
+	- average is 0/1 (dogma model_predict argument)
+	- move is captured well with predict=0,1 (no dogma equivalent)
+	- update is right now 0/1, we could add more types (dogma also has model.update with different semantics)
+
+	- update=1 means 5, which requires the rest, though average and predict can effect 4 and 6.
+	- update=0 means no 5, means no 2,3,4.  predict determines 1,2,6 vs 1,3,4,6.
+	- (another exception: eval needs cost which also should be an option when update=0).
+	- just set whatever extra fields you want (feats,cost) computed extra to empty arrays and they get filled?
+	
+	update options (not all implemented and tried): (TODO)
+	- no update for testing.
+	- what to do if maxscoremove is invalid.
+	- what to do if there is a single valid move.
+	- what to do if there is a tie among maxscore.
+	- what to do if there is a tie among mincost.
+
+	+ predict should be a probability! (p=0.9 predicts with prob 0.9)
+	+ vectorparser should be a copyable class!  (probably called greedy or deterministic etc.)
+	
+	do similar analysis for beamparser to decide common names (TODO)
+
+	
+	* prioritize:
+	- conll07
+	-- try rbf featselect: @@b40  (later reoptimize gamma)
+	-- try degree=5 fv018a 5epoch: @@b41
+	-- try degree>5 featselect: @@b43 (see if better than d5,fv018a)
+	- beamparser
+	-- try wsjtoken featselect: @@b42 (later optimize kernel)
+	-- finish code
+	
+	* run_5epoch_conll07: Try the better kernel fv018a with degree=5.
+	Compare to GN13 hybrid-dynamic 87.62=12.38 and the prev d=3,fv015a run.
+	Improvement is possible...
+
+	d=5,fv018a 					d=3,fv015a
+	epoch	stat	move	head	word	sent	stat    move    head    word    sent  
+	1	0.0437	0.0587	0.1483	0.1340	0.7383	0.0469  0.0586  0.1477  0.1370  0.7664
+	2	0.0525	0.0522	0.1299	0.1215	0.7383	0.0524  0.0512  0.1305  0.1229  0.7523
+	3	0.0508	0.0493	0.1255	0.1172	0.7477	0.0508  0.0501  0.1259  0.1170  0.7430
+	4	0.0499	0.0487	0.1235	0.1154	0.7336	0.0519  0.0503  0.1259  0.1175  0.7477
+	5	0.0504	0.0495	0.1245	0.1150	0.7196	0.0513  0.0497  0.1237  0.1150  0.7430
+	6	0.0514	0.0488	0.1223	0.1147	0.7336	0.0523  0.0511  0.1271  0.1172  0.7523
+	7	0.0511	0.0491	0.1217	0.1136	0.7430	0.0532  0.0512  0.1259  0.1156  0.7477
+	8	0.0518	0.0503	0.1237	0.1152	0.7383	0.0535  0.0513  0.1273  0.1177  0.7570
+	9	0.0520	0.0497	0.1213	0.1132	0.7243	0.0544  0.0511  0.1267  0.1170  0.7523
+	10	0.0519	0.0501	0.1235	0.1152	0.7243	0.0549  0.0516  0.1257  0.1166  0.7477
+	
+	
+	* rbf_kernel: Modifying perceptron_dbg.m to use rbf kernel:
+	
+	  x_sq = sum(xij.^2, 1);
+	  if ns2 == 0
+	    s1sq = sum(m.svtr1.^2, 2);
+	    val_f = beta1 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s1sq, -2 * (m.svtr1 * xij))));
+	    clear s1sq;
+	  elseif ns1 == 0
+	    s2sq = sum(m.svtr2.^2, 2);
+	    val_f = beta2 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s2sq, -2 * (m.svtr2 * xij))));
+	    clear s2sq;
+	  else
+	    s1sq = sum(m.svtr1.^2, 2);
+	    s2sq = sum(m.svtr2.^2, 2);
+	    val_f = beta1 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s1sq, -2 * (m.svtr1 * xij)))) + ...
+	            beta2 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s2sq, -2 * (m.svtr2 * xij))));
+	    clear s1sq s2sq;
+	  end
+	
+	Run one epoch:
+	
+	w0715 =	load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv015a_dump.mat')
+	m0 = struct('kerparam', struct('type', 'poly', 'gamma', 1, 'coef0', 1, 'degree', 3));
+	m0.parser = @archybrid;
+	m0.feats = fv015a;
+	m0.step = 1e4; 
+	m0.batchsize = 1e3;
+	m1 = m0;
+	m1.kerparam = struct('type', 'rbf', 'gamma', 0.1);
+	[m0a,d0a] = perceptron(w0715.trndump.x, w0715.trndump.y, m0);
+	nd=1401 nx=763702 nc=3 ns=0
+	inst	err	nsv	batch	time	mem	
+	763702	7.5355	58050	702	132.87	4.49e+08
+	Finding unique SV in 58050...
+	Saving 57809 unique SV.
+	[m1a,d1a] = perceptron_dbg(w0715.trndump.x, w0715.trndump.y, m1);
+	inst	err	nsv	batch	time	mem
+	763702	17.5595	134603	171	331.48	3.33e+08
+	Finding unique SV in 134603...
+	Saving 133915 unique SV.
+	
+	%%% 132 vs 331 seconds, 2.5x slow down in training not too bad.
+	
+	[~,~,e0a] = perceptron(w0715.devdump.x, w0715.devdump.y, m0a, 'update', 0)
+	inst	err	nsv	batch	time	mem
+	92290	4.7340	57809	426	27.84	4.51e+08
+	e0a = 0.0473	
+	[~,~,e1a] = perceptron_dbg(w0715.devdump.x, w0715.devdump.y, m1a, 'update', 0)
+	inst	err	nsv	batch	time	mem
+	92290	9.8386	133915	1150	61.50	4.22e+08
+	e1a = 0.0984
+	
+	%%% 61 vs 28 seconds, 2.2x slow down in testing.
+	%%% Result a lot worse, but neither gamma nor features have been optimized.
+	
+	%%% May be worth running featselect for rbf:
+	start with archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv084_dump.mat
+	use fv008w for initial starting point
+	modified featselect_dbg to call perceptron_dbg.
+	In fact let's rename these featselect_rbf and perceptron_rbf.
+	
+	m0 = struct('kerparam', struct('type','rbf','gamma',0.1), 'parser', @archybrid, 'step', 1e6);
+	cachefile = 'archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf_cache.mat';
+	w0784 = load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv084_dump.mat');
+	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv008w);
+	@@b40
+
+	(8) 0.122104
+	(7) 0.125561
+	(9) 0.108809
+	(8) 0.109524
+	(10) 0.106891
+
+	- This looks kind of hopeless given that poly3 gives 0.0546 in
+	epoch=1 with fv008w.  gamma problem?  
+	- First confirm 0.0546.  
+	19-Aug-2014 23:02:45 # starting(8)	0.0543613	s1w s1r1w s0l1w s0w s0r1w n0l1w n0w n1w 
+	- Then optimize gamma using fv008w.  @@b40
+	
+	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 1.0);
+	x = 0.537493896484375
+	fval = 0.0524108787517608
+	exitflag = 1
+	output:
+	iterations: 20
+	funcCount: 48
+	algorithm: 'Nelder-Mead simplex direct search'
+	message: Optimization terminated:
+	  the current x satisfies the termination criteria using OPTIONS.TolX of 1.000000e-04 
+	  and F(X) satisfies the convergence criteria using OPTIONS.TolFun of 1.000000e-04 
+
+	- Then rerun featselect if there is hope.
+	!rm archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf_cache.mat
+	m0.kerparam.gamma = x
+	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv008w);
+	@@b40
+	
+	* run/run_conll07_ablation.m:
+	= kernel: fselect d=2..9 starting with fv015a+archybrid.
+	d=2		d=3		d=4		d=5 		d=6 @@b40/@@b43
+	(15) 0.0607758	[15] 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844
+	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(13) 0.0489327
+	(15) 0.0592914	(16) 0.047340	(15) 0.0464406	(15) 0.0467981	(14) 0.0477625
+	(16) 0.0587713  (17) 0.047611	(16) 0.0455954	(16) 0.0459096	(15) 0.0471665
+	(17) 0.0578719			[17] 0.0455629	(17) 0.0454437	(16) 0.0464406
+	(18) 0.0575144			(18) 0.0455629	[18] 0.0449453	(17) 0.0462022
+	(19) 0.056745 					(19) 0.0449453	[18] 0.0459313
+	[20] 0.0566259					
+	
+
+	- d=2 hopeless, Restarting from d=4.
+	- d=4 better, other degrees? rbf? embeddings?
+
+
+	* featselect:
+	- finish implementing beam parser and compare with ZN11.  First
+	step: run featselect starting fv018 on conllWSJToken_wikipedia2MUNK-100.
+	- other kernels? d=5 is better in conll07.  test rbf?
+
+	>> run_featselect22('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv130', 'fv018');
+	(18) 0.0361038	(16) 0.0357524
+	[17] 0.0353489	(15) 0.0359997
+	(16) 0.0357524	[17] 0.0353489
+	(18) 0.0353750
+
+	% Still same local maximum when started from (16) --b42
+	% Should try rbf:
+	% set x_tr, y_tr etc. from 'archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv008w'.
+	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.5);
+	
 2014-08-18  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* TODO:
 
-	- rbf kernel with gpu?
-	-- Optimize and try rbf kernel calculation and fselect.
-	-- Other kernel degrees with featselect.
+	- run_conll07_15epoch.m:
+	+ If this doesn't work:
+	- Try other kernel?
+	-- Check train vs test, overfitting?
+	- Try shuffling?
+	- Try other vectorparser update methods?
+	- Try p=0.9?
+	- Try bansal?
+	- Try pa
+	- Try to find better feature set?
+	-- Try fv031a
+	-- Try starting featselect from best 14, 13, etc.
+	
+	- run/run_conll07_ablation.m:
+	+ embedding: fselect bansal100 starting with fv015a+archybrid.
+	No significant difference.
+	bansal100 best(17): 0.046939
+	wiki100   best(15): 0.047339 (fv015a)
+	diff: -s0r1c(6) +s1l=(15) +s1r1r<(14) +s1r<(2)
+	- features: anything between fv015a and fv031a? starting with 13,14?
+	- kernel, degree, rbf?
+	- arctype: fselect starting with fv015a
+	- perceptron: with or without static training, p=0.9?, update rule?
+
+	- beamparser.m:
+	-- implement kernel cache
+	-- try pa for faster convergence
+	-- compatibility with eval_conll
+
+	= rbf kernel with gpu?
+	= Optimize and try rbf kernel calculation and fselect.
+	= Other kernel degrees with featselect.
 	- look at train/test performance to validate model and decide if
 	higher orders are worth trying.
 
@@ -16,6 +295,8 @@
 
 	- Implement arceasy.
 
+	- remove model/dump distinction in perceptron etc.  just have one output.
+	
 	- Embeddings:
 	-- test more on conll07.
 	-- debug conllWSJToken_dep-100 (good train bad test)
@@ -44,14 +325,15 @@
 
 2014-08-17  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* beamparser_dbg.m (TODO):
-	- implement early stopping
-	- implement path construction
-	- implement perceptron update
-	- implement dump update
-	- check beamparser_init
+	* beamparser_dbg.m:
+	+ implement early stopping
+	+ implement path construction
+	+ implement perceptron update
+	+ implement dump update
+	+ check beamparser_init
 	- implement kernel cache
 	- try pa for faster convergence
+	- compatibility with eval_conll
 
 	Debugging:
 
@@ -116,26 +398,9 @@
 	DONE: profile
 	DONE: use struct array instead of cell array?
 	DONE: profile beam=10 testing
-	TODO: make eval_conll work again
-	TODO: kernelcache
+	====: make eval_conll work again
+	====: kernelcache
 
-
-
-	* run/run_conll07_ablation.m:
-	= kernel: fselect d=2..9 starting with fv015a+archybrid.
-	d=2		d=3		d=4		d=5 		d=6 @@b40.
-	(15) 0.0607758	(15) 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844
-	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(14) 0.0484885
-	(16) 0.058988	(16) 0.047340	(16) 0.0455954	(16) 0.0460613	(13) 0.0489327
-	(15) 0.0592914	(17) 0.047611	(15) 0.0464406	(15) 0.0467981	(15) 0.0471665
-	(17) 0.0578719			(17) 0.0455629	(17) 0.0454437
-	(16) 0.0587713			(18) 0.0455629	(16) 0.0459096
-	(18) 0.0575144					(18) 0.0449453
-	(19) 0.056745					(19) 0.0449453
-	(20) 0.0566259
-
-	- d=2 hopeless, Restarting from d=4.
-	- d=4 better, other degrees? rbf? embeddings?
 
 
 	* run_conll07_15epoch.m: Final version of vectorparser with kernel
@@ -163,7 +428,7 @@
 	15	0.0553	0.0519	0.1271	0.1179	0.7336	252237-243952	10152s
 
 	- No improvement after epoch 5.
-	
+
 	(*) --b41.  Note that the times given are on a half busy gpu,
 	around 1.5 sent/sec.  On an empty machine it should run at twice
 	this speed.
@@ -171,7 +436,7 @@
 	- run_conll07_15epoch.mat: models
 	- run_conll07_data.mat: data
 
-	TODO: If this doesn't work:
+	+ If this doesn't work:
 	- Try other kernel?
 	- Try shuffling?
 	- Try other vectorparser update methods?
@@ -182,18 +447,6 @@
 	- Try fv031a
 	- Check train vs test, overfitting?
 	- Try starting featselect from best 14, 13, etc.
-
-
-	* featselect:
-	- finish implementing beam parser and compare with ZN11.  First
-	step: run featselect starting fv018 on conllWSJToken_wikipedia2MUNK-100.
-	- other kernels? d=4 is better in conll07.  test rbf?
-
-	>> run_featselect22('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv130', 'fv018');
-	(18) 0.0361038	(16) 0.0357524
-	(17) 0.0353489	(15) 0.0359997
-	(16) 0.0357524	@@b42
-	(18) 0.0353750
 
 
 2014-08-16  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -243,24 +496,6 @@
 
 	- run_conll07_15epoch.mat: models
 	- run_conll07_data.mat: data
-
-
-	* run/run_conll07_ablation.m:
-
-	+ embedding: fselect bansal100 starting with fv015a+archybrid.
-	No significant difference.
-	bansal100 best(17): 0.046939
-	wiki100   best(15): 0.047339 (fv015a)
-	diff: -s0r1c(6) +s1l=(15) +s1r1r<(14) +s1r<(2)
-
-	TODO: features: anything between fv015a and fv031a? starting with 13,14?
-
-	TODO: kernel
-
-	TODO: arctype: fselect starting with fv015a
-
-	TODO: perceptron: with or without static training
-
 
 
 2014-08-15  Deniz Yuret  <dyuret@ku.edu.tr>
