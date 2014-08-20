@@ -1,8 +1,8 @@
-function [f, fidx] = features(p, s, fmatrix)
+function [f, fidx] = features(p, s, fselect)
 
 % Given a parser state p and a sentence s returns a feature vector
-% fmatrix is a nx3 matrix whose rows determine which features to extract
-% Each row of fmatrix consists of the following three values:
+% fselect is a nx3 matrix whose rows determine which features to extract
+% Each row of fselect consists of the following three values:
 % 1. anchor word: 0:n0, 1:n1, 2:n2, ..., -1:s0, -2:s1, -3:s2, ...
 % 2. target word: 0:self, 1:rightmost child, 2:second rightmost, -1:leftmost, -2:second leftmost ...
 % 3. feature: One of the features listed below.
@@ -22,15 +22,15 @@ function [f, fidx] = features(p, s, fmatrix)
 
 ndim = size(s.wvec,1);                  % token vector dimensionality
 ndim2 = ndim/2;                         % for token encodings the first half is the word vector, the second half is the context vector
-nfeat = size(fmatrix, 1);               % number of features
+nfeat = size(fselect, 1);               % number of features
 imax = nfeat*ndim;                      % maximum number of dimensions
 smax = 1000;                            % maximum distance in sentence
 f = zeros(1,imax);                      % feature vector
 i = 0;                                  % index into feature vector
-fidx = zeros(1,nfeat);                  % fidx(ifeat): end of feature fmatrix(ifeat,:) in f
+fidx = zeros(1,nfeat);                  % fidx(ifeat): end of feature fselect(ifeat,:) in f
 
 for ifeat=1:nfeat
-  feat = fmatrix(ifeat,:);
+  feat = fselect(ifeat,:);
 
   % identify the anchor a: 8.81us
   if feat(1) >= 0                       % buffer word
