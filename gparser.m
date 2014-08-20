@@ -24,6 +24,8 @@ cost	% cost of each move
 score   % score of each move
 move    % the moves executed
 head    % the heads predicted
+sidx    % sentence end indices in move array
+eval    % evaluation metrics
 end
 
 properties (SetAccess = private)
@@ -43,11 +45,11 @@ for snum=1:numel(corpus)
   s = corpus{snum};
   p = feval(m.parser, m.sentence_length(s));
   valid = p.valid_moves();
-  cost = []; score = [];
   while any(valid)
+    mycost = []; myscore = [];
     if m.compute.cost
-      cost = p.oracle_cost(s.head);
-      if m.output.cost m.cost(:,end+1) = cost; end
+      mycost = p.oracle_cost(s.head);
+      if m.output.cost m.cost(:,end+1) = mycost; end
     end
     if m.compute.feats
       frow = features(p, s, m.fselect);
@@ -55,20 +57,22 @@ for snum=1:numel(corpus)
       if m.output.feats m.feats(:,end+1) = fcol; end
     end
     if m.compute.score
-      score = compute_kernel(m, fcol);
-      if m.output.score m.score(:,end+1) = score; end
+      myscore = compute_kernel(m, fcol);
+      if m.output.score m.score(:,end+1) = myscore; end
     end
     if m.update
-      perceptron_update(m, frow, cost, score);
+      perceptron_update(m, frow, mycost, myscore);
     end
-    move = pick_move(m, valid, cost, score);
-    if m.output.move m.move(end+1) = move; end
-    p.transition(move);
+    mymove = pick_move(m, valid, mycost, myscore);
+    if m.output.move m.move(end+1) = mymove; end
+    p.transition(mymove);
     valid = p.valid_moves();
   end % while 1
   if m.output.head m.head{end+1} = p.head; end
+  if m.output.move m.sidx(end+1) = numel(m.move); end
   m.dot(snum, numel(corpus), t0);
 end % for snum=1:numel(corpus)
+if m.output.eval eval_model(m, corpus); end
 finalize_model(m, corpus);
 end % parse
 
@@ -103,7 +107,7 @@ msg('gparser(%d,%d) corpus(%d)', m.nmove, m.ndims, numel(corpus));
 if isempty(m.update) m.update = 1; end
 if isempty(m.predict) m.predict = 1; end
 if isempty(m.gpu) m.gpu = gpuDeviceCount(); end
-if isempty(m.output) m.output = struct('corpus',1,'feats',1,'cost',1,'score',1,'move',1,'head',1); end
+if isempty(m.output) m.output = struct('corpus',1,'feats',1,'cost',1,'score',1,'move',1,'head',1,'eval',1); end
 
 if m.output.corpus m.corpus = corpus; end
 m.feats = [];
@@ -111,6 +115,8 @@ m.cost = [];
 m.score = [];
 m.move = [];
 m.head = [];
+m.sidx = [];
+m.eval = [];
 
 m.compute.cost = m.output.cost || m.update || ~m.predict;
 m.compute.feats = m.output.feats || m.update || m.predict;
@@ -168,8 +174,8 @@ end % if m.compute.score
 
 msg('update=%d predict=%g average=%d gpu=%d', m.update, m.predict, m.average, m.gpu);
 o = m.output;
-msg('output: corpus=%d feats=%d cost=%d score=%d move=%d head=%d', ...
-    o.corpus, o.feats, o.cost, o.score, o.move, o.head);
+msg('output: corpus=%d feats=%d cost=%d score=%d move=%d head=%d eval=%d', ...
+    o.corpus, o.feats, o.cost, o.score, o.move, o.head, o.eval);
 
 end % initialize_model
 
@@ -245,6 +251,62 @@ if m.update
 end
 clear m.svtr1 m.svtr2 m.bfin1 m.bfin2 m.bavg1 m.bavg2;
 end % finalize_model
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function eval_model(m, corpus)
+
+% TODO turn on move, cost, vs if eval is on
+r = struct();
+r.move_cnt = numel(m.move);
+mincost = min(m.cost);
+movecost = m.cost(sub2ind(size(m.cost), m.move, 1:numel(m.move)));
+r.move_err = sum(movecost > mincost);
+r.move_pct = r.move_err / r.move_cnt;
+
+r.sent_cnt = 0; r.sent_err = 0;
+r.head_cnt = 0; r.head_err = 0;
+r.word_cnt = 0; r.word_err = 0;
+
+nmove = 0;
+
+for i=1:numel(corpus)
+  s = corpus{i};
+  h = s.head;
+  p = m.head{i};
+  nword = numel(h);
+  head_err = sum(h ~= p);
+
+  r.sent_cnt = r.sent_cnt + 1;
+  if (head_err > 0) r.sent_err = r.sent_err + 1; end
+
+  r.head_cnt = r.head_cnt + nword;
+  r.head_err = r.head_err + head_err;
+
+  if (i == 1) move1=1; else move1=m.sidx(i-1)+1; end
+  move2 = m.sidx(i);
+  sumcost = sum(movecost(move1:move2));
+  assert(sumcost == head_err, ...
+         'Discrepancy in sentence %d: %d ~= %d moves(%d,%d)', ...
+         i, movecost, head_err, move1, move2);
+
+  for j=1:numel(h)
+    if (isempty(regexp(s.form{j}, '^\W+$')) ||...
+        ~isempty(regexp(s.form{j}, '^[\`\$]+$')))
+      r.word_cnt = r.word_cnt + 1;
+      if h(j) ~= p(j)
+        r.word_err = r.word_err + 1;
+      end %if
+    end %if
+  end % for j=1:numel(h)
+end % for i=1:numel(corpus)
+assert(r.head_err == sum(movecost));
+
+r.sent_pct = r.sent_err / r.sent_cnt;
+r.head_pct = r.head_err / r.head_cnt;
+r.word_pct = r.word_err / r.word_cnt;
+m.eval = r;
+end % eval_model
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
