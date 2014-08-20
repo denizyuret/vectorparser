@@ -246,11 +246,41 @@ if m.update
   m.SV = [gather(m.svtr1); gather(m.svtr2)]';
   m.beta = [gather(m.bfin1); gather(m.bfin2)]';
   m.beta2 = [gather(m.bavg1); gather(m.bavg2)]';
-  m = compactify(m);
+  compactify_model(m);
   clear m.cache;
 end
 clear m.svtr1 m.svtr2 m.bfin1 m.bfin2 m.bavg1 m.bavg2;
 end % finalize_model
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function compactify_model(m)
+
+% [C, ia, ic] = unique(A,'rows')
+% Find the unique rows C(u,d) of A(n,d) and the index vectors ia(u,1) and ic(n,1), such that ...
+% C = A(ia,:) and A = C(ic,:).
+
+msg('Finding unique SV in %d...', size(m.SV, 2));
+[~, ia, ic] = unique(m.SV', 'rows');
+
+msg('Saving %d unique SV.', numel(ia));
+b2 = ~isempty(m.beta2);
+nc = size(m.beta, 1);
+newbeta  = zeros(nc, numel(ia));
+if b2 newbeta2 = zeros(nc, numel(ia)); end
+assert(numel(ic) == size(m.beta, 2));
+
+for oldi=1:numel(ic)
+  newi = ic(oldi);
+  newbeta(:,newi) = newbeta(:,newi) + m.beta(:,oldi);
+  if b2 newbeta2(:,newi) = newbeta2(:,newi) + m.beta2(:,oldi); end
+end
+
+m.SV = m.SV(:,ia);
+m.beta = newbeta;
+if b2 m.beta2 = newbeta2; end
+
+end % compactify_model
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
