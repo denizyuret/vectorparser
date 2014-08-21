@@ -33,6 +33,7 @@ while start_changed
   start_changed = false;
 
   if nstart > 0
+    update_cachefile();
     update_bestfeats();
     start_err = err(start);
     msg('# starting(%d)\t%g\t%s', nstart, start_err, fstr(start));
@@ -44,6 +45,7 @@ while start_changed
   if nstart > 1
     msg('# backtracking(%d) with %s', nstart, fstr(start));
     best = struct('i', 0, 'e', inf, 'f', []);
+    update_cachefile();
     update_bestfeats();
     for curr_i=1:nstart
       curr_f = start;
@@ -70,6 +72,7 @@ while start_changed
   if nstart < nfeats
     msg('# children(%d) of %s', nstart, fstr(start));
     best = struct('i', 0, 'e', inf, 'f', []);
+    update_cachefile();
     update_bestfeats();
     for curr_i=1:nfeats
       if ismember(curr_i, start) continue; end
@@ -86,6 +89,7 @@ while start_changed
       msg('# newbest(%d)\t%g\t+%s\t%s', nstart+1, ...
           best.e, fstr(best.i), fstr(best.f));
     end
+    update_cachefile();
     update_bestfeats();
     if best.e < start_err
       nstart = nstart + 1;
@@ -129,7 +133,6 @@ end % fstr
 %%%%%%%%%%%%%%%%%
 function s=err(f)                       % f is an array of indices into trn.fidx
 fk = fkey(f);
-update_cachefile();                     % in case another thread wrote
 if ~isKey(cache, fk)                    % x matrix has an instance with all features in each column
   % msg('Computing err for %s', fstr(f));
   idx = logical([]);                    % idx is a boolean index into the rows of x matrix (features)
@@ -153,7 +156,6 @@ if ~isKey(cache, fk)                    % x matrix has an instance with all feat
   nsv = size(m1.beta, 2);
   fprintf('==>\t%g\t%g\t%g\t%s\n', e1, nsv/numel(trn.y), t1, fstr(f));
   cache(fk) = e1;
-  update_cachefile();                   % to record the new result
 else
   fprintf('==>\t%g\t%d\t%g\t%s\n', cache(fk), 0, 0, fstr(f));
 end % if ~isKey(cache, fk)
