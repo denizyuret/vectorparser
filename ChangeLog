@@ -252,11 +252,12 @@
 	[~,~,tmp] = perceptron(x_te, y_te, m1, 'update', 0) => 0.044945
 	% optimize gamma for rbf
 	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.55);
-	@@b40
-	
+	f(0.372111)=0.0451186
 	- Do a featselect_rbf starting with fv018a using the right gamma (wipe cachefile first or make gamma part of name).
+	m0.kerparam.gamma = x;
+	cachefile='archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf3721_cache.mat';
 	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv018a);
-	
+	@@b40	
 	- Reoptimize gamma.
 	- Then do a final check with fv130.
 
@@ -267,7 +268,7 @@
 	(15) 0.0607758	[15] 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844  (15) 0.0511756
 	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(13) 0.0489327	(14) 0.0508506
 	(15) 0.0592914	(16) 0.047340	(15) 0.0464406	(15) 0.0467981	(14) 0.0477625	(13) 0.0509264
-	(16) 0.0587713  (17) 0.047611	(16) 0.0455954	(16) 0.0459096	(15) 0.0471665	(15) 0.0496478
+	(16) 0.0587713  (17) 0.047611	(16) 0.0455954	(16) 0.0459096	(15) 0.0471665	(15) 0.0474483
 	(17) 0.0578719			[17] 0.0455629	(17) 0.0454437	(16) 0.0464406
 	(18) 0.0575144			(18) 0.0455629	[18] 0.0449453	(17) 0.0462022
 	(19) 0.056745 					(19) 0.0449453	(18) 0.0459313
