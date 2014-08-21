@@ -1,3 +1,6 @@
+% Best on run_featselect22('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv130', 'fv018');
+fv017a = [-3 0 -4;-3 0 4;-2 0 -4;-2 0 4;-2 1 -2;-1 -1 -4;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -2;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+
 % This one does best on archybrid_conll07EnglishToken_wikipedia2MUNK-100_d5 (degree=5 kernel)
 fv018a = [-3 0 8;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-1 -1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
 
