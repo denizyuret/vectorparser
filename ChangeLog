@@ -1,3 +1,56 @@
+2014-08-22  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* TODO-compute_kernel: It is time to get this baby out of perceptron,
+	vectorparser, beamparser and have it in one place optimized for
+	various types of input, cache enabled etc.
+
+	- can take care of batching of the input if perceptron testing.
+	- must standardize model parameter names across.
+	- suggest always keeping svtr in gpu.
+	- always have two blocks: svtr,beta,beta2 and newsvtr, newbeta, newbeta2.
+	- the cache, if it exists, only works for the non-new versions.
+	- if x has one vector, use the bsxfun trick.
+	- always check the cache, if x has multiple vectors, check for each.
+	- transpose big stuff (sv and x) out of gpu if necessary.
+	- implement rbf kernel as well.
+
+	- shuffling and compactify should be out.
+	
+	* conll07: kernel-feature-results:
+	dev: 1-epoch-dev-stat
+	test: 1-epoch-test-stat
+	head: best-epoch-test-head
+
+	dev	test	head	model
+	4.46094			rbf-372111-(20)
+	4.49453	4.37	12.13	poly5-fv018a
+	4.51186			rbf-372111-fv018a
+	4.55629			poly4-(17)
+	4.56929			poly6-(19)
+	4.60613			poly7-(17)
+	4.7340	4.69	12.37	poly3-fv015a
+	4.76108			poly3-fv017
+	4.82826			rbf-537494-fv018a
+	4.8304			poly3-fv031a
+	4.85			poly3-fv018 (same as fv808)
+	4.8759			rbf-537494-(12)
+	5.24108			rbf-537494-fv008w
+	5.66259			poly2-(20)
+	5.67			poly3-fv034
+	7.99762			poly3-fv084
+	
+	Looks like we don't have much more left in feature/kernel selection.
+	Try shuffling and other update rules.
+	
+	* conllWSJToken_wikipedia2MUNK-100: kernel-feature results:
+	
+	dev	test	head	model
+	3.43728			rbf-339502-fv017a
+	3.53489			poly3-fv017a
+	3.61038			poly3-fv018 (same as fv808)
+	3.86938			rbf-559377-fv008w
+	
+	
 2014-08-20  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* gparser.m: object-oriented version of vectorparser.m with the
@@ -119,6 +172,7 @@
 
 	* run_5epoch_conll07: Try the better kernel fv018a with degree=5.
 	Compare to GN13 hybrid-dynamic 87.62=12.38 and the prev d=3,fv015a run.
+	This is using the full conll07 train and test sets.
 	Improvement is possible...
 
 	d=5,fv018a,--b41				d=3,fv015a
@@ -257,10 +311,19 @@
 	m0.kerparam.gamma = x;
 	cachefile='archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf3721_cache.mat';
 	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv018a);
-	@@b40	
+	==> fv018a is a local minimum. with 0.0451186
 	- Reoptimize gamma.
-	- Then do a final check with fv130.
-
+	No need, fv018a did not move.
+	- Then do a final check with fv136: It does make a difference!
+	w07136=load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv136_dump.mat');
+	featselect_rbf(m0, w07136.trndump, w07136.devdump, cachefile, fv018a);
+	(18) 0.0448586
+	(19) 0.0448369
+	(20) 0.0446094
+	(21) 0.0445985
+	@@b40
+	- Reoptimize gamma
+	- Check with fv136
 	
 	* run/run_conll07_ablation.m:
 	= kernel: fselect d=2..9 starting with fv015a+archybrid.
@@ -268,12 +331,12 @@
 	(15) 0.0607758	[15] 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844  (15) 0.0511756
 	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(13) 0.0489327	(14) 0.0508506
 	(15) 0.0592914	(16) 0.047340	(15) 0.0464406	(15) 0.0467981	(14) 0.0477625	(13) 0.0509264
-	(16) 0.0587713  (17) 0.047611	(16) 0.0455954	(16) 0.0459096	(15) 0.0471665	(15) 0.0474483
-	(17) 0.0578719			[17] 0.0455629	(17) 0.0454437	(16) 0.0464406
-	(18) 0.0575144			(18) 0.0455629	[18] 0.0449453	(17) 0.0462022
-	(19) 0.056745 					(19) 0.0449453	(18) 0.0459313
-	[20] 0.0566259							[19] 0.0456929
-									(20) 0.0456929
+	(16) 0.0587713  (17) 0.047611	(16) 0.0455954	(16) 0.0459096	(15) 0.0471665	(15) 0.0465598 (same as d4?)
+	(17) 0.0578719			[17] 0.0455629	(17) 0.0454437	(16) 0.0464406	(14) 0.0474808
+	(18) 0.0575144			(18) 0.0455629	[18] 0.0449453	(17) 0.0462022  (16) 0.0462347
+	(19) 0.056745 					(19) 0.0449453	(18) 0.0459313  (15) 0.0464189
+	[20] 0.0566259							[19] 0.0456929	[17] 0.0455737
+									(20) 0.0456929	(16) 0.0459963
 
 	- d=2 hopeless, Restarting from d=4.
 	- d=4 better, other degrees? rbf? embeddings?
@@ -307,8 +370,15 @@
 	[~,~,fval] = perceptron(x_te, y_te, m1, 'update', 0, 'average', 1); => 3.5349
 	% run gamma optimization:
 	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.56);
-	@@b42
+	f(0.339502)=0.0343728
 	% run featselect with rbf:
+	m0.kerparam=struct('type','rbf','gamma',x);
+	w130 = load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv130_dump.mat');
+	cachefile='archybrid_conllWSJToken_wikipedia2MUNK-100_rbf3395_cache.mat'
+	featselect_rbf(m0, w130.trndump, w130.devdump, cachefile, fv017a);
+	(17) 0.0343728
+	(16) 0.0347242
+	@@b42
 	% reoptimize gamma:
 	% run featselect with degree>3:
 	
