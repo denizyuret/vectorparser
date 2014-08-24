@@ -41,7 +41,7 @@ function scores = compute_kernel(m, x)
   scores = zeros(nc, nx);
   todo = true(1, nx);
 
-  if isfield(m, 'cache') && ~isempty(m.cache)
+  if checkfield(m, 'cache')
     for i=1:size(x, 2)
       s = m.cache.get(x);
       if ~isempty(s)
@@ -62,14 +62,14 @@ function scores = compute_kernel(m, x)
   end
 
   hp = m.kerparam;
-  if isfield(m, 'average') && m.average
+  if checkfield(m, 'average')
     beta = m.beta2;
   else
     beta = m.beta;
   end
 
   % See how much memory we can use
-  if isfield(m, 'gpu') && m.gpu
+  if checkfield(m, 'gpu')
     gdev = gpuDevice();
     maxnumel = gdev.FreeMemory / 8;	% use all gpu memory
   else
@@ -108,4 +108,5 @@ function scores = compute_kernel(m, x)
   scores(:,todo) = fxtodo;
 
 end  % compute_kernel
+
 
