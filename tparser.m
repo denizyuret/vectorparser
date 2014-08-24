@@ -40,12 +40,13 @@ classdef tparser < matlab.mixin.Copyable
     SV          % support vectors
     beta        % final weights
     beta2       % averaged (actually summed) weights
-    svtr        % transpose of SV
-    cache       % kernel cache
   end
 
   properties (SetAccess = private)  % Access = private after debugging
-    compute % what to compute
+    svtr        % transpose of SV
+    cache       % kernel cache
+    cachekeys
+    compute
     candidates
     agenda
     fmatrix
@@ -68,13 +69,6 @@ classdef tparser < matlab.mixin.Copyable
       [f1,m.fidx] = features(p1, s1, m.fselect);
       m.ndims = numel(f1);
     end % tparser
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    function set_model_parameters(m, model)
-      m.SV = model.SV;
-      m.beta = model.beta;
-      m.beta2 = model.beta2;
-    end % set_model_parameters
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -252,6 +246,17 @@ classdef tparser < matlab.mixin.Copyable
       finalize_bparse(m, corpus);
     end % bparse
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    function set_model_parameters(m, model)
+      m.SV = model.SV;
+      m.beta = model.beta;
+      m.beta2 = model.beta2;
+    end % set_model_parameters
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    function set_feats(m, feats)
+      m.feats = feats; % to debug caching
+    end % set_feats
 
   end % methods (Access = public)
 
@@ -272,6 +277,7 @@ classdef tparser < matlab.mixin.Copyable
       if ~isfield(m.output,'head') m.output.head = true; end
       if ~isfield(m.output,'sidx') m.output.sidx = true; end
       if ~isfield(m.output,'corpus') m.output.corpus = true; end
+      if (m.update && ~isempty(m.feats)) m.cachekeys = m.feats; end
       for i=1:numel(m.output_fields) m.(m.output_fields{i}) = []; end
 
       m.compute.cost = m.output.cost || m.output.eval || m.update || ~m.predict;
@@ -336,14 +342,14 @@ classdef tparser < matlab.mixin.Copyable
             m.newbeta2 = gpuArray(m.newbeta2);
           end
         end
-        if m.update && ~isempty(m.feats)
+        if ~isempty(m.cachekeys)
           tmp=tic; msg('Computing cache scores.');
-          scores = compute_kernel(m, m.feats);
+          scores = compute_kernel(m, m.cachekeys);
           toc(tmp);tmp=tic;msg('Initializing kernel cache.');
-          m.cache = kernelcache(m.feats, scores);
+          m.cache = kernelcache(m.cachekeys, scores);
           toc(tmp);msg('done');
         end
-      end % if m.compute.score
+      end
     end % initialize_gparse
 
 
