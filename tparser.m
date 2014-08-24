@@ -339,6 +339,24 @@ classdef tparser < matlab.mixin.Copyable
     end % initialize_gparse
 
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%
+    function finalize_gparse(m, corpus)
+      if m.compute.score
+        if m.update
+          m.SV = [gather(m.svtr); gather(m.newsvtr)]';
+          m.beta = [gather(m.beta) gather(m.newbeta)];
+          m.beta2 = [gather(m.beta2) gather(m.newbeta2)];
+          compactify_model(m);
+          clear m.cache m.newsvtr m.newbeta m.newbeta2;
+        elseif m.gpu
+          m.beta = gather(m.beta);
+          m.beta2 = gather(m.beta2);
+        end
+        clear m.svtr;
+      end % if m.compute.score
+    end % finalize_gparse
+
+
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     function initialize_bparse(m, corpus)
       initialize_model(m, corpus);
@@ -393,19 +411,6 @@ classdef tparser < matlab.mixin.Copyable
         [~,move] = min(cost);
       end
     end % pick_move
-
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%
-    function finalize_gparse(m, corpus)
-      if m.update
-        m.SV = [gather(m.svtr); gather(m.newsvtr)]';
-        m.beta = [gather(m.beta) gather(m.newbeta)];
-        m.beta2 = [gather(m.beta2) gather(m.newbeta2)];
-        compactify_model(m);
-        clear m.cache;
-      end
-      clear m.svtr m.newsvtr m.newbeta m.newbeta2;
-    end % finalize_model
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
