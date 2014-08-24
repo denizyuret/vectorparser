@@ -25,14 +25,14 @@ classdef tparser < matlab.mixin.Copyable
 
   % These will be set after parse (depending on fields of output)
   properties (SetAccess = private)
-    corpus      % last corpus parsed
     feats 	% feature vectors representing parser states
-    cost	% cost of each move
     score       % score of each move
+    cost	% cost of each move
+    eval        % evaluation metrics
     move        % the moves executed
     head        % the heads predicted
     sidx        % sentence-end indices in move array
-    eval        % evaluation metrics
+    corpus      % last corpus parsed
   end
 
   % Model parameters, can be obtained by training or manually set with set_model_parameters.
@@ -40,6 +40,18 @@ classdef tparser < matlab.mixin.Copyable
     SV          % support vectors
     beta        % final weights
     beta2       % averaged (actually summed) weights
+    svtr        % transpose of SV
+    cache       % kernel cache
+  end
+
+  properties (Access = private)
+    compute % what to compute
+    candidates
+    agenda
+    fmatrix
+    newsvtr
+    newbeta
+    newbeta2
   end
 
 
@@ -68,6 +80,7 @@ classdef tparser < matlab.mixin.Copyable
     %%%%%%%%%%%%%%%%%%%%%%%%%%
     function gparse(m, corpus)
       initialize_gparse(m, corpus);
+      msg('Processing sentences...');
       t0 = tic;
       for snum=1:numel(corpus)
         s = corpus{snum};
@@ -250,19 +263,21 @@ classdef tparser < matlab.mixin.Copyable
       if isempty(m.update) m.update = 1; end
       if isempty(m.predict) m.predict = 1; end
       if isempty(m.gpu) m.gpu = gpuDeviceCount(); end
-      if isempty(m.output) 
-        for i=1:numel(m.output_fields)
-          m.output = setfield(m.output, m.output_fields{i}, 1);
-        end
-      end
-      for i=1:numel(m.output_fields)
-        m.(m.output_fields{i}) = [];
-      end
+
+      if ~isfield(m.output,'feats') m.output.feats = m.update || m.predict; end
+      if ~isfield(m.output,'score') m.output.score = m.update || m.predict; end
+      if ~isfield(m.output,'cost') m.output.cost = m.update || ~m.predict; end
+      if ~isfield(m.output,'eval') m.output.eval = m.predict && isfield(corpus{1},'head'); end
+      if ~isfield(m.output,'move') m.output.move = true; end
+      if ~isfield(m.output,'head') m.output.head = true; end
+      if ~isfield(m.output,'sidx') m.output.sidx = true; end
+      if ~isfield(m.output,'corpus') m.output.corpus = true; end
+      for i=1:numel(m.output_fields) m.(m.output_fields{i}) = []; end
+
       m.compute.cost = m.output.cost || m.update || ~m.predict;
       m.compute.feats = m.output.feats || m.update || m.predict;
       m.compute.score  = m.output.score || m.update || m.predict;
       if m.compute.score
-        assert(strcmp(m.kerparam.type,'poly'), 'Please specify poly kernel in model.kerparam.\n');
         if isempty(m.average)
           m.average = (~isempty(m.beta2) && ~m.update);
         elseif m.average
@@ -283,42 +298,42 @@ classdef tparser < matlab.mixin.Copyable
     function initialize_gparse(m, corpus)
       initialize_model(m, corpus);
       if m.compute.score
-        % We are using 1 and 2 for the old and the new SV blocks
-        % For the final vs average model we'll use bfin vs bavg
         if isempty(m.SV)
-          m.svtr1 = zeros(0, m.ndims);
-          m.bfin1 = zeros(0, m.nmove);
-          m.bavg1 = zeros(0, m.nmove);
+          m.svtr = zeros(0, m.ndims);
+          m.beta = zeros(m.nmove, 0);
+          m.beta2 = zeros(m.nmove, 0);
         else
           assert(size(m.SV, 1) == m.ndims);
           assert(size(m.SV, 2) == size(m.beta, 2) && size(m.SV, 2) == size(m.beta2, 2));
           assert(size(m.beta, 1) == m.nmove && size(m.beta2, 1) == m.nmove);
-          m.svtr1 = m.SV';
-          m.bfin1 = m.beta';
-          m.bavg1 = m.beta2';
+          m.svtr = m.SV';
         end
-        m.svtr2 = zeros(0, m.ndims);
-        m.bfin2 = zeros(0, m.nmove);
-        m.bavg2 = zeros(0, m.nmove);
+        if m.update
+          m.newsvtr = zeros(0, m.ndims);
+          m.newbeta = zeros(m.nmove, 0);
+          m.newbeta2 = zeros(m.nmove, 0);
+        end
         if m.gpu
           assert(gpuDeviceCount()>0, 'No GPU detected.');
           msg('Resetting GPU.');
           gdev = gpuDevice;
           reset(gdev);
           msg('Loading model on GPU.');
-          m.svtr1 = gpuArray(m.svtr1);
-          m.bfin1 = gpuArray(m.bfin1);
-          m.bavg1 = gpuArray(m.bavg1);
-          m.svtr2 = gpuArray(m.svtr2);
-          m.bfin2 = gpuArray(m.bfin2);
-          m.bavg2 = gpuArray(m.bavg2);
+          m.svtr = gpuArray(m.svtr);
+          m.beta = gpuArray(m.beta);
+          m.beta2 = gpuArray(m.beta2);
+          if m.update
+            m.newsvtr = gpuArray(m.newsvtr);
+            m.newbeta = gpuArray(m.newbeta);
+            m.newbeta2 = gpuArray(m.newbeta2);
+          end
         end
         if m.update && ~isempty(m.feats)
-          msg('Computing cache scores.');tmp=tic;
-          [~,scores] = perceptron(m.feats, [], m, 'update', 0, 'average', m.average);
-          msg('Initializing kernel cache.');toc(tmp);tmp=tic;
+          tmp=tic; msg('Computing cache scores.');
+          scores = compute_kernel(m, m.feats);
+          toc(tmp);tmp=tic;msg('Initializing kernel cache.');
           m.cache = kernelcache(m.feats, scores);
-          msg('done');toc(tmp);
+          toc(tmp);msg('done');
         end
       end % if m.compute.score
     end % initialize_gparse
@@ -348,18 +363,18 @@ classdef tparser < matlab.mixin.Copyable
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     function perceptron_update(m, frow, cost, score)
-      m.bavg1 = m.bavg1 + m.bfin1;
-      m.bavg2 = m.bavg2 + m.bfin2;
+      m.beta2 = m.beta2 + m.beta;
+      m.newbeta2 = m.newbeta2 + m.newbeta;
       [maxscore, maxscoremove] = max(score);
       [mincost, mincostmove] = min(cost);
       % TODO: try other update methods
       if cost(maxscoremove) > mincost
-        m.svtr2(end+1,:) = frow;
-        newbeta = zeros(1, m.nmove);
+        m.newsvtr(end+1,:) = frow;
+        newbeta = zeros(m.nmove, 1);
         newbeta(mincostmove) = 1;
         newbeta(maxscoremove) = -1;
-        m.bfin2(end+1,:) = newbeta;
-        m.bavg2(end+1,:) = newbeta;
+        m.newbeta(:,end+1) = newbeta;
+        m.newbeta2(:,end+1) = newbeta;
       end % if cost(maxscoremove) > mincost
     end % perceptron_update
 
@@ -383,17 +398,18 @@ classdef tparser < matlab.mixin.Copyable
     %%%%%%%%%%%%%%%%%%%%%%%%%%
     function finalize_gparse(m, corpus)
       if m.update
-        m.SV = [gather(m.svtr1); gather(m.svtr2)]';
-        m.beta = [gather(m.bfin1); gather(m.bfin2)]';
-        m.beta2 = [gather(m.bavg1); gather(m.bavg2)]';
+        m.SV = [gather(m.svtr); gather(m.newsvtr)]';
+        m.beta = [gather(m.beta) gather(m.newbeta)];
+        m.beta2 = [gather(m.beta2) gather(m.newbeta2)];
         compactify_model(m);
         clear m.cache;
       end
-      clear m.svtr1 m.svtr2 m.bfin1 m.bfin2 m.bavg1 m.bavg2;
+      clear m.svtr m.newsvtr m.newbeta m.newbeta2;
     end % finalize_model
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % TODO: take this out
     function compactify_model(m)
 
     % [C, ia, ic] = unique(A,'rows')
@@ -424,6 +440,7 @@ classdef tparser < matlab.mixin.Copyable
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % TODO: take this out
     function eval_model(m, corpus)
 
     % TODO turn on move, cost, vs if eval is on
@@ -482,21 +499,6 @@ classdef tparser < matlab.mixin.Copyable
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
   end % methods (Access = private)
-
-
-  properties (Access = private)
-    compute % what to compute
-    candidates
-    agenda
-    fmatrix
-    cache
-    svtr1
-    svtr2
-    bfin1
-    bfin2
-    bavg1
-    bavg2
-  end
 
   properties (Constant = true)
     empty_state = ...
