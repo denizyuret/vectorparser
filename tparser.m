@@ -2,7 +2,7 @@
 
 classdef tparser < matlab.mixin.Copyable
 
-  % Permanent properties, first three user specified during construction
+% Permanent properties, first three user specified during construction
   properties (SetAccess = immutable)
     parser	% the transition system, e.g. @archybrid.
     fselect	% features to be used (see features.m)
@@ -44,7 +44,7 @@ classdef tparser < matlab.mixin.Copyable
     cache       % kernel cache
   end
 
-  properties (Access = private)
+  properties (SetAccess = private)  % Access = private after debugging
     compute % what to compute
     candidates
     agenda
@@ -98,7 +98,7 @@ classdef tparser < matlab.mixin.Copyable
             if m.output.feats m.feats(:,end+1) = fcol; end
           end
           if m.compute.score
-            myscore = compute_kernel(m, fcol);
+            myscore = compute_score(m, fcol);
             if m.output.score m.score(:,end+1) = myscore; end
           end
           if m.update
@@ -235,12 +235,12 @@ classdef tparser < matlab.mixin.Copyable
         maxscorepath = cell(1, depth);
         mincostpath = cell(1, depth);
         while depth > 0
-          if m.compute.costs
+          if m.compute.cost
             if isempty(mincoststate) error('isempty(mincoststate)'); end;
             mincostpath{depth} = mincoststate;
             if (depth > 1) mincoststate = mincoststate.prev; end;
           end
-          if m.compute.scores
+          if m.compute.score
             maxscorepath{depth} = maxscorestate;
             if (depth > 1) maxscorestate = maxscorestate.prev; end;
           end
@@ -266,17 +266,18 @@ classdef tparser < matlab.mixin.Copyable
 
       if ~isfield(m.output,'feats') m.output.feats = m.update || m.predict; end
       if ~isfield(m.output,'score') m.output.score = m.update || m.predict; end
-      if ~isfield(m.output,'cost') m.output.cost = m.update || ~m.predict; end
       if ~isfield(m.output,'eval') m.output.eval = m.predict && isfield(corpus{1},'head'); end
+      if ~isfield(m.output,'cost') m.output.cost = m.update || ~m.predict || m.output.eval; end
       if ~isfield(m.output,'move') m.output.move = true; end
       if ~isfield(m.output,'head') m.output.head = true; end
       if ~isfield(m.output,'sidx') m.output.sidx = true; end
       if ~isfield(m.output,'corpus') m.output.corpus = true; end
       for i=1:numel(m.output_fields) m.(m.output_fields{i}) = []; end
 
-      m.compute.cost = m.output.cost || m.update || ~m.predict;
-      m.compute.feats = m.output.feats || m.update || m.predict;
+      m.compute.cost = m.output.cost || m.output.eval || m.update || ~m.predict;
       m.compute.score  = m.output.score || m.update || m.predict;
+      m.compute.feats = m.output.feats || m.compute.score;
+
       if m.compute.score
         if isempty(m.average)
           m.average = (~isempty(m.beta2) && ~m.update);
@@ -284,11 +285,18 @@ classdef tparser < matlab.mixin.Copyable
           assert(~isempty(m.beta2), 'Please set model.beta2 for averaged model.');
         end
       end
-      msg('update=%d predict=%g average=%d gpu=%d', m.update, m.predict, m.average, m.gpu);
+
+      msg('mode: update=%d predict=%g average=%d gpu=%d', m.update, m.predict, m.average, m.gpu);
+      cfields = fieldnames(m.compute);
+      cstr = '';
+      for i=1:numel(cfields)
+        cstr = [cstr ' ' cfields{i} '=' num2str(m.compute.(cfields{i}))];
+      end
+      msg('compute: %s', cstr);
+      ofields = fieldnames(m.output);
       ostr = '';
-      for i=1:numel(m.output_fields)
-        ofield = m.output_fields{i};
-        ostr = [ostr ' ' ofield '=' num2str(m.output.(ofield))];
+      for i=1:numel(ofields)
+        ostr = [ostr ' ' ofields{i} '=' num2str(m.output.(ofields{i}))];
       end
       msg('output:%s', ostr);
     end % initialize_model
@@ -395,6 +403,23 @@ classdef tparser < matlab.mixin.Copyable
         m.newbeta2(:,end+1) = newbeta;
       end % if cost(maxscoremove) > mincost
     end % perceptron_update
+
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    function score = compute_score(m, x)
+      if ~isempty(m.newsvtr)
+        m1 = struct('kerparam', m.kerparam, 'average', m.average, 'cache', [],...
+                    'svtr', m.newsvtr, 'beta', m.newbeta, 'beta2', m.newbeta2);
+        score = compute_kernel(m1, x);
+        if ~isempty(m.svtr)
+          score = score + compute_kernel(m, x);
+        end
+      elseif ~isempty(m.svtr)
+        score = compute_kernel(m, x);
+      else
+        score = zeros(m.nmove, size(x, 2));
+      end
+    end
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
