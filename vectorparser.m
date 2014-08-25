@@ -33,6 +33,7 @@ for snum=1:numel(corpus)
     if m.compute_features
       f = features(p, s, m.feats);  % 1153us
       ftr = f';                         % f is a row vector, ftr column vector
+      m.x(:,end+1) = ftr;
     end
 
     if m.compute_scores
@@ -97,9 +98,6 @@ end
 
 %%%%%%%%%%%%%%%%%%%%%%
 function update_dump()
-if m.compute_features
-  m.x(:,end+1) = ftr;
-end
 if m.compute_costs
   m.y(end+1) = mincostmove;
   m.cost(:,end+1) = cost;
@@ -265,11 +263,12 @@ else
   fprintf('Using gold moves.\n');
 end % if m.predict
 
+if m.compute_features
+  m.x = [];
+end
+
 if m.dump
   fprintf('Dumping results.\n');
-  if m.compute_features
-    m.x = [];
-  end
   if m.compute_costs
     m.y = [];
     m.cost = [];
