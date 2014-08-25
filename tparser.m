@@ -9,21 +9,21 @@ classdef tparser < matlab.mixin.Copyable
     kerparam    % kernel parameters (same as dogma)
     nmove       % number of possible transitions (fn of parser)
     ndims       % dimensionality of feature vectors (fn of fselect and corpus)
-    fidx        % end index of features in feats (fn of fselect and corpus)
+    fidx        % end indices of features in ndims (fn of fselect and corpus)
   end
 
-  % User should set some of these before parse, defaults in parens
+  % User should set some of these before parse to effect parsing behavior
   properties (SetAccess = public)
-    update	% (1) update type, 0 means no update i.e. test mode
-    predict     % (1) probability of following maxscoremove rather than mincostmove for greedy parser
-    average	% (0) use beta2 (averaged coefficients) if true, beta if not.
-    gpu         % (1) whether to use the gpu
-    output      % (all) what to output (a struct)
-    beam        % (10) width of the beam for beamparser
-    earlystop   % (1) whether to use earlystop during beam search
+    update	% update type, 0 means no update i.e. test mode, default=1
+    predict     % probability of following maxscoremove rather than mincostmove for greedy parser, default=1
+    average	% use beta2 (averaged coefficients) if true, beta if not, default=~update
+    gpu         % whether to use the gpu, default (gpuDeviceCount>0)
+    output      % what to output (a struct with fields feats, score, etc.)
+    beam        % width of the beam for beamparser, default=10
+    earlystop   % whether to use earlystop during beam search, default=1
   end
 
-  % These will be set after parse (depending on fields of output)
+  % These will be set by the parser (depending on fields of output)
   properties (SetAccess = private)
     feats 	% feature vectors representing parser states
     score       % score of each move
@@ -38,21 +38,21 @@ classdef tparser < matlab.mixin.Copyable
   % Model parameters, can be obtained by training or manually set with set_model_parameters.
   properties (SetAccess = private)
     SV          % support vectors
-    beta        % final weights
+    beta        % final weights after last training iteration
     beta2       % averaged (actually summed) weights
   end
 
-  properties (SetAccess = private)  % Access = private after debugging
-    svtr        % transpose of SV
-    cache       % kernel cache
+  properties (SetAccess = private)  % set Access = private after debugging
+    svtr     
+    newsvtr
+    newbeta
+    newbeta2
+    cache    
     cachekeys
     compute
     candidates
     agenda
     fmatrix
-    newsvtr
-    newbeta
-    newbeta2
   end
 
 
@@ -107,7 +107,7 @@ classdef tparser < matlab.mixin.Copyable
         if m.output.move m.sidx(end+1) = numel(m.move); end
         tock(snum, numel(corpus), t0);
       end % for snum=1:numel(corpus)
-      if m.output.eval eval_model(m, corpus); end
+      if m.output.eval m.eval = eval_model_tparser(m, corpus); end
       if m.output.corpus m.corpus = corpus; end
       finalize_gparse(m, corpus);
     end % gparse
@@ -246,12 +246,14 @@ classdef tparser < matlab.mixin.Copyable
       finalize_bparse(m, corpus);
     end % bparse
 
+
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     function set_model_parameters(m, model)
       m.SV = model.SV;
       m.beta = model.beta;
       m.beta2 = model.beta2;
     end % set_model_parameters
+
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%
     function set_feats(m, feats)
@@ -293,14 +295,12 @@ classdef tparser < matlab.mixin.Copyable
       end
 
       msg('mode: update=%d predict=%g average=%d gpu=%d', m.update, m.predict, m.average, m.gpu);
-      cfields = fieldnames(m.compute);
-      cstr = '';
+      cfields = fieldnames(m.compute); cstr = '';
       for i=1:numel(cfields)
         cstr = [cstr ' ' cfields{i} '=' num2str(m.compute.(cfields{i}))];
       end
       msg('compute: %s', cstr);
-      ofields = fieldnames(m.output);
-      ostr = '';
+      ofields = fieldnames(m.output); ostr = '';
       for i=1:numel(ofields)
         ostr = [ostr ' ' ofields{i} '=' num2str(m.output.(ofields{i}))];
       end
@@ -360,8 +360,9 @@ classdef tparser < matlab.mixin.Copyable
           m.SV = [gather(m.svtr); gather(m.newsvtr)]';
           m.beta = [gather(m.beta) gather(m.newbeta)];
           m.beta2 = [gather(m.beta2) gather(m.newbeta2)];
-          compactify_model(m);
-          clear m.cache m.newsvtr m.newbeta m.newbeta2;
+          m1 = struct('SV', m.SV, 'beta', m.beta, 'beta2', m.beta2);
+          m.set_model_parameters(compactify(m1));
+          clear m1 m.cache m.newsvtr m.newbeta m.newbeta2;
         elseif m.gpu
           m.beta = gather(m.beta);
           m.beta2 = gather(m.beta2);
@@ -371,17 +372,7 @@ classdef tparser < matlab.mixin.Copyable
     end % finalize_gparse
 
 
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    function initialize_bparse(m, corpus)
-      initialize_model(m, corpus);
-      clear m.candidates m.agenda m.fmatrix;
-      m.candidates(m.beam) = empty_state;
-      m.agenda(m.beam * m.nmove) = empty_state;
-      m.fmatrix = zeros(m.ndims, m.beam);
-    end % initialize_bparse
-
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     function n = sentence_length(m, s)
       if isfield(s, 'head')
         n = numel(s.head);
@@ -444,95 +435,15 @@ classdef tparser < matlab.mixin.Copyable
     end % pick_move
 
 
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % TODO: take this out
-    function compactify_model(m)
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    function initialize_bparse(m, corpus)
+      initialize_model(m, corpus);
+      clear m.candidates m.agenda m.fmatrix;
+      m.candidates(m.beam) = empty_state;
+      m.agenda(m.beam * m.nmove) = empty_state;
+      m.fmatrix = zeros(m.ndims, m.beam);
+    end % initialize_bparse
 
-    % [C, ia, ic] = unique(A,'rows')
-    % Find the unique rows C(u,d) of A(n,d) and the index vectors ia(u,1) and ic(n,1), such that ...
-    % C = A(ia,:) and A = C(ic,:).
-
-      msg('Finding unique SV in %d...', size(m.SV, 2));
-      [~, ia, ic] = unique(m.SV', 'rows');
-
-      msg('Saving %d unique SV.', numel(ia));
-      b2 = ~isempty(m.beta2);
-      nc = size(m.beta, 1);
-      newbeta  = zeros(nc, numel(ia));
-      if b2 newbeta2 = zeros(nc, numel(ia)); end
-      assert(numel(ic) == size(m.beta, 2));
-
-      for oldi=1:numel(ic)
-        newi = ic(oldi);
-        newbeta(:,newi) = newbeta(:,newi) + m.beta(:,oldi);
-        if b2 newbeta2(:,newi) = newbeta2(:,newi) + m.beta2(:,oldi); end
-      end
-
-      m.SV = m.SV(:,ia);
-      m.beta = newbeta;
-      if b2 m.beta2 = newbeta2; end
-
-    end % compactify_model
-
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % TODO: take this out
-    function eval_model(m, corpus)
-
-    % TODO turn on move, cost, vs if eval is on
-      r = struct();
-      r.move_cnt = numel(m.move);
-      mincost = min(m.cost);
-      movecost = m.cost(sub2ind(size(m.cost), m.move, 1:numel(m.move)));
-      r.move_err = sum(movecost > mincost);
-      r.move_pct = r.move_err / r.move_cnt;
-
-      r.sent_cnt = 0; r.sent_err = 0;
-      r.head_cnt = 0; r.head_err = 0;
-      r.word_cnt = 0; r.word_err = 0;
-
-      nmove = 0;
-
-      for i=1:numel(corpus)
-        s = corpus{i};
-        h = s.head;
-        p = m.head{i};
-        nword = numel(h);
-        head_err = sum(h ~= p);
-
-        r.sent_cnt = r.sent_cnt + 1;
-        if (head_err > 0) r.sent_err = r.sent_err + 1; end
-
-        r.head_cnt = r.head_cnt + nword;
-        r.head_err = r.head_err + head_err;
-
-        if (i == 1) move1=1; else move1=m.sidx(i-1)+1; end
-        move2 = m.sidx(i);
-        sumcost = sum(movecost(move1:move2));
-        assert(sumcost == head_err, ...
-               'Discrepancy in sentence %d: %d ~= %d moves(%d,%d)', ...
-               i, movecost, head_err, move1, move2);
-
-        for j=1:numel(h)
-          if (isempty(regexp(s.form{j}, '^\W+$')) ||...
-              ~isempty(regexp(s.form{j}, '^[\`\$]+$')))
-            r.word_cnt = r.word_cnt + 1;
-            if h(j) ~= p(j)
-              r.word_err = r.word_err + 1;
-            end %if
-          end %if
-        end % for j=1:numel(h)
-      end % for i=1:numel(corpus)
-      assert(r.head_err == sum(movecost));
-
-      r.sent_pct = r.sent_err / r.sent_cnt;
-      r.head_pct = r.head_err / r.head_cnt;
-      r.word_pct = r.word_err / r.word_cnt;
-      m.eval = r;
-    end % eval_model
-
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
   end % methods (Access = private)
 
