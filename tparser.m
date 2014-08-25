@@ -64,7 +64,7 @@ classdef tparser < matlab.mixin.Copyable
       m.fselect = fselect;
       m.kerparam = kerparam;
       s1 = corpus{1}; % need corpus for dims
-      p1 = feval(m.parser, m.sentence_length(s1));
+      p1 = feval(m.parser, size(s1.wvec, 2));
       m.nmove = p1.NMOVE;
       [f1,m.fidx] = features(p1, s1, m.fselect);
       m.ndims = numel(f1);
@@ -78,7 +78,7 @@ classdef tparser < matlab.mixin.Copyable
       t0 = tic;
       for snum=1:numel(corpus)
         s = corpus{snum};
-        p = feval(m.parser, m.sentence_length(s));
+        p = feval(m.parser, size(s.wvec,2));
         valid = p.valid_moves();
         while any(valid)
           mycost = []; myscore = [];
@@ -137,7 +137,7 @@ classdef tparser < matlab.mixin.Copyable
 
           if isempty(m.candidates(1).prev)
             if (ncandidates ~= 1) error('Not initial state'); end;
-            m.candidates(1).parser = feval(m.parser, sentence_length(sentence));
+            m.candidates(1).parser = feval(m.parser, size(sentence.wvec,2));
           else
             for c = 1:ncandidates
               m.candidates(c).parser = m.candidates(c).prev.parser.copy();
@@ -370,18 +370,6 @@ classdef tparser < matlab.mixin.Copyable
         clear m.svtr;
       end % if m.compute.score
     end % finalize_gparse
-
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    function n = sentence_length(m, s)
-      if isfield(s, 'head')
-        n = numel(s.head);
-      elseif isfield(s, 'wvec')
-        n = size(s.wvec, 2);
-      else
-        error('Cannot get sentence length');
-      end
-    end % sentence_length
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
