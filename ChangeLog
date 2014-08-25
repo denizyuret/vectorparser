@@ -21,7 +21,8 @@
 	x Try pa
 
 	* shuffle: It seems neither shuffling nor p=0.9 help.  This is on
-	archybrid, poly5, fv018a, conll07 full train and test.
+	archybrid, poly5, fv018a, conll07 full train and test.  Will try
+	k=0 but not hopeful.  Try better feature/kernel or update methods.
 	
 	k=1 p=1 no shuffle (original)			k=1 p=1 shuffle @@b41			k=1 p=.9 no shuffle @@b40
 	epoch   stat    move    head    word    sent    stat    move    head    word    sent    stat    move    head    word    sent
