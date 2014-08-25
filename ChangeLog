@@ -1,3 +1,38 @@
+2014-08-25  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run/run_5epoch_conll07_up2.m: Testing the perceptron update rule
+	on vectorparser, using vectorparser_up2.m.  The difference between
+	the regular update rule used by vectorparser and the one
+	perceptron uses is that sometimes perceptron will update a
+	maxscoremove even when it has mincost but not equal to the
+	mincostmove.  On the perceptron(cost) experiments we ran on
+	2014-08-05 this determinism helped head prediction.  @@b40
+
+	? The second epoch looks like shit!
+	
+	* run/run_5epoch_conll07_k0.m: Just run dynamic oracle without
+	static first epoch.
+
+	k=1 p=1 no shuffle (original)                   k=0 p=1 (no static)			k=1 up2 (perceptron update rule #2)
+	epoch   stat    move    head    word    sent	stat    move    head    word    sent	stat    move    head    word    sent  
+	1       0.0437  0.0587  0.1483  0.1340  0.7383	0.0701	0.0565	0.1423	0.1320	0.7664	0.0437	0.0587	0.1483	0.1340	0.7383
+	2       0.0525  0.0522  0.1299  0.1215  0.7383						0.1304	0.1129	0.3330	0.2964	0.9766
+	3       0.0508  0.0493  0.1255  0.1172  0.7477
+	4       0.0499  0.0487  0.1235  0.1154  0.7336
+	5       0.0504  0.0495  0.1245  0.1150  0.7196
+	6       0.0514  0.0488  0.1223  0.1147  0.7336
+	7       0.0511  0.0491  0.1217  0.1136  0.7430
+	8       0.0518  0.0503  0.1237  0.1152  0.7383
+	9       0.0520  0.0497 [0.1213] 0.1132  0.7243
+	10      0.0519  0.0501  0.1235  0.1152  0.7243
+	11      0.0522  0.0510  0.1249  0.1163  0.7243
+	12      0.0528  0.0504  0.1239  0.1161  0.7290
+	13      0.0532  0.0499  0.1219  0.1150  0.7290
+	14      0.0536  0.0499  0.1223  0.1154  0.7336
+	15      0.0537  0.0508  0.1251  0.1170  0.7336
+
+
+	
 2014-08-24  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* compute_kernel.m: perceptron_dbg, vectorparser_dbg,
@@ -9,14 +44,14 @@
 	poly3-fv015a best 12.37 at best epoch 5, 12.71 at epoch 15 (dev-stat: 4.7340).
 	poly5-fv018a best 12.13 at best epoch 9, 12.51 at epoch 15 (dev-stat: 4.4945)
 	We have not tried multi-epoch with rbf3721-fv021 (dev-stat: 4.4599)
-	+ Try shuffling?  --b41
-	+ Try p=0.9?  --b40
-	- Try k=0? @@b41
-	- Try other vectorparser update methods?
+	+ Try shuffling? did not help. --b41
+	+ Try p=0.9? did not help. --b40
+	= Try k=0? @@b41
+	= Try other vectorparser update methods? @@b40
 	- Try to find better feature set?
 	-- Try fv031a: could try with rbf
 	-- Try starting featselect from best 14, 13, etc.
-	x Check train vs test, overfitting? what to do with the result?
+	x Check train vs test, overfitting? but what to do with the result?  xval already tells us.
 	x Try bansal?
 	x Try pa
 
@@ -208,11 +243,11 @@
 
 	* prioritize:
 	- conll07
-	-- try rbf featselect: @@b40  (later reoptimize gamma)
+	-- try rbf featselect: --b40  (later reoptimize gamma)
 	-- try degree=5 fv018a 5epoch: --b41
-	-- try degree>5 featselect: @@b43 (see if better than d5,fv018a)
+	-- try degree>5 featselect: --b43 (see if better than d5,fv018a)
 	- beamparser
-	-- try wsjtoken featselect: @@b42 (later optimize kernel)
+	-- try wsjtoken featselect: --b42 (later optimize kernel)
 	-- finish code
 
 	* run_5epoch_conll07: Try the better kernel fv018a with degree=5.
@@ -374,9 +409,9 @@
 	= kernel: fselect d=2..9 starting with fv015a+archybrid.
 	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9--b40/@@b43
 	(15) 0.0607758	[15] 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844  (15) 0.0511756	(15) 0.0532127	(15) 0.0558782
-	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(13) 0.0489327	(14) 0.0508506	(14) 0.0527359	(14)	0.0552498
-	(15) 0.0592914	(16) 0.047340	(15) 0.0464406	(15) 0.0467981	(14) 0.0477625	(13) 0.0509264	(13) 0.0531477	(13)	0.055759
-	(16) 0.0587713  (17) 0.047611	(16) 0.0455954	(16) 0.0459096	(15) 0.0471665	(15) 0.0465598	(15) 0.0470365	(15)	0.0526168
+	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(13) 0.0489327	(14) 0.0508506	(14) 0.0527359	(14) 0.0552498
+	(15) 0.0592914	(16) 0.047340	(15) 0.0464406	(15) 0.0467981	(14) 0.0477625	(13) 0.0509264	(13) 0.0531477	(13) 0.055759
+	(16) 0.0587713  (17) 0.047611	(16) 0.0455954	(16) 0.0459096	(15) 0.0471665	(15) 0.0465598	(15) 0.0470365	(15) 0.0487377
 	(17) 0.0578719			[17] 0.0455629	(17) 0.0454437	(16) 0.0464406	(14) 0.0474808	(14) 0.0473399
 	(18) 0.0575144			(18) 0.0455629	[18] 0.0449453	(17) 0.0462022  (16) 0.0462347	(16) 0.0463539
 	(19) 0.056745 					(19) 0.0449453	(18) 0.0459313  (15) 0.0464189	(15) 0.0466031
