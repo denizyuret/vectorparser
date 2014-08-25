@@ -42,19 +42,6 @@ classdef tparser < matlab.mixin.Copyable
     beta2       % averaged (actually summed) weights
   end
 
-  properties (SetAccess = private)  % set Access = private after debugging
-    svtr     
-    newsvtr
-    newbeta
-    newbeta2
-    cache    
-    cachekeys
-    compute
-    candidates
-    agenda
-    fmatrix
-  end
-
 
   methods (Access = public)
 
@@ -378,8 +365,20 @@ classdef tparser < matlab.mixin.Copyable
       m.newbeta2 = m.newbeta2 + m.newbeta;
       [maxscore, maxscoremove] = max(score);
       [mincost, mincostmove] = min(cost);
-      % TODO: try other update methods
-      if cost(maxscoremove) > mincost
+      switch m.update
+       case 0	% no update, test mode
+        error('perceptron_update: m.update=0');
+       case 1   % from vectorparser
+        should_update = (cost(maxscoremove) > mincost);
+       case 2   % from perceptron
+        score2 = score;
+        score2(mincostmove) = -inf;
+        [maxscore2, maxscoremove] = max(score2);
+        should_update = (maxscore2 >= score(mincostmove));
+        % This will update sometimes even when the maxscoremove has
+        % mincost but is not the same as the mincostmove.
+      end
+      if should_update
         m.newsvtr(end+1,:) = frow;
         newbeta = zeros(m.nmove, 1);
         newbeta(mincostmove) = 1;
@@ -434,6 +433,20 @@ classdef tparser < matlab.mixin.Copyable
 
 
   end % methods (Access = private)
+
+
+  properties (SetAccess = private)  % set Access = private after debugging
+    svtr     
+    newsvtr
+    newbeta
+    newbeta2
+    cache    
+    cachekeys
+    compute
+    candidates
+    agenda
+    fmatrix
+  end
 
   properties (Constant = true)
     empty_state = ...
