@@ -79,8 +79,8 @@ classdef tparser < matlab.mixin.Copyable
     end % set_model_parameters
  
      
-    function set_feats(m, feats)
-      m.feats = feats;
+    function set_cachekeys(m, feats)
+      m.cachekeys = feats;
     end % set_feats
 
   end % methods (Access = public) % common
