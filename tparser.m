@@ -368,24 +368,33 @@ classdef tparser < matlab.mixin.Copyable
       switch m.update
        case 0	% no update, test mode
         error('perceptron_update: m.update=0');
+
        case 1   % from vectorparser
-        should_update = (cost(maxscoremove) > mincost);
+        if (cost(maxscoremove) > mincost)
+          m.newsvtr(end+1,:) = frow;
+          newbeta = zeros(m.nmove, 1);
+          newbeta(mincostmove) = 1;
+          newbeta(maxscoremove) = -1;
+          m.newbeta(:,end+1) = newbeta;
+          m.newbeta2(:,end+1) = newbeta;
+        end
+
        case 2   % from perceptron
         score2 = score;
         score2(mincostmove) = -inf;
-        [maxscore2, maxscoremove] = max(score2);
-        should_update = (maxscore2 >= score(mincostmove));
+        [maxscore2, maxscoremove2] = max(score2);
         % This will update sometimes even when the maxscoremove has
-        % mincost but is not the same as the mincostmove.
-      end
-      if should_update
-        m.newsvtr(end+1,:) = frow;
-        newbeta = zeros(m.nmove, 1);
-        newbeta(mincostmove) = 1;
-        newbeta(maxscoremove) = -1;
-        m.newbeta(:,end+1) = newbeta;
-        m.newbeta2(:,end+1) = newbeta;
-      end % if cost(maxscoremove) > mincost
+        % mincost but is not the lowest index mincost move.
+        if (maxscore2 >= score(mincostmove));
+          m.newsvtr(end+1,:) = frow;
+          newbeta = zeros(m.nmove, 1);
+          newbeta(mincostmove) = 1;
+          newbeta(maxscoremove2) = -1;
+          m.newbeta(:,end+1) = newbeta;
+          m.newbeta2(:,end+1) = newbeta;
+        end
+      end % switch m.update
+
     end % perceptron_update
 
 
