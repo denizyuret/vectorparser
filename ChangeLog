@@ -1,10 +1,139 @@
 2014-08-26  Deniz Yuret  <dyuret@ku.edu.tr>
 
+	* tparser.m (gparse): Should we split bparser and gparser as two
+	children of tparser?  Had decided not to because we can use the
+	same model but parse/train in greedy mode or beam mode.  So it
+	makes sense to keep model parameters in one object.
+
 	* plan:
-	- debug alternative update rule
+	+ debug alternative update rule
 	- finish beam parser, start experiment
 	- start conll07 rbf experiment
 	- start rbf fv031a featselect
+	- optimize rbf-gamma for dynamic oracle?
+	
+
+	* vectorparser_up2: Applying the perceptron.m update rule in
+	vectorparser:
+
+	- Confirm it is the same update rule:
+	m10 = m0; m10.batchsize = 1;
+	m10 = perceptron(w.devdump.x, w.devdump.y, m10);  % nsv=9302
+	[m10a,d10a] = vectorparser_up2(m0, w.dev, 'predict', 0);
+	% confirmed that m10a and m10 are the same
+	- Now do dynamic vectorparser_up2 training:
+	[m10b,d10b] = vectorparser_up2(m0, w.dev); % nsv=6077 vs 9302 for m10a
+	- Compare the two on test set:
+	[~,t10a] = vectorparser(m10a, w.tst, 'update', 0);
+	e10a = eval_conll(w.tst, t10a);  % move_pct: 0.0828  head_pct: 0.2097 (ratio:2.53)
+	[~,t10b] = vectorparser(m10b, w.tst, 'update', 0);
+	e10b = eval_conll(w.tst, t10b);  % move_pct: 0.1479  head_pct: 0.4601 (ratio:3.11)
+
+	So the second update rule does not work with dynamic oracle
+	training.  Why?  And why does it have significantly fewer nsv?
+	Assuming there are no score ties (which I confirmed is the case
+	after the first move), the only difference between the two update
+	rules comes from cost ties.  When there is a cost tie (multiple
+	right answers), vectorparser does not update as long as one of the
+	mincost moves has the maxscore.  Perceptron on the other hand,
+	does update when the maxscoremove is not the same as the
+	mincostmove (which is the lowest index move with mincost).  So,
+	some correct moves still get punished.  This would suggest
+	perceptron to have more sv, not less.  The vectorparser sv should
+	be a subset of perceptron sv.  Confirm this with vectorparser
+	static training:
+
+	[m10c,d10c] = vectorparser(m0, w.dev, 'predict', 0); % 8354 sv
+	all(ismember(m10c.SV', m10.SV', 'rows'))  % 0
+	[~,t10c] = vectorparser(m10c, w.tst, 'update', 0);
+	e10c = eval_conll(w.tst, t10c);  % move_pct: 0.0929  head_pct: 0.2307 (ratio:2.48)
+
+	OK, perceptron has more SV than static vectorparser training, but
+	there is no subset relation.  Once they start acquiring different
+	SV sets, the mistakes diverge.  And as the 2014-08-05, the
+	perceptron update works better with static training.  This may be
+	because the model is forced to consistently pick the lowest index
+	mincost move, which is also the way the gold path is generated.
+	If we randomized the choice of mincost moves on the gold path, the
+	results could have been different.  Test this:
+
+	% add the following in vectorparser_rnd.m:
+        mincostmove = find(cost == mincost);
+        if numel(mincostmove) > 1
+          mincostmove = randsample(mincostmove, 1);
+        end
+	% test the new gold path
+	[~, w.devdumprnd] = vectorparser_rnd(m0, w.dev, 'predict', 0, 'update', 0);
+	m10d = m0; m10d.batchsize = 1;
+	m10d = perceptron(w.devdumprnd.x, w.devdumprnd.y, m10d); % nsv=10877 vs 9302 for m10a
+	[~,t10d] = vectorparser(m10d, w.tst, 'update', 0);
+	e10d = eval_conll(w.tst, t10d); % move_pct: 0.0809 head_pct: 0.2117
+	% compare with e10a: move_pct: 0.0828  head_pct: 0.2097 (ratio:2.53)
+
+	nsv increased as expected but there is not significant performance
+	difference.  Try always picking the largest indexed mincost move:
+
+	% add the following in vectorparser_lst.m:
+        mincostmove = find(cost == mincost);
+        if numel(mincostmove) > 1
+          mincostmove = mincostmove(end);
+        end
+	% test the new gold path
+	[~, w.devdumplst] = vectorparser_lst(m0, w.dev, 'predict', 0, 'update', 0);
+	m10e = m0; m10e.batchsize = 1;
+	m10e = perceptron(w.devdumplst.x, w.devdumplst.y, m10e); % nsv=9066 vs 9302 for m10a and 10877 for m10d
+	[~,t10e] = vectorparser(m10e, w.tst, 'update', 0);
+	e10e = eval_conll(w.tst, t10e); % move_pct: 0.0802 head_pct: 0.2107
+	% compare with e10a: move_pct: 0.0828 head_pct: 0.2097 (ratio:2.53)
+	% compare with e10d: move_pct: 0.0809 head_pct: 0.2117
+
+	The nsv is lower than m10a?  The model learns to consistently pick
+	the largest indexed correct move.  The difference between a, d, e
+	is what is presented to the trainer as the "correct" move, the
+	inputs are the same each time.  For (a) it is the first mincost
+	move, for (e) it is the last mincost move, for (d) it is a random
+	mincost move.  The test predictions are always made using the
+	maxscore legal move.  The evaluation computes move_pct considering
+	all mincost moves as correct.  So test and eval are not biased to
+	pick one mincost move over another.
+
+	This still does not explain why the perceptron update rule does
+	not work with dynamic training.  There is no gold path where the
+	lowest index mincost move is consistently picked.  During
+	training, the maxscore legal move is always executed.
+	vectorparser updates if this maxscoremove does not have mincost.
+	vectorparser_up2 updates if the maxscoremove is not the lowest
+	indexed mincost move.  Updating changes the weights, the weights
+	change what is considered maxscore in future moves.
+
+	[m10b,d10b] = vectorparser_up2(m0, w.dev); % nsv=6077 vs 9302 for static training
+	[~,t10b] = vectorparser(m10b, w.tst, 'update', 0);
+	e10b = eval_conll(w.tst, t10b);  % move_pct: 0.1479  head_pct: 0.4601 (ratio:3.11)
+
+	[m10f,d10f] = vectorparser(m0, w.dev); % nsv=9860
+	[~,t10f] = vectorparser(m10f, w.tst, 'update', 0);
+	e10f = eval_conll(w.tst, t10f);  % move_pct: 0.0798  head_pct: 0.2059
+
+	Finally found the bug: updating corrupted maxscoremove.  It didn't
+	effect static training because execmove=mincostmove there.  Fixing
+	vectorparser_up2.
+
+	[m10g,d10g] = vectorparser_up2(m0, w.dev); % nsv=13705
+	[~,t10g] = vectorparser(m10g, w.tst, 'update', 0);
+	e10g = eval_conll(w.tst, t10g);  % move_pct: 0.0886  head_pct: 0.2287
+
+	Summary of move_pct:
+	vectorparser     static: 0.0929  dynamic: 0.0798
+	vectorparser_up2 static: 0.0828  dynamic: 0.0886
+
+	Restarting run_5epoch_conll07_up2 @@b40.
+	Confirm same bug does not exist in tparser. done.
+
+	Other update options: (TODO)
+	- what to do if maxscoremove is invalid. (exec the mincostmove vs next maxscoremove, update with invalid maxscoremove vs first legal maxscoremove)
+	- what to do if there is a single valid move. (do not update?)
+	- what to do if there is a tie among maxscore. (never happens after first update, done)
+	- what to do if there is a tie among mincost. (pick lowest index vs consider all correct, done)
 	
 
 2014-08-25  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -17,31 +146,29 @@
 	mincostmove.  On the perceptron(cost) experiments we ran on
 	2014-08-05 this determinism helped head prediction.  @@b40
 
-	? The second epoch looks like shit!
-	
 	* run/run_5epoch_conll07_k0.m: Just run dynamic oracle without
 	static first epoch.
 
 	k=1 p=1 no shuffle (original)                   k=0 p=1 (no static)			k=1 up2 (perceptron update rule #2)
-	epoch   stat    move    head    word    sent	stat    move    head    word    sent	stat    move    head    word    sent  
+	epoch   stat    move    head    word    sent	stat    move    head    word    sent	stat    move    head    word    sent
 	1       0.0437  0.0587  0.1483  0.1340  0.7383	0.0701	0.0565	0.1423	0.1320	0.7664	0.0437	0.0587	0.1483	0.1340	0.7383
-	2       0.0525  0.0522  0.1299  0.1215  0.7383	0.0633	0.0513	0.1305	0.1215	0.7477	0.1304	0.1129	0.3330	0.2964	0.9766
-	3       0.0508  0.0493  0.1255  0.1172  0.7477	0.0605	0.0502	0.1251	0.1152	0.7196	0.1394	0.1171	0.3484	0.3118	0.9813
-	4       0.0499  0.0487  0.1235  0.1154  0.7336	0.0611	0.0494	0.1249	0.1152	0.7477	0.1440	0.1186	0.3572	0.3202	0.9813
-	5       0.0504  0.0495  0.1245  0.1150  0.7196	0.0587	0.0493	0.1241	0.1134	0.7290	0.1469	0.1200	0.3616	0.3249	0.9860
-	6       0.0514  0.0488  0.1223  0.1147  0.7336	0.0583	0.0496	0.1241	0.1132	0.7336	0.1507	0.1211	0.3656	0.3288	0.9860
-	7       0.0511  0.0491  0.1217  0.1136  0.7430	0.0589	0.0503	0.1251	0.1132	0.7477	0.1545	0.1233	0.3734	0.3363	0.9860
+	2       0.0525  0.0522  0.1299  0.1215  0.7383	0.0633	0.0513	0.1305	0.1215	0.7477	0.0599	0.0584	0.1503	0.1381	0.7897
+	3       0.0508  0.0493  0.1255  0.1172  0.7477	0.0605	0.0502	0.1251	0.1152	0.7196	0.0568	0.0543	0.1393	0.1281	0.7804
+	4       0.0499  0.0487  0.1235  0.1154  0.7336	0.0611	0.0494	0.1249	0.1152	0.7477	0.0558	0.0546	0.1363	0.1261	0.7710
+	5       0.0504  0.0495  0.1245  0.1150  0.7196	0.0587	0.0493	0.1241	0.1134	0.7290	0.0545	0.0539	0.1371	0.1261	0.7617
+	6       0.0514  0.0488  0.1223  0.1147  0.7336	0.0583	0.0496	0.1241	0.1132	0.7336	0.0540	0.0536	0.1337	0.1238	0.7617
+	7       0.0511  0.0491  0.1217  0.1136  0.7430	0.0589	0.0503	0.1251	0.1132	0.7477	0.0531	0.0539	0.1359	0.1249	0.7570
 	8       0.0518  0.0503  0.1237  0.1152  0.7383	0.0591	0.0505	0.1257	0.1147	0.7523
 	9       0.0520  0.0497 [0.1213] 0.1132  0.7243	0.0589	0.0507	0.1257	0.1136	0.7523
 	10      0.0519  0.0501  0.1235  0.1152  0.7243	0.0587	0.0522	0.1299	0.1172	0.7570
-	11      0.0522  0.0510  0.1249  0.1163  0.7243
-	12      0.0528  0.0504  0.1239  0.1161  0.7290
-	13      0.0532  0.0499  0.1219  0.1150  0.7290
-	14      0.0536  0.0499  0.1223  0.1154  0.7336
-	15      0.0537  0.0508  0.1251  0.1170  0.7336
+	11      0.0522  0.0510  0.1249  0.1163  0.7243	0.0584	0.0524	0.1313	0.1188	0.7523
+	12      0.0528  0.0504  0.1239  0.1161  0.7290	0.0582	0.0524	0.1315	0.1193	0.7523
+	13      0.0532  0.0499  0.1219  0.1150  0.7290	0.0577	0.0514	0.1277	0.1163	0.7430
+	14      0.0536  0.0499  0.1223  0.1154  0.7336	0.0572	0.0516	0.1285	0.1168	0.7383
+	15      0.0537  0.0508  0.1251  0.1170  0.7336	0.0572	0.0513	0.1277	0.1161	0.7383
 
 
-	
+
 2014-08-24  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* compute_kernel.m: perceptron_dbg, vectorparser_dbg,
@@ -67,7 +194,7 @@
 	* shuffle: It seems neither shuffling nor p=0.9 help.  This is on
 	archybrid, poly5, fv018a, conll07 full train and test.  Will try
 	k=0 but not hopeful.  Try better feature/kernel or update methods.
-	
+
 	k=1 p=1 no shuffle (original)			k=1 p=1 shuffle @@b41			k=1 p=.9 no shuffle @@b40
 	epoch   stat    move    head    word    sent    stat    move    head    word    sent    stat    move    head    word    sent
 	1       0.0437  0.0587  0.1483  0.1340  0.7383	0.0437	0.0587	0.1483	0.1340	0.7383	0.0437	0.0587	0.1483	0.1340	0.7383
@@ -236,10 +363,10 @@
 
 	update options (not all implemented and tried): (TODO)
 	- no update for testing.
-	- what to do if maxscoremove is invalid.
-	- what to do if there is a single valid move.
-	- what to do if there is a tie among maxscore.
-	- what to do if there is a tie among mincost.
+	- what to do if maxscoremove is invalid. (take the mincostmove vs next maxscoremove)
+	- what to do if there is a single valid move. (do not update)
+	- what to do if there is a tie among maxscore. (never happens)
+	- what to do if there is a tie among mincost. (pick lowest index vs consider all correct)
 
 	+ predict should be a probability! (p=0.9 predicts with prob 0.9)
 	+ vectorparser should be a copyable class!  (probably called greedy or deterministic etc.)
@@ -416,7 +543,7 @@
 
 	* run/run_conll07_ablation.m:
 	= kernel: fselect d=2..9 starting with fv015a+archybrid.
-	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9--b40/@@b43
+	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9 --b40/--b43
 	(15) 0.0607758	[15] 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844  (15) 0.0511756	(15) 0.0532127	(15) 0.0558782
 	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(13) 0.0489327	(14) 0.0508506	(14) 0.0527359	(14) 0.0552498
 	(15) 0.0592914	(16) 0.047340	(15) 0.0464406	(15) 0.0467981	(14) 0.0477625	(13) 0.0509264	(13) 0.0531477	(13) 0.055759
@@ -426,14 +553,17 @@
 	(19) 0.056745 					(19) 0.0449453	(18) 0.0459313  (15) 0.0464189	(15) 0.0466031	(15) 0.0478600
 	[20] 0.0566259							[19] 0.0456929	[17] 0.0455737	(17) 0.0457254	(17) 0.0463430
 									(20) 0.0456929	(16) 0.0459963	(16) 0.0463322	(16) 0.0467331
-													(18) 0.0453679
-													[19] 0.0451728
-	
-	
-        * DONE:
-	- d=2 hopeless, Restarting from d=4.
-	- d=4 better, other degrees? rbf? embeddings?
+													(18) 0.0453679	(18) 0.0456387
+													[19] 0.0451728	[17] 0.0455196
+															(16) 0.0465706
 
+
+	ARCTYPE EXPERIMENTS: featselect starting from fv015a in fv136
+	archybrid: (15) 0.047340
+	archybrid13: (15) 0.0487268, (14) 0.0486293, (13) 0.0490736, (15) 0.0474049
+	@@b43
+	
+	
 	* featselect:
 	- finish implementing beam parser and compare with ZN11.  First
 	step: run featselect starting fv018 on conllWSJToken_wikipedia2MUNK-100.
@@ -473,7 +603,8 @@
 	(18) 0.0339954
 	(17) 0.0343077
 	(19) 0.0335659
-	==>	0.0347372	0.0539076	1270.74	s2c s2w s1c s1w s1r1l= s0l1c s0l1w s0c s0w s0r1l= s0r1w n0l1c n0l1w n0c n0w n1c n1w s0r= n2- 
+	(18) 0.0338522
+	(20) 0.0335529
 	
 	@@b42
 	% reoptimize gamma:
