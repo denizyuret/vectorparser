@@ -170,9 +170,6 @@ classdef tparser < matlab.mixin.Copyable
             toc(tmp);msg('done');
           end
           m.cachekeys = [];
-        else
-          m.cache = [];
-          m.cachekeys = [];
         end
       end % if compute.score
 
