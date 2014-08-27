@@ -175,8 +175,8 @@ classdef tparser < matlab.mixin.Copyable
         end
       end % if compute.score
 
-      msg('mode: update=%d predict=%g average=%d usecache=%d beamsize=%d earlystop=%d gpu=%d', ...
-          m.update, m.predict, m.average, m.usecache, m.beamsize, m.earlystop, m.gpu);
+      msg('mode: update=%d predict=%g average=%d usecache=%d gpu=%d', ...
+          m.update, m.predict, m.average, m.usecache, m.gpu);
       cfields = fieldnames(m.compute); cstr = '';
       for i=1:numel(cfields)
         cstr = [cstr ' ' cfields{i} '=' num2str(m.compute.(cfields{i}))];
@@ -406,9 +406,7 @@ classdef tparser < matlab.mixin.Copyable
               else
                 m.agenda(a).sumscore = cc.sumscore - cc.cost(move);
               end
-              if (~isempty(cc.ismincost) && (cc.cost(move) == mincost))
-                m.agenda(a).ismincost = true;
-              end
+              m.agenda(a).ismincost = (cc.ismincost && (cc.cost(move) == mincost));
             end % for move = 1:m.nmove
           end % for c = 1:nbeam
 
@@ -480,6 +478,7 @@ classdef tparser < matlab.mixin.Copyable
       initialize_model(m, corpus);
       if isempty(m.beamsize) m.beamsize = 10; end  % TODO: check gpu to see if this is best
       if isempty(m.earlystop) m.earlystop = true; end
+      msg('bparse: beamsize=%d earlystop=%d', m.beamsize, m.earlystop);
       maxlen = 0;
       for i=1:numel(corpus)
         n = size(corpus{i}.wvec, 2);
@@ -501,10 +500,10 @@ classdef tparser < matlab.mixin.Copyable
     end % finalize_bparse
 
  
-    function mincoststate = bparse_find_mincoststate(m, depth)
+    function mincoststate = bparse_find_mincoststate(m, d)
       mincoststate = [];
-      for c = 1:m.nbeam(depth);
-        state = m.beam(depth,c);
+      for c = 1:m.nbeam(d);
+        state = m.beam(d,c);
         if state.ismincost
           mincoststate = state;
           break;
@@ -517,7 +516,7 @@ classdef tparser < matlab.mixin.Copyable
           % state.parser is not set in agenda, fix it:
           state.parser = state.prev.parser.copy();
           state.parser.transition(state.lastmove);
-          mincoststate = state;
+          mincoststate = state.copy;
           break;
         end
       end
