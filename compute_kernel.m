@@ -41,7 +41,7 @@ function scores = compute_kernel(m, x)
     scores = zeros(nc, nx);
     todo = true(1, nx);
     for i=1:nx
-      s = m.cache.get(x);
+      s = m.cache.get(x(:,i));
       if ~isempty(s)
         scores(:,i) = s;
         todo(i) = false;
