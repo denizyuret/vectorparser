@@ -345,7 +345,7 @@ classdef tparser < matlab.mixin.Copyable
         m.beam(d,1).ismincost = true;
         m.beam(d,1).parser = feval(m.parser, size(sentence.wvec,2));
         m.nbeam(d) = nbeam;
-        if m.compute.cost mincoststate = m.beam(d,1); end
+        if m.update mincoststate = m.beam(d,1); end
         m.nagenda = 0;
 
         while any(m.beam(d,1).parser.valid_moves())
@@ -441,7 +441,7 @@ classdef tparser < matlab.mixin.Copyable
 
           % Track mincoststate; maxscorestate is already in beam(d,1)
 
-          if m.compute.cost
+          if m.update
             mincoststate = bparse_find_mincoststate(m,d); % uses beam and agenda
           end
           % +prev +lastmove +sumscore +ismincost +parser -cost -feats -score +mincoststate -agenda -fmatrix
@@ -449,23 +449,23 @@ classdef tparser < matlab.mixin.Copyable
         end % while (parse one sentence)
 
         if (d == 1) error('depth == 1'); end;
+
         maxscorestate = m.beam(d,1);
         maxscorepath = cell(1,d);
-        mincostpath = cell(1,d);
-        while d > 0
-          if m.compute.cost
-            if isempty(mincoststate) error('isempty(mincoststate)'); end;
-            mincostpath{d} = mincoststate;
-            if (d > 1) mincoststate = mincoststate.prev; end;
-          end
-          % mincoststate may not be, but maxscorestate is always defined
-          maxscorepath{d} = maxscorestate;
-          if (d > 1) maxscorestate = maxscorestate.prev; end;
-          d = d - 1;
-        end % while d > 0
+        for i=d:-1:1
+          maxscorepath{i} = maxscorestate;
+          if (i > 1) maxscorestate = maxscorestate.prev; end;
+        end
 
         bparse_update_dump(m, maxscorepath);
+
         if m.update
+          mincostpath = cell(1,d);
+          for i=d:-1:1
+            if isempty(mincoststate) error('isempty(mincoststate)'); end;
+            mincostpath{i} = mincoststate;
+            if (i > 1) mincoststate = mincoststate.prev; end;
+          end
           bparse_update_model(m, maxscorepath, mincostpath);
         end
         tock(snum, numel(corpus), t0);
