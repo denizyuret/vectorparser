@@ -123,6 +123,13 @@ classdef tparser < matlab.mixin.Copyable
       if ~isfield(m.output,'corpus') m.output.corpus = true; end
       for i=1:numel(m.output_fields) m.(m.output_fields{i}) = []; end
 
+      if m.output.eval
+        m.output.move = 1;
+        m.output.cost = 1;
+        m.output.head = 1;
+        m.output.sidx = 1;
+      end
+
       m.compute.cost = m.output.cost || m.output.eval || m.update || ~m.predict;
       m.compute.score  = m.output.score || m.update || m.predict;
       m.compute.feats = m.output.feats || m.compute.score;
@@ -171,6 +178,7 @@ classdef tparser < matlab.mixin.Copyable
             m.cache = kernelcache(m.cachekeys, scores);
             toc(tmp);msg('done');
           end
+          % TODO: maybe we should keep the old cachekeys: they may recur, test set can be handled, etc.
           m.cachekeys = [];
         else
           m.cache = [];
