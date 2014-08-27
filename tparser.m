@@ -456,8 +456,6 @@ classdef tparser < matlab.mixin.Copyable
 
         end % while (parse one sentence)
 
-        if (d == 1) error('depth == 1'); end;
-
         maxscorestate = m.beam(d,1);
         maxscorepath = cell(1,d);
         for i=d:-1:1
