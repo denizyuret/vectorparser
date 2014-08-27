@@ -18,10 +18,10 @@ classdef tparser < matlab.mixin.Copyable
     predict     % probability of following maxscoremove rather than mincostmove for greedy parser, default=1
     average	% use beta2 (averaged coefficients) if true, beta if not, default=~update
     usecache    % whether to use kernel cache, default=true
+    beamsize 	% width of the beam for beamparser, default=10
+    earlystop   % whether to use earlystop during beam search, default=1
     gpu         % whether to use the gpu, default (gpuDeviceCount>0)
     output      % what to output (a struct with fields feats, score, etc.)
-    beam        % width of the beam for beamparser, default=10
-    earlystop   % whether to use earlystop during beam search, default=1
   end
  
   
@@ -170,10 +170,14 @@ classdef tparser < matlab.mixin.Copyable
             toc(tmp);msg('done');
           end
           m.cachekeys = [];
+        else
+          m.cache = [];
+          m.cachekeys = [];
         end
       end % if compute.score
 
-      msg('mode: update=%d predict=%g average=%d gpu=%d', m.update, m.predict, m.average, m.gpu);
+      msg('mode: update=%d predict=%g average=%d usecache=%d beamsize=%d earlystop=%d gpu=%d', ...
+          m.update, m.predict, m.average, m.usecache, m.beamsize, m.earlystop, m.gpu);
       cfields = fieldnames(m.compute); cstr = '';
       for i=1:numel(cfields)
         cstr = [cstr ' ' cfields{i} '=' num2str(m.compute.(cfields{i}))];
@@ -330,15 +334,16 @@ classdef tparser < matlab.mixin.Copyable
       for snum=1:numel(corpus)
 
         sentence = corpus{snum};
-        m.candidates(1).sumscore = 0;
-        m.candidates(1).ismincost = true;
-        m.candidates(1).parser = feval(m.parser, size(sentence.wvec,2));
-        m.ncandidates = 1;
-        mincoststate = m.candidates(1);
+        d = 1;
+        nbeam = 1;
+        m.beam(d,1).sumscore = 0;
+        m.beam(d,1).ismincost = true;
+        m.beam(d,1).parser = feval(m.parser, size(sentence.wvec,2));
+        m.nbeam(d) = nbeam;
+        if m.compute.cost mincoststate = m.beam(d,1); end
         m.nagenda = 0;
-        depth = 1;
 
-        while any(m.candidates(1).parser.valid_moves())
+        while any(m.beam(d,1).parser.valid_moves())
           
           % Here is which fields/variables have valid values at each point:
           % +prev +lastmove +sumscore +ismincost +parser -cost -feats -score +mincoststate -agenda -fmatrix
@@ -346,23 +351,30 @@ classdef tparser < matlab.mixin.Copyable
 
           % Check for early stop:
 
-          if (m.earlystop && ~any(arrayfun(@(x)(x.ismincost), m.candidates(1:m.ncandidates))))
-            break
+          if m.earlystop 
+            found_mincost = false;
+            for c = 1:nbeam
+              if m.beam(d,c).ismincost
+                found_mincost = true;
+                break;
+                end
+            end
+            if ~found_mincost break; end
           end
           
           % Set cost and features, fill fmatrix:
 
-          for c = 1:m.ncandidates
+          for c = 1:nbeam
             if m.compute.cost
-              m.candidates(c).cost = m.candidates(c).parser.oracle_cost(sentence.head);
+              m.beam(d,c).cost = m.beam(d,c).parser.oracle_cost(sentence.head);
             end
             if m.compute.feats
-              m.candidates(c).feats = features(m.candidates(c).parser, sentence, m.fselect)';
+              m.beam(d,c).feats = features(m.beam(d,c).parser, sentence, m.fselect);
               if m.usecache
-                m.cachekeys(:,end+1) = m.candidates(c).feats;
+                m.cachekeys(:,end+1) = m.beam(d,c).feats;
               end
               if m.compute.score
-                fmatrix(:,c) = m.candidates(c).feats;
+                fmatrix(:,c) = m.beam(d,c).feats;
               end
             end
           end
@@ -371,19 +383,20 @@ classdef tparser < matlab.mixin.Copyable
           % Computing scores in bulk is faster on gpu.
 
           if m.compute.score
-            scores = compute_score(m, fmatrix(:,1:m.ncandidates));
-            for c = 1:m.ncandidates
-              m.candidates(c).score = scores(:,c);
+            scores = compute_score(m, fmatrix(:,1:nbeam));
+            for c = 1:nbeam
+              m.beam(d,c).score = scores(:,c);
             end
           end
           % +prev +lastmove +sumscore +ismincost +parser +cost +feats +score +mincoststate -agenda -fmatrix
 
-          % Refill agenda with children of candidates.
+          % Refill agenda with children of beam.
 
           a = 0;
-          for c = 1:m.ncandidates
-            cc = m.candidates(c);
+          for c = 1:nbeam
+            cc = m.beam(d,c);
             valid = cc.parser.valid_moves();
+            if cc.ismincost mincost=min(cc.cost); end
             for move = 1:m.nmove
               if ~valid(move) continue; end;
               a = a+1;
@@ -394,56 +407,64 @@ classdef tparser < matlab.mixin.Copyable
               else
                 m.agenda(a).sumscore = cc.sumscore - cc.cost(move);
               end
-              if (m.compute.cost && cc.ismincost && (cc.cost(move) == min(cc.cost)))
+              if (~isempty(cc.ismincost) && (cc.cost(move) == mincost))
                 m.agenda(a).ismincost = true;
               end
             end % for move = 1:m.nmove
-          end % for c = 1:m.ncandidates
+          end % for c = 1:nbeam
 
           m.nagenda = a;
-          m.ncandidates = min(m.beam, m.nagenda);
-          [~, index] = sort([agenda(1:m.nagenda).sumscore], 'descend');
-          m.candidates(1:m.ncandidates) = m.agenda(index(1:m.ncandidates));
+          nbeam = min(m.beamsize, m.nagenda);
+          [~, index] = sort([m.agenda(1:m.nagenda).sumscore], 'descend');
+          d = d + 1;
+          m.nbeam(d) = nbeam;
+          for c = 1:nbeam
+            ac = m.agenda(index(c));
+            m.beam(d,c).prev = ac.prev;
+            m.beam(d,c).lastmove = ac.lastmove;
+            m.beam(d,c).sumscore = ac.sumscore;
+            m.beam(d,c).ismincost = ac.ismincost;
+          end
+
           % +prev +lastmove +sumscore +ismincost -parser -cost -feats -score -mincoststate +agenda -fmatrix
 
           % Set parser:
 
-          for c = 1:m.ncandidates
-            m.candidates(c).parser = m.candidates(c).prev.parser.copy();
-            m.candidates(c).parser.transition(m.candidates(c).lastmove);
+          for c = 1:nbeam
+            m.beam(d,c).parser = m.beam(d,c).prev.parser.copy();
+            m.beam(d,c).parser.transition(m.beam(d,c).lastmove);
           end
           % +prev +lastmove +sumscore +ismincost +parser -cost -feats -score -mincoststate +agenda -fmatrix
 
-          % Track mincoststate; maxscorestate is already in candidates(1)
+          % Track mincoststate; maxscorestate is already in beam(d,1)
 
           if m.compute.cost
-            mincoststate = bparse_find_mincoststate(m); % uses candidates and agenda
+            mincoststate = bparse_find_mincoststate(m,d); % uses beam and agenda
           end
           % +prev +lastmove +sumscore +ismincost +parser -cost -feats -score +mincoststate -agenda -fmatrix
 
-          depth = depth + 1;
-
         end % while (parse one sentence)
 
-        if (depth == 1) error('depth == 1'); end;
-        maxscorestate = m.candidates(1);
-        maxscorepath = cell(1, depth);
-        mincostpath = cell(1, depth);
-        while depth > 0
+        if (d == 1) error('depth == 1'); end;
+        maxscorestate = m.beam(d,1);
+        maxscorepath = cell(1,d);
+        mincostpath = cell(1,d);
+        while d > 0
           if m.compute.cost
             if isempty(mincoststate) error('isempty(mincoststate)'); end;
-            mincostpath{depth} = mincoststate;
-            if (depth > 1) mincoststate = mincoststate.prev; end;
+            mincostpath{d} = mincoststate;
+            if (d > 1) mincoststate = mincoststate.prev; end;
           end
-          if m.compute.score
-            maxscorepath{depth} = maxscorestate;
-            if (depth > 1) maxscorestate = maxscorestate.prev; end;
-          end
-          depth = depth - 1;
-        end % while depth > 0
+          % mincoststate may not be, but maxscorestate is always defined
+          maxscorepath{d} = maxscorestate;
+          if (d > 1) maxscorestate = maxscorestate.prev; end;
+          d = d - 1;
+        end % while d > 0
 
         bparse_update_dump(m, maxscorepath);
-        bparse_update_model(m, maxscorepath, mincostpath);
+        if m.update
+          bparse_update_model(m, maxscorepath, mincostpath);
+        end
         tock(snum, numel(corpus), t0);
 
       end % for snum=1:numel(corpus)
@@ -458,14 +479,21 @@ classdef tparser < matlab.mixin.Copyable
  
     function initialize_bparse(m, corpus)
       initialize_model(m, corpus);
-      if isempty(m.beam) m.beam = 10; end  % TODO: check gpu to see if this is best
+      if isempty(m.beamsize) m.beamsize = 10; end  % TODO: check gpu to see if this is best
       if isempty(m.earlystop) m.earlystop = true; end
-      clear m.candidates m.agenda m.fmatrix;
-      m.candidates(m.beam) = empty_state;
-      m.ncandidates = 0;
-      m.agenda(m.beam * m.nmove) = empty_state;
+      maxlen = 0;
+      for i=1:numel(corpus)
+        n = size(corpus{i}.wvec, 2);
+        if (n > maxlen) maxlen = n; end
+      end
+      maxdepth = maxlen * 2;
+      m.nbeam = zeros(maxdepth);
+      m.beam = beamcell;
+      m.beam(maxdepth, m.beamsize) = beamcell;
       m.nagenda = 0;
-      m.fmatrix = zeros(m.ndims, m.beam);
+      m.agenda = beamcell;
+      m.agenda(m.beamsize * m.nmove) = beamcell;
+      m.fmatrix = zeros(m.ndims, m.beamsize);
     end % initialize_bparse
 
  
@@ -474,10 +502,10 @@ classdef tparser < matlab.mixin.Copyable
     end % finalize_bparse
 
  
-    function mincoststate = bparse_find_mincoststate(m)
+    function mincoststate = bparse_find_mincoststate(m, depth)
       mincoststate = [];
-      for c = 1:m.ncandidates
-        state = m.candidates(c);
+      for c = 1:m.nbeam(depth);
+        state = m.beam(depth,c);
         if state.ismincost
           mincoststate = state;
           break;
@@ -527,7 +555,7 @@ classdef tparser < matlab.mixin.Copyable
         mincoststate = mincostpath{ipath};
         mincostmove = mincostpath{ipath+1}.lastmove;
         % TODO: look at ties
-        samestate = isequal(maxscorestate, mincoststate);
+        samestate = all(maxscorestate.feats(:) == mincoststate.feats(:));
         samemoves = (maxscoremove == mincostmove);
         if samestate && samemoves
           continue;
@@ -554,22 +582,10 @@ classdef tparser < matlab.mixin.Copyable
   end % methods (Access = private) % bparse
 
 
-  properties (Constant = true)          %% Bparse constant properties
-    empty_state = ...
-        struct('prev', [],...       % previous state
-               'lastmove', [],...   % move that led to this state from prev
-               'sumscore', [],...   % cumulative score including lastmove
-               'ismincost', [],...  % true if state can be on mincostpath
-               'parser', [],...     % the parser state
-               'cost', [],...       % costs of moves from this state
-               'feats', [],...      % feature vector for parser state
-               'score', []);        % scores of moves from this state
-  end
- 
   properties (SetAccess = private)      %% Bparse private properties
-    candidates
+    beam
+    nbeam
     agenda
-    ncandidates
     nagenda
     fmatrix
   end
