@@ -192,7 +192,7 @@ classdef tparser < matlab.mixin.Copyable
 
   
     function finalize_model(m, corpus)
-      if m.output.eval m.eval = eval_model_tparser(m, corpus); end
+      if m.output.eval m.eval = eval_tparser(m, corpus); end
       if m.output.corpus m.corpus = corpus; end
       if m.compute.score
         if m.update
