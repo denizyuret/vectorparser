@@ -37,7 +37,7 @@ function scores = compute_kernel(m, x)
   nx = size(x, 2);        % number of instances
   todo = [];
 
-  if ~isempty(m.cache)
+  if m.usecache
     scores = zeros(nc, nx);
     todo = true(1, nx);
     for i=1:nx
