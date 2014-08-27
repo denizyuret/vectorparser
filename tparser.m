@@ -105,7 +105,9 @@ classdef tparser < matlab.mixin.Copyable
 
  
     function initialize_model(m, corpus)
-      msg('tparser(%d,%d) corpus(%d)', m.nmove, m.ndims, numel(corpus));
+      nwords = 0;
+      for i=1:numel(corpus) nwords = nwords + size(corpus{i}.wvec,2); end
+      msg('tparser(%dc,%dd,%ds) corpus(%ds,%dw)', m.nmove, m.ndims, size(m.beta,2), numel(corpus), nwords);
       if isempty(m.update) m.update = 1; end
       if isempty(m.predict) m.predict = 1; end % TODO: this should be gparse specific
       if isempty(m.gpu) m.gpu = gpuDeviceCount(); end
@@ -200,12 +202,16 @@ classdef tparser < matlab.mixin.Copyable
           m.beta2 = [gather(m.beta2) gather(m.newbeta2)];
           m1 = struct('SV', m.SV, 'beta', m.beta, 'beta2', m.beta2);
           m.set_model_parameters(compactify(m1));
-          clear m1 m.cache m.newsvtr m.newbeta m.newbeta2;
+          clear m1;
+          % m.cache = []; % may need this to check stats
+          m.newsvtr = [];
+          m.newbeta = [];
+          m.newbeta2 = [];
         elseif m.gpu
           m.beta = gather(m.beta);
           m.beta2 = gather(m.beta2);
         end
-        clear m.svtr;
+        m.svtr = [];
       end % if m.compute.score
     end % finalize_model
 
