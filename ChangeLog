@@ -4,6 +4,7 @@
 	updating.  No need for cachekeys.  Just recompute the values at
 	the beginning of each epoch. (TODO)
 
+	
 2014-08-27  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* tparser.m (bparse): testing make beamcell into handle to avoid
@@ -11,6 +12,8 @@
 	depth looking at corpus rename candidates beam have nbeam indexed
 	by depth
 
+
+	
 	* run_conll07_ablation.m: Summary
 	- baseline: wiki100   best(15): 0.047339 (fv015a)
 	- up2, k=0, p=0.9, shuffling did not work.
@@ -18,31 +21,114 @@
 	- kernel: (all results on trn->dev+trn split)
 
 	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9 --b40/--b43
-	[20] 0.0566259	[15] 0.047340	[17] 0.0455629	[18] 0.0449453	[19] 0.0456929	[17] 0.0455737	[19] 0.0451728	[17] 0.0455196
+	[20] 0.0566259	[15] 0.0473399	[17] 0.0455629	[18] 0.0449453	[19] 0.0456929	[17] 0.0455737	[19] 0.0451728	[17] 0.0455196
 
 	rbf3721-fv021
 	[21] 0.0445990
 
-	- arctype: featselect starting from fv015a.
+	- arctype: featselect starting from fv015a using fv136 in conll07EnglishToken_wikipedia2MUNK-100.
 
 	archybrid	archybrid13	arceager	arceager13
-@@b43	[15] 0.047340	[17] 0.0467981
-
-	- The only thing that significantly helps seems to be the kernel
-	feature combination.  RBF always beats poly.  Try RBF featselect
-	from fv031a.  Then try the best RBF multi-epoch.  Try epoch number
-	based on dev first. (TODO)
+@@b43	[15] 0.0473399	[19] 0.0464297	(16) 0.0500054
+	
+	
+	(TODO) run archybrid13 featselect with rbf3721-fv021.
+	
+	
+	* fv031a-rbf: The only thing that significantly helps seems to be
+	the kernel feature combination.  RBF always beats poly.  Try RBF
+	featselect from fv031a.  Then try the best RBF multi-epoch.  Try
+	epoch number based on dev first. (TODO)
 
 	w0784=load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv084_dump.mat');
-	[a,b,c,d]=run_optimize_gamma(0.3721, w0784.trndump, w0784.devdump, fv031a);  
+	[a,b,c,d]=run_optimize_gamma(0.3721, w0784.trndump, w0784.devdump, fv031a);
 	% f(0.3721)  =0.0476975
 	% f(0.334781)=0.047069
 	hp = struct('type', 'rbf', 'gamma', a);
 	m0 = struct('parser', @archybrid, 'step', 1e6, 'kerparam', hp);
 	cachefile = sprintf('archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf%d_cache.mat', round(a*10000));
-@@b41	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv031a);
+--b41	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv031a);
+	
+	(31)	0.047069	% compare to fv021: 0.0446
+	(30)	0.0466248
+	[29]	0.0459638	% yet another local minimum, not as good.
+	(28)	0.046148
+	(30)	0.0459638
+	
 
+	* featselect-wsj:
+	- finish implementing beam parser and compare with ZN11.  First
+	step: run featselect starting fv018 on conllWSJToken_wikipedia2MUNK-100.
+	- other kernels? d=5 is better in conll07.  test rbf?
+
+	>> run_featselect22('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv130', 'fv018');
+	(18) 0.0361038	(16) 0.0357524
+	[17] 0.0353489	(15) 0.0359997
+	(16) 0.0357524	[17] 0.0353489
+	(18) 0.0353750
+
+	% Still same local maximum when started from (16) --b42
+	% Name this fv017a (it has a single feature diff from previous fv017).
+	% fv017 was on conll07 fv017a is on conllWSJToken
+	% fv017 was searched within fv084, fv017a within fv130.
+
+	% Should try rbf:
+	% set x_tr, y_tr etc. from 'archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv008w'.
+	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.5);
+	==> f(0.559377)=0.0386938
+
+	% But why waste time at fv008w, should start at known best fv017a.
+	% reset x_tr, y_tr etc. from 'archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv017a'.
+	% confirm we have the right data with poly3:
+	m1 = perceptron(x_tr, y_tr, m0);
+	[~,~,fval] = perceptron(x_te, y_te, m1, 'update', 0, 'average', 1); => 3.5349
+	% run gamma optimization:
+	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.56);
+	f(0.339502)=0.0343728
+	% run featselect with rbf:
+	m0.kerparam=struct('type','rbf','gamma',x);
+	w130 = load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv130_dump.mat');
+	cachefile='archybrid_conllWSJToken_wikipedia2MUNK-100_rbf3395_cache.mat'
+	featselect_rbf(m0, w130.trndump, w130.devdump, cachefile, fv017a);
+	(17) 0.0343728
+	(16) 0.0347242
+	(18) 0.0339954
+	(17) 0.0343077
+	(19) 0.0335659
+	(18) 0.0338522
+	(20) 0.0335529
+	(19) 0.0333056
+@@b42	(18) 0.0330453
+	(17) 0.0334097
+	(19) 0.0328631
+	[20] 0.032785
+	
+	% reoptimize gamma:
+	% run featselect with degree>3: do we really need to?  rbf is clearly better.
+
+
+	
 @@b40	* run_5epoch_conll07_up3.m: Try ignoring single choice moves (TODO).
+	The original still looks better.
+
+							k=1 p=1 no shuffle (original)                 
+	epoch	stat	move	head	word	sent	epoch   stat    move    head    word    sent    
+	1	0.0437	0.0587	0.1483	0.1340	0.7383	1       0.0437  0.0587  0.1483  0.1340  0.7383
+	2	0.0543	0.0558	0.1389	0.1281	0.7336	2       0.0525  0.0522  0.1299  0.1215  0.7383
+	3	0.0527	0.0505	0.1269	0.1156	0.7196	3       0.0508  0.0493  0.1255  0.1172  0.7477
+	4	0.0528	0.0499	0.1249	0.1150	0.7290	4       0.0499  0.0487  0.1235  0.1154  0.7336
+	5	0.0521	0.0501	0.1239	0.1134	0.7243	5       0.0504  0.0495  0.1245  0.1150  0.7196
+	6	0.0527	0.0489	0.1225	0.1141	0.7103	6       0.0514  0.0488  0.1223  0.1147  0.7336
+	7	0.0532	0.0492	0.1245	0.1154	0.7196	7       0.0511  0.0491  0.1217  0.1136  0.7430
+	8	0.0540	0.0512	0.1273	0.1175	0.7243	8       0.0518  0.0503  0.1237  0.1152  0.7383
+	9	0.0549	0.0517	0.1277	0.1177	0.7290	9       0.0520  0.0497 [0.1213] 0.1132  0.7243
+							10      0.0519  0.0501  0.1235  0.1152  0.7243
+							11      0.0522  0.0510  0.1249  0.1163  0.7243
+							12      0.0528  0.0504  0.1239  0.1161  0.7290
+							13      0.0532  0.0499  0.1219  0.1150  0.7290
+							14      0.0536  0.0499  0.1223  0.1154  0.7336
+							15      0.0537  0.0508  0.1251  0.1170  0.7336
+
 
 2014-08-26  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -617,55 +703,7 @@
 	(16) 0.0470907
 	(17) 0.0467981
 	(18) 0.0467331
-	@@b43
-
-
-	* featselect:
-	- finish implementing beam parser and compare with ZN11.  First
-	step: run featselect starting fv018 on conllWSJToken_wikipedia2MUNK-100.
-	- other kernels? d=5 is better in conll07.  test rbf?
-
-	>> run_featselect22('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv130', 'fv018');
-	(18) 0.0361038	(16) 0.0357524
-	[17] 0.0353489	(15) 0.0359997
-	(16) 0.0357524	[17] 0.0353489
-	(18) 0.0353750
-
-	% Still same local maximum when started from (16) --b42
-	% Name this fv017a (it has a single feature diff from previous fv017).
-	% fv017 was on conll07 fv017a is on conllWSJToken
-	% fv017 was searched within fv084, fv017a within fv130.
-
-	% Should try rbf:
-	% set x_tr, y_tr etc. from 'archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv008w'.
-	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.5);
-	==> f(0.559377)=0.0386938
-
-	% But why waste time at fv008w, should start at known best fv017a.
-	% reset x_tr, y_tr etc. from 'archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv017a'.
-	% confirm we have the right data with poly3:
-	m1 = perceptron(x_tr, y_tr, m0);
-	[~,~,fval] = perceptron(x_te, y_te, m1, 'update', 0, 'average', 1); => 3.5349
-	% run gamma optimization:
-	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.56);
-	f(0.339502)=0.0343728
-	% run featselect with rbf:
-	m0.kerparam=struct('type','rbf','gamma',x);
-	w130 = load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv130_dump.mat');
-	cachefile='archybrid_conllWSJToken_wikipedia2MUNK-100_rbf3395_cache.mat'
-	featselect_rbf(m0, w130.trndump, w130.devdump, cachefile, fv017a);
-	(17) 0.0343728
-	(16) 0.0347242
-	(18) 0.0339954
-	(17) 0.0343077
-	(19) 0.0335659
-	(18) 0.0338522
-	(20) 0.0335529
-	(19) 0.0333056
-	(18) 0.0330453
-	@@b42
-	% reoptimize gamma:
-	% run featselect with degree>3: do we really need to?  rbf is clearly better.
+	-- continued above
 
 
 2014-08-18  Deniz Yuret  <dyuret@ku.edu.tr>
