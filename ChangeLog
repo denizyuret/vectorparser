@@ -1,3 +1,49 @@
+2014-08-28  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* kernelcache: Use a fixed size cache that keeps constantly
+	updating.  No need for cachekeys.  Just recompute the values at
+	the beginning of each epoch. (TODO)
+
+2014-08-27  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* tparser.m (bparse): testing make beamcell into handle to avoid
+	copying need to keep the whole beam in memory compute max beam
+	depth looking at corpus rename candidates beam have nbeam indexed
+	by depth
+
+	* run_conll07_ablation.m: Summary
+	- baseline: wiki100   best(15): 0.047339 (fv015a)
+	- up2, k=0, p=0.9, shuffling did not work.
+	- embeddings: bansal100 best(17): 0.046939
+	- kernel: (all results on trn->dev+trn split)
+
+	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9 --b40/--b43
+	[20] 0.0566259	[15] 0.047340	[17] 0.0455629	[18] 0.0449453	[19] 0.0456929	[17] 0.0455737	[19] 0.0451728	[17] 0.0455196
+
+	rbf3721-fv021
+	[21] 0.0445990
+
+	- arctype: featselect starting from fv015a.
+
+	archybrid	archybrid13	arceager	arceager13
+@@b43	[15] 0.047340	[17] 0.0467981
+
+	- The only thing that significantly helps seems to be the kernel
+	feature combination.  RBF always beats poly.  Try RBF featselect
+	from fv031a.  Then try the best RBF multi-epoch.  Try epoch number
+	based on dev first. (TODO)
+
+	w0784=load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv084_dump.mat');
+	[a,b,c,d]=run_optimize_gamma(0.3721, w0784.trndump, w0784.devdump, fv031a);  
+	% f(0.3721)  =0.0476975
+	% f(0.334781)=0.047069
+	hp = struct('type', 'rbf', 'gamma', a);
+	m0 = struct('parser', @archybrid, 'step', 1e6, 'kerparam', hp);
+	cachefile = sprintf('archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf%d_cache.mat', round(a*10000));
+@@b41	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv031a);
+
+@@b40	* run_5epoch_conll07_up3.m: Try ignoring single choice moves (TODO).
+
 2014-08-26  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* tparser.m (gparse): Should we split bparser and gparser as two
@@ -11,7 +57,7 @@
 	- start conll07 rbf experiment
 	- start rbf fv031a featselect
 	- optimize rbf-gamma for dynamic oracle?
-	
+
 
 	* vectorparser_up2: Applying the perceptron.m update rule in
 	vectorparser:
@@ -126,15 +172,16 @@
 	vectorparser     static: 0.0929  dynamic: 0.0798
 	vectorparser_up2 static: 0.0828  dynamic: 0.0886
 
-	Restarting run_5epoch_conll07_up2 @@b40.
+	Restarting run_5epoch_conll07_up2
 	Confirm same bug does not exist in tparser. done.
 
 	Other update options: (TODO)
-	- what to do if maxscoremove is invalid. (exec the mincostmove vs next maxscoremove, update with invalid maxscoremove vs first legal maxscoremove)
+	- what to exec if maxscoremove is invalid. (exec the mincostmove vs next maxscoremove (I don't think this makes much difference from p=0.9))
+	- what to update if maxscoremove is invalid. (update with invalid maxscoremove vs first legal maxscoremove (I think I tried this it didn't work))
 	- what to do if there is a single valid move. (do not update?)
 	- what to do if there is a tie among maxscore. (never happens after first update, done)
 	- what to do if there is a tie among mincost. (pick lowest index vs consider all correct, done)
-	
+
 
 2014-08-25  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -144,28 +191,28 @@
 	perceptron uses is that sometimes perceptron will update a
 	maxscoremove even when it has mincost but not equal to the
 	mincostmove.  On the perceptron(cost) experiments we ran on
-	2014-08-05 this determinism helped head prediction.  @@b40
+	2014-08-05 this determinism helped head prediction.
 
 	* run/run_5epoch_conll07_k0.m: Just run dynamic oracle without
 	static first epoch.
 
-	k=1 p=1 no shuffle (original)                   k=0 p=1 (no static)			k=1 up2 (perceptron update rule #2)
+	k=1 p=1 no shuffle (original)                   k=0 p=1 (no static) --b41		k=1 up2 (perceptron update rule #2) --b40.
 	epoch   stat    move    head    word    sent	stat    move    head    word    sent	stat    move    head    word    sent
 	1       0.0437  0.0587  0.1483  0.1340  0.7383	0.0701	0.0565	0.1423	0.1320	0.7664	0.0437	0.0587	0.1483	0.1340	0.7383
 	2       0.0525  0.0522  0.1299  0.1215  0.7383	0.0633	0.0513	0.1305	0.1215	0.7477	0.0599	0.0584	0.1503	0.1381	0.7897
 	3       0.0508  0.0493  0.1255  0.1172  0.7477	0.0605	0.0502	0.1251	0.1152	0.7196	0.0568	0.0543	0.1393	0.1281	0.7804
 	4       0.0499  0.0487  0.1235  0.1154  0.7336	0.0611	0.0494	0.1249	0.1152	0.7477	0.0558	0.0546	0.1363	0.1261	0.7710
-	5       0.0504  0.0495  0.1245  0.1150  0.7196	0.0587	0.0493	0.1241	0.1134	0.7290	0.0545	0.0539	0.1371	0.1261	0.7617
+	5       0.0504  0.0495  0.1245  0.1150  0.7196	0.0587	0.0493 [0.1241]	0.1134 	0.7290 	0.0545 	0.0539	0.1371	0.1261	0.7617
 	6       0.0514  0.0488  0.1223  0.1147  0.7336	0.0583	0.0496	0.1241	0.1132	0.7336	0.0540	0.0536	0.1337	0.1238	0.7617
 	7       0.0511  0.0491  0.1217  0.1136  0.7430	0.0589	0.0503	0.1251	0.1132	0.7477	0.0531	0.0539	0.1359	0.1249	0.7570
-	8       0.0518  0.0503  0.1237  0.1152  0.7383	0.0591	0.0505	0.1257	0.1147	0.7523
-	9       0.0520  0.0497 [0.1213] 0.1132  0.7243	0.0589	0.0507	0.1257	0.1136	0.7523
-	10      0.0519  0.0501  0.1235  0.1152  0.7243	0.0587	0.0522	0.1299	0.1172	0.7570
-	11      0.0522  0.0510  0.1249  0.1163  0.7243	0.0584	0.0524	0.1313	0.1188	0.7523
-	12      0.0528  0.0504  0.1239  0.1161  0.7290	0.0582	0.0524	0.1315	0.1193	0.7523
-	13      0.0532  0.0499  0.1219  0.1150  0.7290	0.0577	0.0514	0.1277	0.1163	0.7430
-	14      0.0536  0.0499  0.1223  0.1154  0.7336	0.0572	0.0516	0.1285	0.1168	0.7383
-	15      0.0537  0.0508  0.1251  0.1170  0.7336	0.0572	0.0513	0.1277	0.1161	0.7383
+	8       0.0518  0.0503  0.1237  0.1152  0.7383	0.0591	0.0505	0.1257	0.1147	0.7523	0.0520	0.0531	0.1321	0.1215	0.7523
+	9       0.0520  0.0497 [0.1213] 0.1132  0.7243	0.0589	0.0507	0.1257	0.1136	0.7523	0.0517	0.0535	0.1333	0.1206	0.7383
+	10      0.0519  0.0501  0.1235  0.1152  0.7243	0.0587	0.0522	0.1299	0.1172	0.7570	0.0523	0.0528	0.1317	0.1200	0.7477
+	11      0.0522  0.0510  0.1249  0.1163  0.7243	0.0584	0.0524	0.1313	0.1188	0.7523	0.0521	0.0532	0.1319	0.1202	0.7477
+	12      0.0528  0.0504  0.1239  0.1161  0.7290	0.0582	0.0524	0.1315	0.1193	0.7523	0.0524	0.0534 [0.1313]	0.1193	0.7477
+	13      0.0532  0.0499  0.1219  0.1150  0.7290	0.0577	0.0514	0.1277	0.1163	0.7430	0.0520	0.0526	0.1313	0.1195	0.7430
+	14      0.0536  0.0499  0.1223  0.1154  0.7336	0.0572	0.0516	0.1285	0.1168	0.7383	0.0519	0.0525	0.1299	0.1177	0.7336
+	15      0.0537  0.0508  0.1251  0.1170  0.7336	0.0572	0.0513	0.1277	0.1161	0.7383	0.0524	0.0538	0.1331	0.1209	0.7383
 
 
 
@@ -182,8 +229,8 @@
 	We have not tried multi-epoch with rbf3721-fv021 (dev-stat: 4.4599)
 	+ Try shuffling? did not help. --b41
 	+ Try p=0.9? did not help. --b40
-	= Try k=0? @@b41
-	= Try other vectorparser update methods? @@b40
+	= Try k=0? --b41
+	= Try other vectorparser update methods? --b40
 	- Try to find better feature set?
 	-- Try fv031a: could try with rbf
 	-- Try starting featselect from best 14, 13, etc.
@@ -195,7 +242,7 @@
 	archybrid, poly5, fv018a, conll07 full train and test.  Will try
 	k=0 but not hopeful.  Try better feature/kernel or update methods.
 
-	k=1 p=1 no shuffle (original)			k=1 p=1 shuffle @@b41			k=1 p=.9 no shuffle @@b40
+	k=1 p=1 no shuffle (original)			k=1 p=1 shuffle --b41			k=1 p=.9 no shuffle --b40
 	epoch   stat    move    head    word    sent    stat    move    head    word    sent    stat    move    head    word    sent
 	1       0.0437  0.0587  0.1483  0.1340  0.7383	0.0437	0.0587	0.1483	0.1340	0.7383	0.0437	0.0587	0.1483	0.1340	0.7383
 	2       0.0525  0.0522  0.1299  0.1215  0.7383	0.0534	0.0531	0.1307	0.1213	0.7243	0.0541	0.0534	0.1323	0.1240	0.7617
@@ -560,10 +607,19 @@
 
 	ARCTYPE EXPERIMENTS: featselect starting from fv015a in fv136
 	archybrid: (15) 0.047340
-	archybrid13: (15) 0.0487268, (14) 0.0486293, (13) 0.0490736, (15) 0.0474049
+
+	archybrid13:
+	(15) 0.0487268
+	(14) 0.0486293
+	(13) 0.0490736
+	(15) 0.0474049
+	(14) 0.0479359
+	(16) 0.0470907
+	(17) 0.0467981
+	(18) 0.0467331
 	@@b43
-	
-	
+
+
 	* featselect:
 	- finish implementing beam parser and compare with ZN11.  First
 	step: run featselect starting fv018 on conllWSJToken_wikipedia2MUNK-100.
@@ -605,10 +661,11 @@
 	(19) 0.0335659
 	(18) 0.0338522
 	(20) 0.0335529
-	
+	(19) 0.0333056
+	(18) 0.0330453
 	@@b42
 	% reoptimize gamma:
-	% run featselect with degree>3:
+	% run featselect with degree>3: do we really need to?  rbf is clearly better.
 
 
 2014-08-18  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -617,14 +674,14 @@
 
 	- run_conll07_15epoch.m:
 	+ If this doesn't work:
-	- Try other kernel?
+	+ Try other kernel?
 	-- Check train vs test, overfitting?
-	- Try shuffling?
-	- Try other vectorparser update methods?
-	- Try p=0.9?
+	+ Try shuffling?
+	+ Try other vectorparser update methods?
+	+ Try p=0.9?
 	- Try bansal?
 	- Try pa
-	- Try to find better feature set?
+	= Try to find better feature set?
 	-- Try fv031a
 	-- Try starting featselect from best 14, 13, etc.
 
@@ -635,11 +692,11 @@
 	wiki100   best(15): 0.047339 (fv015a)
 	diff: -s0r1c(6) +s1l=(15) +s1r1r<(14) +s1r<(2)
 	- features: anything between fv015a and fv031a? starting with 13,14?
-	- kernel, degree, rbf?
+	+ kernel, degree, rbf?
 	- arctype: fselect starting with fv015a
-	- perceptron: with or without static training, p=0.9?, update rule?
+	+ perceptron: with or without static training, p=0.9?, update rule?
 
-	- beamparser.m:
+	= beamparser.m:
 	-- implement kernel cache
 	-- try pa for faster convergence
 	-- compatibility with eval_conll
