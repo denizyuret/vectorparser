@@ -1,25 +1,27 @@
+function f = newFeatureVectors()
+
 % 0.0325637 Best with rbf=0.339506144311523, archybrid_conllWSJToken_wikipedia2MUNK-100_fv130_dump.mat.
-fv023 = [-3 0 4;-3 1 -2;-2 -1 -4;-2 0 -4;-2 0 4;-2 0 6;-2 1 -2;-1 -1 -4;-1 -1 2;-1 -1 4;-1 0 -4;-1 0 -1;-1 0 2;-1 0 4;-1 1 2;-1 1 4;0 -1 -4;0 -1 -1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+f.fv023 = [-3 0 4;-3 1 -2;-2 -1 -4;-2 0 -4;-2 0 4;-2 0 6;-2 1 -2;-1 -1 -4;-1 -1 2;-1 -1 4;-1 0 -4;-1 0 -1;-1 0 2;-1 0 4;-1 1 2;-1 1 4;0 -1 -4;0 -1 -1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
 
 % 0.0443493 Best with run_featselect_rbf('archybrid13', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv136', 'fv021', 'rbf3721');
-fv022 = [-3 0 8;-2 -1 -1;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-2 1 4;-1 -1 -1;-1 -1 4;-1 0 -4;-1 0 4;-1 0 6;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 -1 5;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
+f.fv022 = [-3 0 8;-2 -1 -1;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-2 1 4;-1 -1 -1;-1 -1 4;-1 0 -4;-1 0 4;-1 0 6;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 -1 5;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
 
 % 0.0445990 Best with rbf372111 archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv136_dump.mat
-fv021 = [-3 0 8;-2 -1 -1;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-1 -1 -1;-1 -1 4;-1 0 -4;-1 0 4;-1 0 5;-1 0 6;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
+f.fv021 = [-3 0 8;-2 -1 -1;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-1 -1 -1;-1 -1 4;-1 0 -4;-1 0 4;-1 0 5;-1 0 6;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
 
 % Best on run_featselect22('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv130', 'fv018');
-fv017a = [-3 0 -4;-3 0 4;-2 0 -4;-2 0 4;-2 1 -2;-1 -1 -4;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -2;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+f.fv017a = [-3 0 -4;-3 0 4;-2 0 -4;-2 0 4;-2 1 -2;-1 -1 -4;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -2;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
 
 % This one does best on archybrid_conll07EnglishToken_wikipedia2MUNK-100_d5 (degree=5 kernel)
-fv018a = [-3 0 8;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-1 -1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
+f.fv018a = [-3 0 8;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-1 -1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
 
 % This one does best on archybrid_conll07EnglishToken_wikipedia2MUNK-100 (degree=3 kernel)
-fv015a = [-3 0 8;-2 0 -4;-2 0 4;-2 1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+f.fv015a = [-3 0 8;-2 0 -4;-2 0 4;-2 1 1;-1 -1 4;-1 0 -4;-1 0 4;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
 
 % This one is a local minimum on archybrid_conll07EnglishToken_wikipedia2MUNK-100 (degree=3 kernel)
-fv031a = [-3 0 -8;-3 0 -4;-3 0 -1;-3 0 8;-3 1 -4;-3 1 4;-2 -1 -4;-2 -1 4;-2 0 -8;-2 0 -4;-2 0 4;-2 0 8;-2 1 1;-2 1 2;-1 -1 -4;-1 -1 1;-1 -1 4;-1 0 -8;-1 0 -4;-1 0 2;-1 0 4;-1 0 8;-1 1 -4;-1 1 4;0 -1 -4;0 -1 1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+f.fv031a = [-3 0 -8;-3 0 -4;-3 0 -1;-3 0 8;-3 1 -4;-3 1 4;-2 -1 -4;-2 -1 4;-2 0 -8;-2 0 -4;-2 0 4;-2 0 8;-2 1 1;-2 1 2;-1 -1 -4;-1 -1 1;-1 -1 4;-1 0 -8;-1 0 -4;-1 0 2;-1 0 4;-1 0 8;-1 1 -4;-1 1 4;0 -1 -4;0 -1 1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
 
-fv034 = [];
+f.fv034 = [];
 for a=-3:1
   for b=-1:1
     if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
@@ -36,14 +38,14 @@ for a=-3:1
       if ((a > 0) && ~ismember(c, [1,-1,4,-4])) continue; end      % no deps/dist/in-between/head for a>0
       if ((a == 0) && (b == 0) && ~ismember(c, [1,-1,4,-4,-2,-5,-6])) continue; end  % no rdeps/dist/in-between/head for a=0
       if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8,9,-9])) continue; end  % no dist/in-between/head for deps
-      fv034 = [fv034; [a b c]];
+      f.fv034 = [f.fv034; [a b c]];
     end
   end
 end
 
 
 
-fv039 = [
+f.fv039 = [
 0 0 4; 		% [-196]    'n0w'       
 -1 0 4; 	% [-119]    's0w'       
 1 0 4; 		% [ -73]    'n1w'       
@@ -86,7 +88,7 @@ fv039 = [
 ];
 
 
-fv012 = [
+f.fv012 = [
 0 0 4; 		% [-203]    n0w       
 -1 0 4; 	% [-125]    s0w       
 -2 0 4; 	% [ -59]    s1w       
@@ -103,7 +105,7 @@ fv012 = [
 ];
 
 
-fv017 = [       % 0.0476108, 'archybrid', 'conll07EnglishToken_wikipedia2MUNK-100'
+f.fv017 = [       % 0.0476108, 'archybrid', 'conll07EnglishToken_wikipedia2MUNK-100'
 0 0 4; 		% [-203]    n0w       
 -1 0 4; 	% [-125]    s0w       
 -2 0 4; 	% [ -59]    s1w       
@@ -124,7 +126,7 @@ fv017 = [       % 0.0476108, 'archybrid', 'conll07EnglishToken_wikipedia2MUNK-10
 ];
 
 
-fv018 = [       % another version of fv808 that splits token features to word + context
+f.fv018 = [       % another version of fv808 that splits token features to word + context
     0 0 4;
     0 0 -4;
     -1 0 4;
@@ -146,7 +148,7 @@ fv018 = [       % another version of fv808 that splits token features to word + 
 ];
 
 
-fv084 = [];
+f.fv084 = [];
 for a=-3:1
   for b=-1:1
     if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
@@ -158,14 +160,14 @@ for a=-3:1
       if ((a > 0) && ~ismember(c, [1,-1,4,-4])) continue; end      % no deps/dist/in-between/head for a>0
       if ((a == 0) && (b == 0) && ~ismember(c, [1,-1,4,-4,-2,-5,-6])) continue; end  % no rdeps/dist/in-between/head for a=0
       if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8,9,-9])) continue; end  % no dist/in-between/head for deps
-      fv084 = [fv084; [a b c]];
+      f.fv084 = [f.fv084; [a b c]];
     end
   end
 end
 
 
 % Better initial starting point
-fv008w = [
+f.fv008w = [
     0  0 4; % n0w
     -1 0 4; % s0w
     1  0 4; % n1w
@@ -177,7 +179,7 @@ fv008w = [
          ];
 
 % Good initial starting point
-fv008 = [
+f.fv008 = [
     0 0 4;      % n0
     -1 0 4;     % s0
     1 0 4;      % n1
@@ -189,7 +191,7 @@ fv008 = [
 ];
 
 % Include the head feature for stack words:
-fv136 = [];
+f.fv136 = [];
 for a=-3:2
   for b=-1:1
     if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
@@ -199,13 +201,13 @@ for a=-3:2
       if ((a > 0) && ~ismember(c, [1,-1,4,-4])) continue; end      % no deps/dist/in-between/head for a>0
       if ((a == 0) && (b == 0) && ~ismember(c, [1,-1,4,-4,-2,-5,-6])) continue; end  % no rdeps/dist/in-between/head for a=0
       if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8,9,-9])) continue; end  % no dist/in-between/head for deps
-      fv136 = [fv136; [a b c]];
+      f.fv136 = [f.fv136; [a b c]];
     end
   end
 end
 
 % All legal features for s2..n2:
-fv130 = [];
+f.fv130 = [];
 for a=-3:2
   for b=-1:1
     if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
@@ -215,12 +217,12 @@ for a=-3:2
       if ((a == 0) && (b == 0) && ismember(c, [2,3,-3,5,6,7,-7,8,-8])) continue; end  % no rdeps/dist/in-between for a=0
       if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8])) continue; end  % no dist/in-between for deps
       if ((c == 0) || (c == -3)) continue; end  % do not use the word+context combination, keep them separate
-      fv130 = [fv130; [a b c]];
+      f.fv130 = [f.fv130; [a b c]];
     end
   end
 end
 
-fv102 = [];
+f.fv102 = [];
 for a=-2:1
   for b=-1:1
     if ((a >= 0) && (b > 0)) continue; end   % no rdeps for buffer words
@@ -229,35 +231,37 @@ for a=-2:1
       if ((a > 0) && ismember(c, [2,-2,3,-3,5,-5,6,-6,7,-7,8,-8])) continue; end      % no deps/dist/in-between for a>0
       if ((a == 0) && (b == 0) && ismember(c, [2,3,-3,5,6,7,-7,8,-8])) continue; end  % no rdeps/dist/in-between for a=0
       if ((b ~= 0) && ismember(c, [3,-3,7,-7,8,-8])) continue; end  % no dist/in-between for deps
-      fv102 = [fv102; [a b c]];
+      f.fv102 = [f.fv102; [a b c]];
     end
   end
 end
 
-fv1768 = [
+f.fv1768 = [
 %n0            n1             n2             s0             s1             s2             s0l1           s0l2           s0r1           s0r2           s1l1           s1l2           s1r1           s1r2           n0l1           n0l2          n0s0 s0s1
 0  0  0  0  0  1  1  1  1  1  2  2  2  2  2 -1 -1 -1 -1 -1 -2 -2 -2 -2 -2 -3 -3 -3 -3 -3 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2  0  0  0  0  0  0  0  0  0  0 -1   -2;
 0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0 -1 -1 -1 -1 -1 -2 -2 -2 -2 -2  1  1  1  1  1  2  2  2  2  2 -1 -1 -1 -1 -1 -2 -2 -2 -2 -2  1  1  1  1  1  2  2  2  2  2 -1 -1 -1 -1 -1 -2 -2 -2 -2 -2  0    0;
 0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  0 -2  2  1 -1  3    3;
 ]';
 
-fv804 = [
+f.fv804 = [
 %n0 s0 s1 n1 n0l1 s0r1 s0l1 s1r1 s0r
   0 -1 -2  1  0   -1   -1   -2   -1;
   0  0  0  0 -1    1   -1    1    0;
   0  0  0  0  0    0    0    0    2;
 ]';
 
-fv708 = [
+f.fv708 = [
 %n0 n0l1 n0l2 n1 s0 s0r s0r1 s0s1 s1
   0  0    0    1 -1 -1  -1   -2   -2;
   0 -1   -2    0  0  0   1    0    0;
   0  0    0    0  0  2   0    3    0;
 ]';
 
-fv808 = [
+f.fv808 = [
 %n0 s0 s1 n1 n0l1 s0r1 s1r1l s0l1 s0r1l s2
   0 -1 -2  1  0   -1   -2    -1   -1    -3;
   0  0  0  0 -1    1    1    -1    1     0;
   0  0  0  0  0    0   -2     0   -2     0;
 ]';
+
+end
