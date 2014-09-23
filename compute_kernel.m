@@ -2,6 +2,7 @@
 % TODO: test with perceptron, vectorparser, beamparser,
 % with/without cache, test, train, dump etc.
 % TODO: integrate with perceptron, tparser and retest.
+% TODO: check if sum for rbf is slow on gpu.
 
 function scores = compute_kernel(m, x)
 
