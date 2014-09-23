@@ -1,8 +1,219 @@
+2014-09-10  Deniz Yuret  <dyuret@yunus.hpc.ku.edu.tr>
+
+	* compute_kernel.m (compute_kernel): Cannot understand the memory
+	error.  Hard to debug when it happens in 130K secs.  Could fix
+	kernelcache.  Compare performance with greedy on smaller training
+	sets.  Could switch to Julia.
+	
+	
+	* featselect_rbf: run conll07 archybrid13 featselect with rbf3721-fv021.
+$$b41	run_featselect_rbf('archybrid13', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv136', 'fv021', 'rbf3721');
+	08-Sep-2014 17:44:04 Loading archybrid13_conll07EnglishToken_wikipedia2MUNK-100_fv136_dump.mat
+	08-Sep-2014 17:48:45 featselect_rbf with cache archybrid13_conll07EnglishToken_wikipedia2MUNK-100_rbf3721_cache.mat
+	(22)	0.0443493  % name fv022
+
+$$b41	% reoptimize gamma starting with 0.3721
+	path('run',path);
+	newFeatureVectors;
+	w = load('archybrid13_conll07EnglishToken_wikipedia2MUNK-100_fv136_dump.mat');
+	[gamma,fval,exitflag,output] = run_optimize_gamma(0.3721, w.trndump, w.devdump, fv022);
+	% f(0.372063662109375) = 0.0442301
+
+	CONLL07 BEST GREEDY SETTINGS:
+	Features: fv022
+	Kernel: rbf with gamma=0.372063662109375
+	Arctype: archybrid13
+	Embedding: conll07EnglishToken_wikipedia2MUNK-100
+	1-Epoch-static-dev: 0.0442301
+	
+$$b41	% run train/dev pair to determine best dynamic epoch count (after one static epoch)
+	
+	m0.kerparam = struct('type', 'rbf', 'gamma', gamma);
+	m0.parser = @archybrid13;
+	m0.feats = fv022;
+	m0.step = 1e7;
+	m0.batchsize = 1e3;
+	run_static_dynamic('archybrid13', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv022', m0);
+	12-Sep-2014 19:13:16 Creating archybrid13_conll07EnglishToken_wikipedia2MUNK-100_fv022_dump.mat
+
+	1. why so slow? ......... 1989/1989 (12793.27s 0.155472x/s)
+	2. why not 0.0442301? move_pct: 0.0563
+@@b41	need to debug tparser.
+	compare with vectorparser_rbf?
+	
+	% run train0/test pair for final evaluation
+
+	
+	* featselect_rbf: with conllWSJToken.
+	
+	% run gamma optimization:
+	[x,fval,exitflag,output] = fminsearch(@(x) f_optimize_gamma(x, x_tr, y_tr, x_te, y_te), 0.56);
+	f(0.339502)=0.0343728
+	% run featselect with rbf:
+	m0.kerparam=struct('type','rbf','gamma',x);
+	w130 = load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv130_dump.mat');
+	cachefile='archybrid_conllWSJToken_wikipedia2MUNK-100_rbf3395_cache.mat'
+	featselect_rbf(m0, w130.trndump, w130.devdump, cachefile, fv017a);
+	(17) 0.0343728
+	(16) 0.0347242
+	(18) 0.0339954
+	(17) 0.0343077
+	(19) 0.0335659
+	(18) 0.0338522
+	(20) 0.0335529
+	(19) 0.0333056
+	(18) 0.0330453
+	(17) 0.0334097
+	(19) 0.0328631
+	(20) 0.032785
+	(21) 0.0327719
+	(22) 0.0326678
+$$b42	[23] 0.0326158 => named fv023
+
+	% run gamma optimization again.
+$$b40	newFeatureVectors
+$$b42	[gamma,fval,exitflag,output] = run_optimize_gamma(0.339502, w130.trndump, w130.devdump, fv023);
+	f(0.339506)=0.0325637 (gamma=0.339506144311523)
+	
+	% try with other arctypes (archybrid13 is better in conll07).
+@@b40	m0.kerparam=struct('type', 'rbf', 'gamma', gamma);
+	m0.parser=@archybrid13;
+	m0.step=1e7;
+	cachefile='archybrid13_conllWSJToken_wikipedia2MUNK-100_rbf339506_cache.mat';
+	featselect_rbf(m0, w130.trndump, w130.devdump, cachefile, fv023);
+	
+	% compare featselect results of conll07 and conllWSJ.
+
+2014-09-08  Deniz Yuret  <dyuret@yunus.hpc.ku.edu.tr>
+
+	* performance: is a function of:
+	-- corpus
+	-- arctype
+	-- embedding
+	-- features
+	-- kernel
+	-- search (greedy vs beam, static vs dynamic, update type)
+
+	* status:
+	- On conll07:
+	-- run_bparse_conll07 ended with memory error. $$b40. must debug.
+	--- need to update kernelcache code even though the error above was without cache.
+	-- run_5epoch_conll07_up3: ignoring single choice moves did not help. $$b43.
+	-- run_conll07_ablation: arctype experiments: archybrid13 won.
+	- On conllWSJToken_wikipedia2MUNK-100:
+	-- featselect_rbf ended with gpu memory error.  $$b42. seems was fluke, ok now.
+	
+	
+	* TODO:
+
+	- Then try the best RBF multi-epoch on conll07 test set.  Try
+	epoch number based on dev first.
+	
+	- kernelcache: Use a fixed size cache that keeps constantly
+	updating.  No need for cachekeys.  Just recompute the values at
+	the beginning of each epoch.
+
+	- run_bparse_conll07: debug memory error.
+
+	- featselect_rbf on wsj: debug memory error.
+
+	- run_conll07_15epoch.m:
+	+ If this doesn't work:
+	+ Try other kernel?
+	-- Check train vs test, overfitting?
+	+ Try shuffling?
+	+ Try other vectorparser update methods?
+	+ Try p=0.9?
+	- Try bansal?
+	- Try pa
+	+ Try to find better feature set?
+	+ Try fv031a
+	x Try starting featselect from best 14, 13, etc.
+
+	- run/run_conll07_ablation.m:
+	+ embedding: fselect bansal100 starting with fv015a+archybrid.
+	No significant difference.
+	bansal100 best(17): 0.046939
+	wiki100   best(15): 0.047339 (fv015a)
+	diff: -s0r1c(6) +s1l=(15) +s1r1r<(14) +s1r<(2)
+	- features: anything between fv015a and fv031a? starting with 13,14?
+	+ kernel, degree, rbf?
+	- arctype: fselect starting with fv015a
+	+ perceptron: with or without static training, p=0.9?, update rule?
+
+	= beamparser.m:
+	-- implement kernel cache
+	-- try pa for faster convergence
+	-- compatibility with eval_conll
+
+	= rbf kernel with gpu?
+	= Optimize and try rbf kernel calculation and fselect.
+	= Other kernel degrees with featselect.
+	- look at train/test performance to validate model and decide if
+	higher orders are worth trying.
+
+	- vectorparser.m: Debugging the update rule.  $$i30
+	-- try vectorparser only ignore single choice as well, i.e. three options.
+	-- no diff with small data, try bigger data or without static pre-training.
+
+	- featselect_par: $$balina. left for later.
+
+	- Implement arceasy.
+
+	- remove model/dump distinction in perceptron etc.  just have one output.
+
+	- Embeddings:
+	-- test more on conll07.
+	-- debug conllWSJToken_dep-100 (good train bad test)
+	-- debug out-of-memory on levy, murphy50, mikolovGoogleNews300
+
+	- write matlab gpu tutorial on blog
+	OK, another matlab bug: if we have an SV matrix more than half the
+	size of gpu memory, we can't add anything to it, we can't change
+	it etc. etc. Everything I try (concat, subasgn etc.) ends up
+	trying to create a copy.  This is the third bug I found in matlab
+	(after max and skinny multiply problems), should send a bug
+	report.
+
+	- Old code:
+	- trainparser_primal.m: broken, upgrade to use new code.
+	- model_sparsify.m: broken, updgreade to use new code.
+
+	$$i02 $$i03: still oom, do this on balina
+	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
+	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
+	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
+	score:0.99 conllWSJToken_murphy50 (out of memory at 1182126, sv:494871, nk:85, g:9.4e7)
+	score:0.99 conllWSJToken_murphy50scaled01 (out of memory at 1289463, sv:494698, nk:85, g:9.4e7)
+
+
+
+
 2014-08-28  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* kernelcache: Use a fixed size cache that keeps constantly
-	updating.  No need for cachekeys.  Just recompute the values at
-	the beginning of each epoch. (TODO)
+	* run_bparse_conll07: Memory error, do we have too many SV?  Is there something in gpu
+	we don't need that we are not clearing?  When training we have
+	only one right path and one wrong path, SV should not matter.  We
+	turned off the cache and that is not on gpu anyway.
+	
+$$b40	Started run_bparse_conll07 without cache.
+	.......... 17000/18577 (132866.89s 0.127948x/s)
+.Error using gpuArray/sum
+Out of memory on device. To view more detail about available memory on the GPU,
+use 'gpuDevice()'. If the problem persists, reset the GPU by calling
+'gpuDevice(1)'.
+
+Error in compute_kernel (line 78)
+      s2 = sum(m.svtr .^ 2, 2);
+
+Error in tparser/compute_score (line 95)
+        score = compute_kernel(m1, x);
+
+Error in tparser/bparse (line 399)
+            scores = compute_score(m, fmatrix(:,1:nbeam));
+
+Error in run_bparse_conll07 (line 23)
+  tp.bparse(w.trn0);
 
 	
 2014-08-27  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -20,7 +231,7 @@
 	- embeddings: bansal100 best(17): 0.046939
 	- kernel: (all results on trn->dev+trn split)
 
-	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9 --b40/--b43
+	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9 $$b40/$$b43
 	[20] 0.0566259	[15] 0.0473399	[17] 0.0455629	[18] 0.0449453	[19] 0.0456929	[17] 0.0455737	[19] 0.0451728	[17] 0.0455196
 
 	rbf3721-fv021
@@ -29,16 +240,13 @@
 	- arctype: featselect starting from fv015a using fv136 in conll07EnglishToken_wikipedia2MUNK-100.
 
 	archybrid	archybrid13	arceager	arceager13
-@@b43	[15] 0.0473399	[19] 0.0464297	(16) 0.0500054
+	[15] 0.0473399	[19] 0.0464297	[19] 0.0486185	[18] 0.0495287	$$b41
 	
-	
-	(TODO) run archybrid13 featselect with rbf3721-fv021.
 	
 	
 	* fv031a-rbf: The only thing that significantly helps seems to be
 	the kernel feature combination.  RBF always beats poly.  Try RBF
-	featselect from fv031a.  Then try the best RBF multi-epoch.  Try
-	epoch number based on dev first. (TODO)
+	featselect from fv031a.  
 
 	w0784=load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv084_dump.mat');
 	[a,b,c,d]=run_optimize_gamma(0.3721, w0784.trndump, w0784.devdump, fv031a);
@@ -47,7 +255,7 @@
 	hp = struct('type', 'rbf', 'gamma', a);
 	m0 = struct('parser', @archybrid, 'step', 1e6, 'kerparam', hp);
 	cachefile = sprintf('archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf%d_cache.mat', round(a*10000));
---b41	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv031a);
+$$b41	featselect_rbf(m0, w0784.trndump, w0784.devdump, cachefile, fv031a);
 	
 	(31)	0.047069	% compare to fv021: 0.0446
 	(30)	0.0466248
@@ -67,7 +275,7 @@
 	(16) 0.0357524	[17] 0.0353489
 	(18) 0.0353750
 
-	% Still same local maximum when started from (16) --b42
+	% Still same local maximum when started from (16) $$b42
 	% Name this fv017a (it has a single feature diff from previous fv017).
 	% fv017 was on conll07 fv017a is on conllWSJToken
 	% fv017 was searched within fv084, fv017a within fv130.
@@ -98,17 +306,58 @@
 	(18) 0.0338522
 	(20) 0.0335529
 	(19) 0.0333056
-@@b42	(18) 0.0330453
+	(18) 0.0330453
 	(17) 0.0334097
 	(19) 0.0328631
-	[20] 0.032785
+	(20) 0.032785
+	(21) 0.0327719
+	(22) 0.0326678
+$$b42	[23] 0.0326158
 	
-	% reoptimize gamma:
-	% run featselect with degree>3: do we really need to?  rbf is clearly better.
+	ERROR:
+	
+Training mode.
+Using last model to predict.
+Initializing empty model.
+Initializing gpu. m=5.06e+08 .. 5.07e+08 done.
+Using X batchsize=1000
+nd=1625 nx=1820392 nc=3 ns=0
+inst	err	nsv	batch	time	mem
+10000	23.1700	2819	1000	4.45	3.59e+08
+...
+1060000	5.7413	61360	1000	494.89	2.92e+08
+g:2.7e+08 merging sv blocks 0x1625 61495x1625
+g:3.9e+08 done with merge
+1070000	5.7407	61928	1000	509.42	2.63e+08
+...	
+1190224	5.6234	67433	364	604.41	6.81e+07
+Error using gpuArray/mtimes
+Out of memory on device. To view more detail about available memory on the GPU,
+use 'gpuDevice()'. If the problem persists, reset the GPU by calling
+'gpuDevice(1)'.
+
+Error in perceptron_rbf>compute_scores (line 371)
+    val_f = beta1 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s1sq, -2
+    * (m.svtr1 * xij)))) + ...
+
+Error in perceptron_rbf (line 75)
+  score = compute_scores(m, X, i, j, opts); % score(nc,nk): scores for X(:,i:j)
+
+Error in featselect_rbf/err (line 153)
+  m1 = perceptron_rbf(x_tr, trn.y, m0);
+
+Error in featselect_rbf (line 81)
+      curr_e = err(curr_f);
+ 
+ 	Must have been a temporary situation (other processes?), rerunning
+	did not generate the memory error.
+	
+	= reoptimize gamma:
+	X run featselect with degree>3: do we really need to?  rbf is clearly better.
 
 
 	
-@@b40	* run_5epoch_conll07_up3.m: Try ignoring single choice moves (TODO).
+$$b43	* run_5epoch_conll07_up3.m: Try ignoring single choice moves.
 	The original still looks better.
 
 							k=1 p=1 no shuffle (original)                 
@@ -118,16 +367,16 @@
 	3	0.0527	0.0505	0.1269	0.1156	0.7196	3       0.0508  0.0493  0.1255  0.1172  0.7477
 	4	0.0528	0.0499	0.1249	0.1150	0.7290	4       0.0499  0.0487  0.1235  0.1154  0.7336
 	5	0.0521	0.0501	0.1239	0.1134	0.7243	5       0.0504  0.0495  0.1245  0.1150  0.7196
-	6	0.0527	0.0489	0.1225	0.1141	0.7103	6       0.0514  0.0488  0.1223  0.1147  0.7336
+	6	0.0527	0.0489 [0.1225]	0.1141	0.7103	6       0.0514  0.0488  0.1223  0.1147  0.7336
 	7	0.0532	0.0492	0.1245	0.1154	0.7196	7       0.0511  0.0491  0.1217  0.1136  0.7430
 	8	0.0540	0.0512	0.1273	0.1175	0.7243	8       0.0518  0.0503  0.1237  0.1152  0.7383
 	9	0.0549	0.0517	0.1277	0.1177	0.7290	9       0.0520  0.0497 [0.1213] 0.1132  0.7243
-							10      0.0519  0.0501  0.1235  0.1152  0.7243
-							11      0.0522  0.0510  0.1249  0.1163  0.7243
-							12      0.0528  0.0504  0.1239  0.1161  0.7290
-							13      0.0532  0.0499  0.1219  0.1150  0.7290
-							14      0.0536  0.0499  0.1223  0.1154  0.7336
-							15      0.0537  0.0508  0.1251  0.1170  0.7336
+	10	0.0550	0.0512	0.1267	0.1166	0.7336	10      0.0519  0.0501  0.1235  0.1152  0.7243
+	11	0.0549	0.0513	0.1269	0.1172	0.7383	11      0.0522  0.0510  0.1249  0.1163  0.7243
+	12	0.0545	0.0508	0.1255	0.1154	0.7430	12      0.0528  0.0504  0.1239  0.1161  0.7290
+	13	0.0544	0.0507	0.1241	0.1143	0.7430	13      0.0532  0.0499  0.1219  0.1150  0.7290
+	14	0.0546	0.0504	0.1233	0.1145	0.7430	14      0.0536  0.0499  0.1223  0.1154  0.7336
+	15	0.0547	0.0501	0.1235	0.1141	0.7430	15      0.0537  0.0508  0.1251  0.1170  0.7336
 
 
 2014-08-26  Deniz Yuret  <dyuret@ku.edu.tr>
@@ -261,7 +510,7 @@
 	Restarting run_5epoch_conll07_up2
 	Confirm same bug does not exist in tparser. done.
 
-	Other update options: (TODO)
+	Other update options: (DONE)
 	- what to exec if maxscoremove is invalid. (exec the mincostmove vs next maxscoremove (I don't think this makes much difference from p=0.9))
 	- what to update if maxscoremove is invalid. (update with invalid maxscoremove vs first legal maxscoremove (I think I tried this it didn't work))
 	- what to do if there is a single valid move. (do not update?)
@@ -282,7 +531,7 @@
 	* run/run_5epoch_conll07_k0.m: Just run dynamic oracle without
 	static first epoch.
 
-	k=1 p=1 no shuffle (original)                   k=0 p=1 (no static) --b41		k=1 up2 (perceptron update rule #2) --b40.
+	k=1 p=1 no shuffle (original)                   k=0 p=1 (no static) $$b41		k=1 up2 (perceptron update rule #2) $$b40.
 	epoch   stat    move    head    word    sent	stat    move    head    word    sent	stat    move    head    word    sent
 	1       0.0437  0.0587  0.1483  0.1340  0.7383	0.0701	0.0565	0.1423	0.1320	0.7664	0.0437	0.0587	0.1483	0.1340	0.7383
 	2       0.0525  0.0522  0.1299  0.1215  0.7383	0.0633	0.0513	0.1305	0.1215	0.7477	0.0599	0.0584	0.1503	0.1381	0.7897
@@ -313,10 +562,10 @@
 	poly3-fv015a best 12.37 at best epoch 5, 12.71 at epoch 15 (dev-stat: 4.7340).
 	poly5-fv018a best 12.13 at best epoch 9, 12.51 at epoch 15 (dev-stat: 4.4945)
 	We have not tried multi-epoch with rbf3721-fv021 (dev-stat: 4.4599)
-	+ Try shuffling? did not help. --b41
-	+ Try p=0.9? did not help. --b40
-	= Try k=0? --b41
-	= Try other vectorparser update methods? --b40
+	+ Try shuffling? did not help. $$b41
+	+ Try p=0.9? did not help. $$b40
+	= Try k=0? $$b41
+	= Try other vectorparser update methods? $$b40
 	- Try to find better feature set?
 	-- Try fv031a: could try with rbf
 	-- Try starting featselect from best 14, 13, etc.
@@ -328,7 +577,7 @@
 	archybrid, poly5, fv018a, conll07 full train and test.  Will try
 	k=0 but not hopeful.  Try better feature/kernel or update methods.
 
-	k=1 p=1 no shuffle (original)			k=1 p=1 shuffle --b41			k=1 p=.9 no shuffle --b40
+	k=1 p=1 no shuffle (original)			k=1 p=1 shuffle $$b41			k=1 p=.9 no shuffle $$b40
 	epoch   stat    move    head    word    sent    stat    move    head    word    sent    stat    move    head    word    sent
 	1       0.0437  0.0587  0.1483  0.1340  0.7383	0.0437	0.0587	0.1483	0.1340	0.7383	0.0437	0.0587	0.1483	0.1340	0.7383
 	2       0.0525  0.0522  0.1299  0.1215  0.7383	0.0534	0.0531	0.1307	0.1213	0.7243	0.0541	0.0534	0.1323	0.1240	0.7617
@@ -494,7 +743,7 @@
 	- (another exception: eval needs cost which also should be an option when update=0).
 	- just set whatever extra fields you want (feats,cost) computed extra to empty arrays and they get filled?
 
-	update options (not all implemented and tried): (TODO)
+	update options (not all implemented and tried): (DONE)
 	- no update for testing.
 	- what to do if maxscoremove is invalid. (take the mincostmove vs next maxscoremove)
 	- what to do if there is a single valid move. (do not update)
@@ -504,7 +753,7 @@
 	+ predict should be a probability! (p=0.9 predicts with prob 0.9)
 	+ vectorparser should be a copyable class!  (probably called greedy or deterministic etc.)
 
-	do similar analysis for beamparser to decide common names (TODO)
+	do similar analysis for beamparser to decide common names (DONE)
 
 	- It is probably not a good idea to merge perceptron, leave it standalone.
 	- Call the class tparser with gparse and bparse as two methods.
@@ -512,11 +761,11 @@
 
 	* prioritize:
 	- conll07
-	-- try rbf featselect: --b40  (later reoptimize gamma)
-	-- try degree=5 fv018a 5epoch: --b41
-	-- try degree>5 featselect: --b43 (see if better than d5,fv018a)
+	-- try rbf featselect: $$b40  (later reoptimize gamma)
+	-- try degree=5 fv018a 5epoch: $$b41
+	-- try degree>5 featselect: $$b43 (see if better than d5,fv018a)
 	- beamparser
-	-- try wsjtoken featselect: --b42 (later optimize kernel)
+	-- try wsjtoken featselect: $$b42 (later optimize kernel)
 	-- finish code
 
 	* run_5epoch_conll07: Try the better kernel fv018a with degree=5.
@@ -524,7 +773,7 @@
 	This is using the full conll07 train and test sets.
 	Improvement is possible...
 
-	d=5,fv018a,--b41				d=3,fv015a
+	d=5,fv018a,$$b41				d=3,fv015a
 	epoch	stat	move	head	word	sent	stat    move    head    word    sent
 	1	0.0437	0.0587	0.1483	0.1340	0.7383	0.0469  0.0586  0.1477  0.1370  0.7664
 	2	0.0525	0.0522	0.1299	0.1215	0.7383	0.0524  0.0512  0.1305  0.1229  0.7523
@@ -672,11 +921,11 @@
 	[21] 0.0445985 => named fv021
 	- Reoptimize gamma
 	no change, gamma=0.372109375
-	--b40
+	$$b40
 
 	* run/run_conll07_ablation.m:
 	= kernel: fselect d=2..9 starting with fv015a+archybrid.
-	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9 --b40/--b43
+	d=2		d=3		d=4		d=5 		d=6             d=7 		d=8		d=9 $$b40/$$b43
 	(15) 0.0607758	[15] 0.047340	(15) 0.0465598	(15) 0.0474591	(15) 0.0490844  (15) 0.0511756	(15) 0.0532127	(15) 0.0558782
 	(14) 0.0613284	(14) 0.047925	(14) 0.0466464	(14) 0.0475133	(13) 0.0489327	(14) 0.0508506	(14) 0.0527359	(14) 0.0552498
 	(15) 0.0592914	(16) 0.047340	(15) 0.0464406	(15) 0.0467981	(14) 0.0477625	(13) 0.0509264	(13) 0.0531477	(13) 0.055759
@@ -707,79 +956,6 @@
 
 
 2014-08-18  Deniz Yuret  <dyuret@ku.edu.tr>
-
-	* TODO:
-
-	- run_conll07_15epoch.m:
-	+ If this doesn't work:
-	+ Try other kernel?
-	-- Check train vs test, overfitting?
-	+ Try shuffling?
-	+ Try other vectorparser update methods?
-	+ Try p=0.9?
-	- Try bansal?
-	- Try pa
-	= Try to find better feature set?
-	-- Try fv031a
-	-- Try starting featselect from best 14, 13, etc.
-
-	- run/run_conll07_ablation.m:
-	+ embedding: fselect bansal100 starting with fv015a+archybrid.
-	No significant difference.
-	bansal100 best(17): 0.046939
-	wiki100   best(15): 0.047339 (fv015a)
-	diff: -s0r1c(6) +s1l=(15) +s1r1r<(14) +s1r<(2)
-	- features: anything between fv015a and fv031a? starting with 13,14?
-	+ kernel, degree, rbf?
-	- arctype: fselect starting with fv015a
-	+ perceptron: with or without static training, p=0.9?, update rule?
-
-	= beamparser.m:
-	-- implement kernel cache
-	-- try pa for faster convergence
-	-- compatibility with eval_conll
-
-	= rbf kernel with gpu?
-	= Optimize and try rbf kernel calculation and fselect.
-	= Other kernel degrees with featselect.
-	- look at train/test performance to validate model and decide if
-	higher orders are worth trying.
-
-	- vectorparser.m: Debugging the update rule.  --i30
-	-- try vectorparser only ignore single choice as well, i.e. three options.
-	-- no diff with small data, try bigger data or without static pre-training.
-
-	- featselect_par: --balina. left for later.
-
-	- Implement arceasy.
-
-	- remove model/dump distinction in perceptron etc.  just have one output.
-
-	- Embeddings:
-	-- test more on conll07.
-	-- debug conllWSJToken_dep-100 (good train bad test)
-	-- debug out-of-memory on levy, murphy50, mikolovGoogleNews300
-
-	- write matlab gpu tutorial on blog
-	OK, another matlab bug: if we have an SV matrix more than half the
-	size of gpu memory, we can't add anything to it, we can't change
-	it etc. etc. Everything I try (concat, subasgn etc.) ends up
-	trying to create a copy.  This is the third bug I found in matlab
-	(after max and skinny multiply problems), should send a bug
-	report.
-
-	- Old code:
-	- trainparser_primal.m: broken, upgrade to use new code.
-	- model_sparsify.m: broken, updgreade to use new code.
-
-	--i02 --i03: still oom, do this on balina
-	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
-	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
-	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
-	score:0.99 conllWSJToken_murphy50 (out of memory at 1182126, sv:494871, nk:85, g:9.4e7)
-	score:0.99 conllWSJToken_murphy50scaled01 (out of memory at 1289463, sv:494698, nk:85, g:9.4e7)
-
-
 
 2014-08-17  Deniz Yuret  <dyuret@ku.edu.tr>
 
@@ -886,7 +1062,7 @@
 
 	- No improvement after epoch 5.
 
-	(*) --b41.  Note that the times given are on a half busy gpu,
+	(*) $$b41.  Note that the times given are on a half busy gpu,
 	around 1.5 sent/sec.  On an empty machine it should run at twice
 	this speed.
 
@@ -1291,7 +1467,7 @@
 
 	* multi-epoch-featselect:
 	>> run_static('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv034');
-	Try and see if multiple epochs will get rid of irrelevant features. --b42
+	Try and see if multiple epochs will get rid of irrelevant features. $$b42
 
 	This is fv034: (34 features)
 	epoch	stat	move	head	word	sent
@@ -1543,7 +1719,7 @@
 	This means our answers would change (at least) in 44% of the
 	sentences, possibly for the better.
 
-	* vectorparser.m: Debugging the update rule. --i30
+	* vectorparser.m: Debugging the update rule. $$i30
 
 	- trainparser_gpu also have score(c=inf)=-inf, why did that not hurt?
 	c = p.oracle_cost(h);
@@ -1659,7 +1835,7 @@ end
 
 	* run_fs_conll07_arceager13.m: featselect with arceager13 starting
 	at fv008 using fv136 (head features), conll07 trn split into trn
-	and dev, bansal100 encoding. (--b43)
+	and dev, bansal100 encoding. ($$b43)
 
 
 	* run_fs_conll07_aug7: featselect stopped and restarted from a
@@ -1670,7 +1846,7 @@ end
 	as well.  Remove single-choice moves from training:done. Speed is
 	about 100 secs per feature.  We can try 864 features a day.  That
 	decides roughly six features a day.  Started at Aug 7 10:00AM.
-	(--b42)
+	($$b42)
 
 	dev 1989 sent -> 92290 move -> 87202 multi-choice move
 	trn 16588 sent -> 763702 move -> 720961 multi-choice move
@@ -1742,7 +1918,7 @@ end
 	- feature optimization for conll07 & difft arctypes skipping single-choice.
 	- fix featselect so it doesn't backup shorter than initfeats.
 	- use the whole training set after determining epochs and feats.
-	--b41
+	$$b41
 
 	Dynamic oracle:
 	epoch	gmove	move	head	word	sent
@@ -1765,7 +1941,7 @@ end
 	difference in the last static model is due to the older experiment
 	removing single choice moves from training.  In dynamic training
 	older code ignored scores of impossible moves completely.  One
-	epoch takes about 7 hours which is consistent with before. --b40.
+	epoch takes about 7 hours which is consistent with before. $$b40.
 
 	Dynamic oracle:
 	epoch	gmove	move	head	word	sent
@@ -1782,7 +1958,7 @@ end
 	10	out-of-memory
 
 	Compare to original mx results:
-	--i11			TEST				TRAIN
+	$$i11			TEST				TRAIN
 	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
 	mx5	169135	963	3.34	3.76	9.83	8.63	-	-
 	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
@@ -1979,7 +2155,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 
 2014-08-06  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* mxrep: replicate mx experiments with new code. --b40.  Static oracle
+	* mxrep: replicate mx experiments with new code. $$b40.  Static oracle
 	results are better in gmove but .25 worse in parsing performance.
 	Difference?  Not using single option moves for training?  Some
 	other change from dumpfeatures/trainparser to vectorparser?
@@ -2030,7 +2206,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	multi-choice case.
 
 
-	* conll07b: rerun conll07 experiments with fv808 and new code.  --b41.
+	* conll07b: rerun conll07 experiments with fv808 and new code.  $$b41.
 	>> run_conll07_dbg('conll07b');
 
 	Static oracle:
@@ -2047,7 +2223,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 
 
 	* rerun: featselect for conll07, archybrid, fv130, new train/dev
-	split.  (--b42) Note that fv130 does not include the new head
+	split.  ($$b42) Note that fv130 does not include the new head
 	feature but that is not useful for archybrid.
 
 	* DONE:
@@ -2092,7 +2268,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	filter the multi-choice instances.
 
 	* DONE:
-	+ Let --i00 finish so we can use the dumps.
+	+ Let $$i00 finish so we can use the dumps.
 	- Verify the dumps.
 	- Run regular perceptron training.
 	- Figure out the difference between PTB and conll.
@@ -2369,7 +2545,7 @@ m0.feats = fv136;
 	mx5	3.21	963	169135	3.34	3.76	 9.83	8.63	best epoch for fv808: gtrans:3.34 phead:9.83 whead:7.60
 
 	Dynamic Oracle:
-	--i11			TEST				TRAIN
+	$$i11			TEST				TRAIN
 	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
 	mx5	169135	963	3.34	3.76	9.83	8.63	-	-
 	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
@@ -2405,7 +2581,7 @@ m0.feats = fv136;
 	4	3.53
 	5	3.52 (nsv:71496 gtrans:5.38 ptrans:7.20 phead:18.30)
 
-	Dynamic Oracle: (run_conll07_experiment2.out --i01)
+	Dynamic Oracle: (run_conll07_experiment2.out $$i01)
 	epoch	move	head	word	sent
 	0	7.20	18.30	16.04	76.97
 	1	5.14	13.39	12.31	70.69
@@ -2488,7 +2664,7 @@ m0.feats = fv136;
 	(naturally) gives best result in cost, but significantly worse in
 	guessing "correct" answer. (run_conll07_debug.m)
 
---i02	gtrans	ctrans	ptrans	phead	whead	sent	model
+$$i02	gtrans	ctrans	ptrans	phead	whead	sent	model
 	0.0471	0.0426	0.0605	0.1549	0.1397	0.7285	k_perceptron_multi_train
 	0.0476	0.0428	0.0612	0.1576	0.1418	0.7466	perceptron(y)
 	0.0581	0.0402	0.0752	0.1899	0.1668	0.7969	perceptron(cost)
@@ -2596,7 +2772,7 @@ end
 	sentences, 48134 tokens.  We'll save it as split.  Just concat dev
 	and trn to get original data.
 
-	* run_arctype_comparison2.m: --i00: Determine which arctype is
+	* run_arctype_comparison2.m: $$i00: Determine which arctype is
 	best.  The scores *c are cost based, *a are answer based.  trn and
 	tst are from conll07, dev is from conllWSJToken.  All after one
 	epoch cost-based training with perceptron.m with features
@@ -2754,7 +2930,7 @@ end
 
 2014-08-03  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* run_arctype_comparison.m: --i00 running all arctypes with best
+	* run_arctype_comparison.m: $$i00 running all arctypes with best
 	features on conll07.  The first results (arceager) look really
 	bad, trouble with vectorparser?  Different from using in dump
 	mode?  Trouble with feature set?
@@ -3177,7 +3353,7 @@ while (1) {
 
 	recovered the normal score.
 
-	* run_featselect_bansal5k.m: running on --biyofiz.q.  Something
+	* run_featselect_bansal5k.m: running on $$biyofiz.q.  Something
 	seems wrong with arceager.
 	+ check the featselect moves for arceager: backtracking seems ok.  except the first round multiple repeats.
 	+ put actual feature vectors in cache
@@ -3309,12 +3485,12 @@ end
 	+ use mat2str(sortrows(fv)) to get a string representation of feature vectors for caching.
 	+ for that to work change fv from 3xn to nx3.
 	+ actually that doesn't work, we need to use indices into fidx.
-	+ run_loadCoNLL on top two token and type (do we need type? we can just filter using fv!) on --b40,42,43.
+	+ run_loadCoNLL on top two token and type (do we need type? we can just filter using fv!) on $$b40,42,43.
 	+ confirm that conll_bansal100 is identical to the first half of conllWSJToken_bansal100.
 	= yes except for some 0 vectors (unknowns?) in conll_bansal100.
 	+ what if fidx is out of order and featselect is doing logical indexing?
 	= fine, fidx is never out of order, f (index into fidx) might be but that is no problem.
-	x debug run on --b41.
+	x debug run on $$b41.
 	x Saved dump data as trnhybrid.mat and devhybrid.mat. (fv808 arceager), but need fidx!
 	x logs/trndump.mat includes the fv102 arceager dumps of trn1 and dev1 from conllToken_wikipedia2MUNK-50.
 	+ use fv130 which separates all tokens into word/context and includes s2/n2.
@@ -3886,7 +4062,7 @@ end % for i=1:numel(em)
 	optimization.
 
 	* run_dynamic_oracle2.m: with the new fv808 embeddings and mx5 model.  best at 7 epochs.
-	--i11			TEST				TRAIN
+	$$i11			TEST				TRAIN
 	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
 	mx5	169135	963	3.34	3.76	9.83	8.63	-	-
 	mx5d1	204369	22472	4.07	3.78	10.02	8.83	3.02	8.37	7.42
@@ -3900,7 +4076,7 @@ end % for i=1:numel(em)
 	mx5d9	333380	?	4.04	3.41	9.02	7.98	1.46	4.25	3.80
 	mx5d10	341257	?	4.04	3.41	9.00	7.94	1.36	4.00	3.59
 
-	* run_dynamic_oracle.m: --i10 best results in 9 dynamic oracle epochs.  However this is with fv804, fv808 is better.
+	* run_dynamic_oracle.m: $$i10 best results in 9 dynamic oracle epochs.  However this is with fv804, fv808 is better.
 				TEST				TRAIN
 	model	nsv	time	gtrans	ptrans	phead	whead	ptrans	phead	whead
 	m10	536294	21252	3.40	3.76	 9.89
@@ -4041,7 +4217,7 @@ end % for i=1:numel(em)
 
 	score:0.172941	conll_turkishSKETCH-25 (n:87228)
 
-	--i02 --i03: still oom, do this on balina
+	$$i02 $$i03: still oom, do this on balina
 	score:0.99 conllWSJToken_levy300 (out of memory at 1405179, sv:126177, nk:11, g:6.4e6)
 	score:0.99 conll_levy300 (out of memory at 1596181, sv:165712, nk:263, g:9.8e7)
 	score:0.99 conllWSJToken_mikolovGoogleNews300 (out of memory at 1111004, sv:123146, nk:19, g:4.1e6)
@@ -4937,7 +5113,7 @@ end
 
 	* run_idx708.m: try optimized feats for one epoch and compare to
 	idx804.  Does worse.  I guess we need to wait until full corpus
-	optimization is done.  --i00.
+	optimization is done.  $$i00.
 
 	idx804 = featureindices({'n0','s0','s1','n1','n0l1','s0r1','s0l1','s1r1','s0r'});
 	idx708=featureindices({'n0','n0l1','n0l2','n1','s0','s0r','s0r1','s0s1','s1'});
