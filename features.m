@@ -133,7 +133,7 @@ for ifeat=1:nfeat
       nc = p.rcnt(b);
       for ic=1:4 
         if nc >= ic
-          f(i+1+ic) = 1;
+          f(i+ic) = 1;
         end
       end
     end 
@@ -145,7 +145,7 @@ for ifeat=1:nfeat
       nc = p.lcnt(b);
       for ic=1:4 
         if nc >= ic
-          f(i+1+ic) = 1;
+          f(i+ic) = 1;
         end
       end
     end 
