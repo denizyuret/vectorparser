@@ -1,3 +1,59 @@
+2014-10-02  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* Test-static: compare perceptron, vectorparser, tparser.
+
+	* Test-dynamic:
+
+	* Test-conll07:
+
+	* Test-conll-wsj:
+	
+
+2014-09-23  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run_featselect_rbf-conll07:
+	run_featselect_rbf('archybrid13', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv136', 'fv021', 0.372063662109375);
+	fv023a: 0.0444685231336006
+	w136=load('archybrid13_conll07EnglishToken_wikipedia2MUNK-100_fv136_dump.mat');
+	fv=newFeatureVectors; [g1,f1,e1,o1] = run_optimize_gamma(0.372063662109375, w136.trndump, w136.devdump, fv.fv023a);
+	
+	% no change, fv023a-gamma local optimum, trying archybrid:
+	run_featselect_rbf('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv136', 'fv023a', 0.372063662109375);
+	fv023a/archybrid: 0.0452812 
+	newbest(19)	0.0443168 => fv019
+	
+	% optimizing gamma:
+	BUG: optimizing gamma always uses archybrid!!! (TODO: must streamline optimization)
+$$b40	fv=newFeatureVectors; [g1,f1,e1,o1] = run_optimize_gamma(0.372063662109375, trndump, devdump, fv.fv019);	
+	
+	* conllWSJ:
+$$b41	[g1,f1,e1,o1] = run_optimize_gamma(0.339506144311523, w136.trndump, w136.devdump, fv.fv022a);
+	
+	
+	* features.m (features): Fixed nasty bug with feats 5,-5.  Need to
+	do the dumps and featselect again.
+
+	* Best points:
+	
+	corpus: conllWSJToken
+	arctype: archybrid (TODO: can archybrid13 be the same?)
+	embedding: wikipedia2MUNK-100
+	feats: fv022a (optimal with 339506)
+	kernel: rbf
+	gamma: 0.339506144311523 (tried optimize)
+	devscore: 0.03492252681764 (1-epoch move_pct)
+	test: (TODO)
+	
+	corpus: conll07EnglishToken (trn:16588s,398439w,763702m;dev:1989s,48134w,92290m;trn+dev:18577s,446573w,855992m;tst:214s,5003w)
+	arctype: archybrid
+	embedding: wikipedia2MUNK-100 (TODO: other embeddings, bansal)
+	feats: fv019 (tried featselect)
+	kernel: rbf (tried poly)
+	gamma: 0.372063662109375 (tried gamma_optimize) 
+	devscore: 0.0443168273919168 (1-epoch move_pct)
+	test: (TODO: debug run_static_dynamic)
+
+
 2014-09-10  Deniz Yuret  <dyuret@yunus.hpc.ku.edu.tr>
 
 	* compute_kernel.m (compute_kernel): Cannot understand the memory
@@ -38,7 +94,7 @@ $$b41	% run train/dev pair to determine best dynamic epoch count (after one stat
 
 	1. why so slow? ......... 1989/1989 (12793.27s 0.155472x/s)
 	2. why not 0.0442301? move_pct: 0.0563
-@@b41	need to debug tparser.
+$$b41	need to debug tparser.
 	compare with vectorparser_rbf?
 	
 	% run train0/test pair for final evaluation
@@ -81,6 +137,7 @@ $$b42	[gamma,fval,exitflag,output] = run_optimize_gamma(0.339502, w130.trndump, 
 	m0.step=1e7;
 	cachefile='archybrid13_conllWSJToken_wikipedia2MUNK-100_rbf339506_cache.mat';
 	featselect_rbf(m0, w130.trndump, w130.devdump, cachefile, fv023);
+???	best(23): 0.0325637  % this is exactly the same as archybrid, suspicious.
 	
 	% compare featselect results of conll07 and conllWSJ.
 
