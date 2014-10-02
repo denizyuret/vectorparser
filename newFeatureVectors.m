@@ -1,9 +1,18 @@
 function f = newFeatureVectors()
 
-% 0.0325637 Best with rbf=0.339506144311523, archybrid_conllWSJToken_wikipedia2MUNK-100_fv130_dump.mat.
+% 0.0443168273919168 archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf372064_cache.mat (rbf-gamma:0.372063662109375)
+f.fv019 = [-3 0 8;-2 -1 -4;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-1 -1 -1;-1 -1 4;-1 0 -4;-1 0 4;-1 0 6;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
+
+% 0.03492252681764 archybrid_conllWSJToken_wikipedia2MUNK-100_rbf339506_cache.mat (rbf-gamma:0.339506144311523)
+f.fv022a = [-3 0 4;-3 1 -2;-2 0 -4;-2 0 4;-2 0 6;-2 1 -2;-1 -1 -4;-1 -1 2;-1 -1 4;-1 0 -4;-1 0 -1;-1 0 2;-1 0 4;-1 1 2;-1 1 4;0 -1 -4;0 -1 -1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
+
+% 0.0444685231336006 archybrid13_conll07EnglishToken_wikipedia2MUNK-100_rbf3.720637e+05_cache.mat
+f.fv023a = [-3 0 8;-2 -1 -4;-2 -1 -1;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-2 1 4;-1 -1 -1;-1 -1 4;-1 0 -4;-1 0 4;-1 0 5;-1 0 6;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
+
+% BUGGY: 0.0325637 Best with rbf=0.339506144311523, archybrid_conllWSJToken_wikipedia2MUNK-100_fv130_dump.mat.
 f.fv023 = [-3 0 4;-3 1 -2;-2 -1 -4;-2 0 -4;-2 0 4;-2 0 6;-2 1 -2;-1 -1 -4;-1 -1 2;-1 -1 4;-1 0 -4;-1 0 -1;-1 0 2;-1 0 4;-1 1 2;-1 1 4;0 -1 -4;0 -1 -1;0 -1 4;0 0 -4;0 0 4;1 0 -4;1 0 4];
 
-% 0.0443493 Best with run_featselect_rbf('archybrid13', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv136', 'fv021', 'rbf3721');
+% BUGGY: 0.0443493 Best with run_featselect_rbf('archybrid13', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv136', 'fv021', 'rbf3721');
 f.fv022 = [-3 0 8;-2 -1 -1;-2 0 -9;-2 0 -4;-2 0 4;-2 1 1;-2 1 4;-1 -1 -1;-1 -1 4;-1 0 -4;-1 0 4;-1 0 6;-1 1 -4;-1 1 4;0 -1 -4;0 -1 4;0 -1 5;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4];
 
 % 0.0445990 Best with rbf372111 archybrid_conll07EnglishToken_wikipedia2MUNK-100_fv136_dump.mat
