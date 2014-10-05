@@ -207,7 +207,6 @@ if ~isfield(model,'kerparam') && opts.update
   fprintf('Using default kernel: gamma=1, coef0=1, degree=3, type=poly.\n');
   model.kerparam = struct('type','poly','degree',3,'gamma',1,'coef0',1);
 end
-assert(strcmp(model.kerparam.type,'poly'), 'Only poly kernel models supported.\n');
 
 % Initialize a copy of the model m:
 % We are going to possibly copy things to gpu.
@@ -339,36 +338,63 @@ end % perceptron
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function val_f = compute_scores(m, X, i, j, opts)
-ns1 = size(m.svtr1, 1);
-ns2 = size(m.svtr2, 1);
-ns = ns1 + ns2;
-if ns>0
-  hp = m.kerparam;
-  if opts.gpu
-    xij = gpuArray(X(:,i:j));
-  else
-    xij = X(:,i:j);
-  end
-  if ~opts.average
-    beta1 = m.beta(:,1:ns1);
-    beta2 = m.beta(:,ns1+1:end);
-  else
-    beta1 = m.beta2(:,1:ns1);
-    beta2 = m.beta2(:,ns1+1:end);
-  end
-  if ns2 == 0
-    val_f = beta1 * (hp.gamma * (m.svtr1 * xij) + hp.coef0) .^ hp.degree;
-  elseif ns1 == 0
-    val_f = beta2 * (hp.gamma * (m.svtr2 * xij) + hp.coef0) .^ hp.degree;
-  else
-    val_f = beta1 * (hp.gamma * (m.svtr1 * xij) + hp.coef0) .^ hp.degree + ...
-            beta2 * (hp.gamma * (m.svtr2 * xij) + hp.coef0) .^ hp.degree;
-  end
-  val_f = gather(val_f);
-  clear xij beta1 beta2;
-else
-  val_f = zeros(size(m.beta, 1), j-i+1);
-end % if ns>0
+    ns1 = size(m.svtr1, 1);
+    ns2 = size(m.svtr2, 1);
+    ns = ns1 + ns2;
+    if ns>0
+        hp = m.kerparam;
+        if opts.gpu
+            xij = gpuArray(X(:,i:j));
+        else
+            xij = X(:,i:j);
+        end
+        if ~opts.average
+            beta1 = m.beta(:,1:ns1);
+            beta2 = m.beta(:,ns1+1:end);
+        else
+            beta1 = m.beta2(:,1:ns1);
+            beta2 = m.beta2(:,ns1+1:end);
+        end
+
+        switch m.kerparam.type
+          case 'poly'
+            if ns2 == 0
+                val_f = beta1 * (hp.gamma * (m.svtr1 * xij) + hp.coef0) .^ hp.degree;
+            elseif ns1 == 0
+                val_f = beta2 * (hp.gamma * (m.svtr2 * xij) + hp.coef0) .^ hp.degree;
+            else
+                val_f = beta1 * (hp.gamma * (m.svtr1 * xij) + hp.coef0) .^ hp.degree + ...
+                        beta2 * (hp.gamma * (m.svtr2 * xij) + hp.coef0) .^ hp.degree;
+            end
+
+          case 'rbf'
+            x_sq = sum(xij.^2, 1);
+            if ns2 == 0
+                s1sq = sum(m.svtr1.^2, 2);
+                val_f = beta1 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s1sq, -2 * (m.svtr1 * xij))));
+                clear s1sq;
+            elseif ns1 == 0
+                s2sq = sum(m.svtr2.^2, 2);
+                val_f = beta2 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s2sq, -2 * (m.svtr2 * xij))));
+                clear s2sq;
+            else
+                s1sq = sum(m.svtr1.^2, 2);
+                s2sq = sum(m.svtr2.^2, 2);
+                val_f = beta1 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s1sq, -2 * (m.svtr1 * xij)))) + ...
+                        beta2 * exp(-hp.gamma * bsxfun(@plus, x_sq, bsxfun(@plus, s2sq, -2 * (m.svtr2 * xij))));
+                clear s1sq s2sq;
+            end
+            clear x_sq;
+          otherwise
+            error('Unknown kernel');
+
+        end
+
+        val_f = gather(val_f);
+        clear xij beta1 beta2;
+    else
+        val_f = zeros(size(m.beta, 1), j-i+1);
+    end % if ns>0
 end % compute_scores
 
 
