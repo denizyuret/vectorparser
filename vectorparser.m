@@ -134,12 +134,30 @@ score1 = [];
 if isfield(m, 'cache')
   score1 = m.cache.get(ftr);
 end
-if isempty(score1)
-  % score1 = gather(b1 * (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree);
-  score1 = gather(sum(bsxfun(@times, b1tr, (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree),1))';
+
+switch hp.type
+  case 'poly'
+    if isempty(score1)
+        % score1 = gather(b1 * (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree);
+        score1 = gather(sum(bsxfun(@times, b1tr, (hp.gamma * (m.svtr1 * ftr) + hp.coef0).^hp.degree),1))';
+    end
+    % score2 = gather(b2 * (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree);
+    score2 = gather(sum(bsxfun(@times, b2tr, (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree),1))';
+
+  case 'rbf'
+    x2 = sum(ftr .^ 2, 1);
+    if isempty(score1)
+      s2 = sum(m.svtr1 .^ 2, 2);
+      score1 = gather(b1tr' * exp(-hp.gamma * bsxfun(@plus, x2, bsxfun(@plus, s2, -2 * (m.svtr1 * ftr)))));
+    end
+    s2 = sum(m.svtr2 .^ 2, 2);
+    score2 = gather(b2tr' * exp(-hp.gamma * bsxfun(@plus, x2, bsxfun(@plus, s2, -2 * (m.svtr2 * ftr)))));
+    clear x2 s2;
+
+  otherwise
+    error 'Unknown kernel type'
 end
-% score2 = gather(b2 * (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree);
-score2 = gather(sum(bsxfun(@times, b2tr, (hp.gamma * (m.svtr2 * ftr) + hp.coef0).^hp.degree),1))';
+
 score = score1 + score2;
 end
 
@@ -192,9 +210,6 @@ if m.compute_features
 end
 
 if m.compute_scores
-  assert(isfield(m,'kerparam') && ...
-         strcmp(m.kerparam.type,'poly'), ...
-         'Please specify poly kernel in model.kerparam.\n');
   hp = m.kerparam;
 
   if ~isfield(m,'average')
