@@ -246,7 +246,7 @@ if m.compute_scores
     m.bavg2 = zeros(0, nc);
   end
 
-  if m.update && isfield(m, 'x')
+  if isfield(m, 'x')
     msg('Computing cache scores.');tmp=tic;
     [~,scores] = perceptron(m.x, [], m, 'update', 0, 'average', m.average);
     msg('Initializing kernel cache.');toc(tmp);tmp=tic;
