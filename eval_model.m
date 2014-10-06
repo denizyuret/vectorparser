@@ -1,4 +1,6 @@
 function e = eval_model(m, tst, tstdump, epoch)
+save_x = m.x;
+m.x = tstdump.x;
 [~,mtst] = vectorparser(m, tst, 'update', 0);
 e = eval_conll(tst, mtst);
 [~,s] = perceptron(tstdump.x, tstdump.y, m, 'update', 0);
@@ -11,4 +13,5 @@ fprintf('stat\tmove\thead\tword\tsent\n');
 if nargin >= 4 fprintf('%d\t', epoch); end
 fprintf('%.4f\t%.4f\t%.4f\t%.4f\t%.4f\n', e.stat_pct, ...
         e.move_pct, e.head_pct, e.word_pct, e.sent_pct);
+m.x = save_x;
 end % eval_model
