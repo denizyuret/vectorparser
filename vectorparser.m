@@ -247,12 +247,12 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
             m.bavg2 = zeros(0, nc, 'like', x1);
         end
 
-        if isfield(m, 'x')
-            msg('Computing cache scores.');tmp=tic;
+        if isfield(m, 'x') && ~isempty(m.x)
+            msg('Computing cache scores.');
             [~,scores] = perceptron(m.x, [], m, 'update', 0, 'average', m.average);
-            msg('Initializing kernel cache.');toc(tmp);tmp=tic;
+            msg('Initializing kernel cache.');
             m.cache = kernelcache(m.x, scores);
-            msg('done');toc(tmp);
+            msg('done');
         end
 
         if ~isfield(m, 'gpu')
