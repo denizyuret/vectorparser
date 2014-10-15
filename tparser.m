@@ -17,11 +17,11 @@ classdef tparser < matlab.mixin.Copyable
     update	% update type, 0 means no update i.e. test mode, default=1
     predict     % probability of following maxscoremove rather than mincostmove for greedy parser, default=1
     average	% use beta2 (averaged coefficients) if true, beta if not, default=~update
-    usecache    % whether to use kernel cache, default=true
+    usecache    % whether to use kernel cache, default=false
     beamsize 	% width of the beam for beamparser, default=10
     earlystop   % whether to use earlystop during beam search, default=1
     gpu         % whether to use the gpu, default (gpuDeviceCount>0)
-    output      % what to output (a struct with fields feats, score, etc.)
+    output      % what to output (a struct with fields feats, score, etc.; default: nothing)
   end
  
   
@@ -83,6 +83,15 @@ classdef tparser < matlab.mixin.Copyable
       m.cachekeys = feats;
     end % set_feats
 
+    function set_mode(m, str)
+        if strcmp(str, 'dump')
+            m.update = 0;
+            m.predict = 0;
+            m.output.feats = 1;
+            m.output.move = 1;
+        end
+    end % set_mode
+
   end % methods (Access = public) % common
 
 
@@ -111,23 +120,21 @@ classdef tparser < matlab.mixin.Copyable
       if isempty(m.update) m.update = 1; end
       if isempty(m.predict) m.predict = 1; end % TODO: this should be gparse specific
       if isempty(m.gpu) m.gpu = gpuDeviceCount(); end
-      if isempty(m.usecache) m.usecache = true; end
+      if isempty(m.usecache) m.usecache = false; end
 
-      if ~isfield(m.output,'feats') m.output.feats = false; end
-      if ~isfield(m.output,'score') m.output.score = m.update || m.predict; end
-      if ~isfield(m.output,'eval') m.output.eval = m.predict && isfield(corpus{1},'head'); end
-      if ~isfield(m.output,'cost') m.output.cost = m.update || ~m.predict || m.output.eval; end
-      if ~isfield(m.output,'move') m.output.move = true; end
-      if ~isfield(m.output,'head') m.output.head = true; end
-      if ~isfield(m.output,'sidx') m.output.sidx = true; end
-      if ~isfield(m.output,'corpus') m.output.corpus = true; end
-      for i=1:numel(m.output_fields) m.(m.output_fields{i}) = []; end
+      for i=1:numel(m.output_fields)
+          field = m.output_fields{i};
+          m.(field) = [];
+          if ~isfield(m.output, field)
+              m.output.(field) = false;
+          end
+      end
 
       if m.output.eval
-        m.output.move = 1;
-        m.output.cost = 1;
-        m.output.head = 1;
-        m.output.sidx = 1;
+        m.output.move = true;
+        m.output.cost = true;
+        m.output.head = true;
+        m.output.sidx = true;
       end
 
       m.compute.cost = m.output.cost || m.output.eval || m.update || ~m.predict;
@@ -228,7 +235,7 @@ classdef tparser < matlab.mixin.Copyable
 
   methods (Access = public)             %% Gparse public methods
   
-    function gparse(m, corpus)
+    function my = gparse(m, corpus)
       initialize_gparse(m, corpus);
       msg('Processing sentences...');
       t0 = tic;
@@ -237,33 +244,54 @@ classdef tparser < matlab.mixin.Copyable
         p = feval(m.parser, size(s.wvec,2));
         valid = p.valid_moves();
         while any(valid)
-          mycost = []; myscore = [];
+          mycost = []; myscore = []; 
+          my = struct('feats',[],'move',[]);
+          %my_feats = []; my_move = [];
           if m.compute.cost
             mycost = p.oracle_cost(s.head);
-            if m.output.cost m.cost(:,end+1) = mycost; end
+            if m.output.cost my.cost(:,end+1) = mycost; end
           end
           if m.compute.feats
             frow = features(p, s, m.fselect);
             fcol = frow';
-            if m.output.feats m.feats(:,end+1) = fcol; end
-            if m.usecache m.cachekeys(:,end+1) = fcol; end
+            if m.output.feats || m.usecache
+                my.feats(:,end+1) = fcol;
+            end
           end
           if m.compute.score
             myscore = compute_score(m, fcol);
-            if m.output.score m.score(:,end+1) = myscore; end
+            if m.output.score my.score(:,end+1) = myscore; end
           end
           if m.update
             gparse_update_model(m, frow, mycost, myscore);
           end
-          mymove = gparse_pick_move(m, valid, mycost, myscore);
-          if m.output.move m.move(end+1) = mymove; end
+          %DBG mymove = gparse_pick_move(m, valid, mycost, myscore);
+
+      if ((m.predict == 1) || (rand <= m.predict))
+        [~,mymove] = max(myscore);
+        if ~valid(mymove)
+          % TODO: we could also choose mincostmove here
+          zscore = myscore;
+          zscore(~valid) = -inf;
+          [~,mymove] = max(zscore);
+        end
+      else
+        [~,mymove] = min(mycost);
+      end
+          
+
+          if m.output.move my.move(end+1) = mymove; end
           p.transition(mymove);
           valid = p.valid_moves();
-        end % while 1
-        if m.output.head m.head{end+1} = p.head; end
-        if m.output.sidx m.sidx(end+1) = numel(m.move); end
+        end % while any(valid)
+        if m.output.head my.head{end+1} = p.head; end
+        if m.output.sidx my.sidx(end+1) = numel(m.move); end
         tock(snum, numel(corpus), t0);
       end % for snum=1:numel(corpus)
+      
+      % if m.output.feats m.feats = myfeats; end
+      if m.usecache m.cachekeys = [m.cachekeys, my.feats]; end
+
       finalize_gparse(m, corpus);
     end % gparse
 
@@ -283,7 +311,7 @@ classdef tparser < matlab.mixin.Copyable
 
  
     function move = gparse_pick_move(m, valid, cost, score)
-      if rand <= m.predict
+      if ((m.predict == 1) || (rand <= m.predict))
         [~,move] = max(score);
         if ~valid(move)
           % TODO: we could also choose mincostmove here
