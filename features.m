@@ -25,9 +25,9 @@ ndim2 = ndim/2;                         % for token encodings the first half is 
 nfeat = size(fselect, 1);               % number of features
 imax = nfeat*ndim;                      % maximum number of dimensions
 smax = 1000;                            % maximum distance in sentence
-f = zeros(1,imax);                      % feature vector
+f = zeros(1,imax,'like',s.wvec);        % feature vector
 i = 0;                                  % index into feature vector
-fidx = zeros(1,nfeat);                  % fidx(ifeat): end of feature fselect(ifeat,:) in f
+fidx = zeros(1,nfeat,'uint32');         % fidx(ifeat): end of feature fselect(ifeat,:) in f
 
 for ifeat=1:nfeat
   feat = fselect(ifeat,:);
@@ -228,7 +228,7 @@ for ifeat=1:nfeat
         c = p.stack(cx);
       end
       if c > b+1
-        avec = zeros(ndim,1);
+        avec = zeros(ndim,1,'like',s.wvec);
         for bc=(b+1):(c-1)
           avec = avec + s.wvec(:,bc);
         end
@@ -248,7 +248,7 @@ for ifeat=1:nfeat
         c = p.stack(cx);
       end
       if c > b+1
-        avec = zeros(ndim2,1);
+        avec = zeros(ndim2,1,'like',s.wvec);
         for bc=(b+1):(c-1)
           avec = avec + s.wvec(1:ndim2,bc);
         end
@@ -268,7 +268,7 @@ for ifeat=1:nfeat
         c = p.stack(cx);
       end
       if c > b+1
-        avec = zeros(ndim2,1);
+        avec = zeros(ndim2,1,'like',s.wvec);
         for bc=(b+1):(c-1)
           avec = avec + s.wvec(ndim2+1:end,bc);
         end
