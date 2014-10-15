@@ -10,8 +10,8 @@ fprintf('Finding unique SV in %d...\n', size(model.SV, 2));
 fprintf('Saving %d unique SV.\n', numel(ia));
 b2 = isfield(model, 'beta2');
 nc = size(model.beta, 1);
-newbeta  = zeros(nc, numel(ia));
-if b2 newbeta2 = zeros(nc, numel(ia)); end
+newbeta  = zeros(nc, numel(ia), 'like', model.beta);
+if b2 newbeta2 = zeros(nc, numel(ia), 'like', model.beta2); end
 assert(numel(ic) == size(model.beta, 2));
 
 for oldi=1:numel(ic)
