@@ -21,6 +21,9 @@ c.size = 100 * nkeys;
 c.keys = cell(1, c.size);
 c.vals = cell(1, c.size);
 c.rvec = rand(1, ndims);
+if strcmp(class(keys), 'single')
+    c.rvec = single(c.rvec);
+end
 normval = c.rvec * keys;
 c.mean = mean(normval);
 c.std = std(normval);
