@@ -1,5 +1,259 @@
+2014-10-15  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conllWSJ-fv021a: debugging slow vectorparser with single.  cache problem?
+	a2=load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv021a_dump.mat'); % double
+	a1=convert_to_single(a3); % single
+	load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv021a_dump.mat_1014_00.mat');
+	% initial model.
+	m1=perceptron(a1.trndump.x, a1.trndump.y, model);
+	% first question: why still merge?  
+	Merge is triggered by a fixed size for svtr2, so ok.
+	% second question: why is beta double?	
+	Fixed perceptron to create zeros with the right type.
+
+	m1=perceptron(a1.trndump.x, a1.trndump.y, model); % 263.375s, 96326sv, single
+	m2=perceptron(a2.trndump.x, a2.trndump.y, model); % 517.095s, 96638sv, double
+
+	perceptron(a1.devdump.x, a1.devdump.y, m1, 'update', 0);
+	Using X batchsize=2529
+	nd=1326 nx=76834 nc=3 ns=96326
+	inst	err	nsv	batch	time	mem
+	76834	3.2850	96326	157	20.51	4.53e+08
+
+	perceptron(a2.devdump.x, a2.devdump.y, m2, 'update', 0);
+	Using X batchsize=2224
+	nd=1326 nx=76834 nc=3 ns=96638
+	inst	err	nsv	batch	time	mem
+	76834	3.2551	96638	1779	37.73	4.81e+08
+
+	% ok, confirmed that the single version is twice as fast and slightly worse.
+	% now, what is wrong with vectorparser?
+	% try it on a mini version of trn:
+	a1.trn100 = a1.trn(1:100);
+	[~,a1.trn100dump] = vectorparser(m1, a1.trn100, 'update', 0, 'predict', 0);
+	% same with a2...
+	% ok both a1 and a2 have double x,y in trn100dump; that's bad.  fixing...
+
+	m1.x = a1.trn100.x;
+	m1.y = [];
+	m1a = vectorparser(m1, a1.trn100); % single, usecache, 1.58x/s.
+
+	% m1a.beta is double again!  fixing compactify... done.  1.6x/s.
+
+	m2.x = a2.trn100dump.x;
+	m2.y = [];
+	m2a = vectorparser(m2, a2.trn100); % double, usecache, 0.8x/s.
+
+	% Back to normal with single faster.  Now without cache:
+
+	m1.x = [];
+	m1b = vectorparser(m1, a1.trn100); % single, nocache, 0.5x/s.	
+	isequal(m1a,m1b) % 1
+
+	m2.x = [];
+	m2b = vectorparser(m2, a2.trn100); % double, nocache, x/s.		
+	isequal(m2a,m2b) %  
+
+	% And now with big cache:
+
+	m1.x = a1.trndump.x;
+	m1c = vectorparser(m1, a1.trn100); % single, bigcache, x/s.
+	isequal(m1a,m1c) %
+
+	m2.x = a2.trndump.x;
+	m2c = vectorparser(m2, a2.trn100); % single, bigcache, x/s.
+	isequal(m2a,m2c) %
+
+	
+2014-10-14  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conllWSJ-fv021a: new best fv for conllWSJ, rerunning the experiment with single precision:
+	waiting for the dump file on biyofiz-4-3.  script ready at run_static_dynamic_1014.m.
+@@ilac	run_static_dynamic_1014_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
+
+	DBG: static epoch gives nsv=96326, dev_stat_pct=0.0329
+	Using X batchsize=2528
+	nd=1326 nx=76834 nc=3 ns=96326
+	inst	err	nsv	batch	time	mem
+	76834	3.2850	96326	235	19.79	4.37e+08
+
+	During featselect with double precision:
+	gamma=0.33314
+	Using X batchsize=2224
+	nd=1326 nx=76834 nc=3 ns=96638
+	inst	err	nsv	batch	time	mem
+	76834	3.2551	96638	1779	36.24	4.81e+08
+
+	Difference probably due to single/double precision.  Nice thing is
+	single precision is also twice as fast!
+	% Hmm, perceptron is faster but vectorparser is slower :(
+	
+	* conll07-reoptimize: conll07-full is worse than conll07-dev in spite of larger train set.
+	Trying gamma/feature optimization again with full train:
+@@ilac	run_featselect_rbf_1014_.out	
+	gamma_before_optimize = 0.372063662109375 ==> f(0.372064)=0.044999
+	% this is slightly different than 0.0443 which was trn/dev.
+	gamma_after_optimize = 0.376678123543739 ==> f(0.376678)=0.0432241 (fv019)
+
+	
+	* conll07-full: with full training data.
+$$ilac	msub "run_static_dynamic_1010('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv019', 0.372063662109375)"
+        run_static_dynamic_1010_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv019_0_372063662109375_.out
+	qstat -j 471140
+	qdel 471140
+	
+	epoch	trn	dev	tst
+	1	0.0700	0.0700	0.1483
+	2	0.0447	0.0447	0.1435
+	3	0.0269	0.0269	0.1345
+	4	0.0176	0.0176	0.1353
+	5	0.0151	0.0151	0.1271
+	6	0.0124	0.0124	0.1293
+	7	0.0111	0.0111	0.1293
+	8	0.0102	0.0102	0.1279
+	9	0.0097	0.0097	0.1257
+	10	0.0092	0.0092	0.1271
+	11	0.0093	0.0093	0.1281
+	12	0.0091	0.0091	0.1299
+	13	0.0091	0.0091	0.1297
+	14	0.0090	0.0090	0.1305
+	15	0.0087	0.0087	0.1287
+	16	0.0086	0.0086	0.1279
+	17	0.0085	0.0085	0.1273
+	18	0.0083	0.0083	0.1279
+	19	0.0083	0.0083	0.1281
+	
+	* Best points:
+	
+	corpus: conllWSJToken (trn02-21:39832s,950028w,1820392m;dev22:1700s,40117w,76384m;tst23:2416s,56684w,108536m)
+	arctype: archybrid (TODO: can archybrid13 be the same?)
+	embedding: wikipedia2MUNK-100
+	feats: fv021a
+	kernel: rbf
+	gamma: 0.333140404105682
+	devscore: 0.0325506937033084
+	test: (TODO)
+	
+	corpus: conll07EnglishToken (trn:16588s,398439w,763702m;dev:1989s,48134w,92290m;trn+dev:18577s,446573w,855992m;tst:214s,5003w)
+	arctype: archybrid
+	embedding: wikipedia2MUNK-100 (TODO: other embeddings, bansal)
+	feats: fv019 (tried featselect)
+	kernel: rbf (tried poly)
+	gamma: 0.372063662109375 (tried gamma_optimize) 
+	devscore: 0.0443168273919168 (1-epoch stat_pct)
+	test: (TODO: debug run_static_dynamic)
+
+
+2014-10-12  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conllWSJ:
+	- Gave out of memory error after epoch 6.
+	run_static_dynamic_1005_archybrid_conllWSJToken_wikipedia2MUNK_100_fv022a_0_339506144311523_.out
+	- Suspicious epoch 1, optimize_gamma gives trn=1728102 nsv=91147:
+	w136=load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv136_dump.mat');
+	[g1,f1,e1,o1] = run_optimize_gamma(0.339506144311523, w136.trndump, w136.devdump, fv.fv022a);
+	- run_static_dynamic gives trn=1820392, nsv=95509:
+	06-Oct-2014 10:34:43 Loading archybrid_conllWSJToken_wikipedia2MUNK-100_fv022a_dump.mat
+	run_static_dynamic_1005_archybrid_conllWSJToken_wikipedia2MUNK_100_fv022a_0_339506144311523_.out
+	- debugging on $$biyofiz-4-3: fv136_dump had a bad split.
+	- rerunning featselect with the right split:
+$$ilac	msub "run_featselect_rbf('archybrid','conllWSJToken_wikipedia2MUNK-100','fv136','fv022a',0.339506144311523)"
+	run_featselect_rbf_archybrid_conllWSJToken_wikipedia2MUNK_100_fv136_fv022a_0_339506144311523_.out
+$$ilac	DBG: f(0.33314)=0.032811, gamma_after_optimize = 0.333140404105682
+	DBG: featselect_rbf with cache archybrid_conllWSJToken_wikipedia2MUNK-100_rbf333140_cache.mat
+	DBG: 13-Oct-2014 00:48:45 # newbest(21)	0.0325507	s2w s2r1l= s1w s1r< s1r1l= s0l1c s0l1r= s0l1w s0c s0- s0r= s0w s0r1r= s0r1w n0l1c n0l1- n0l1w n0c n0w n1c n1w 
+
+	
+2014-10-10  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conll07-dev: trn/dev/tst results
+	run_static_dynamic_1005_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv019_0_372063662109375_.out
+	run/log2table.pl: extract table from log file:
+	run/log2table.pl head_pct run_static_dynamic_1005_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv019_0_372063662109375_.out
+
+	epoch	trn	dev	tst
+	1	0.0644	0.1442	0.1455
+	2	0.0408	0.1318	0.1403
+	3	0.0211	0.1258	0.1317
+	4	0.0148	0.1240	0.1305
+	5	0.0108	0.1233	0.1269
+	6	0.0087	0.1231	0.1267
+	7	0.0073	0.1224	0.1235
+	8	0.0065	0.1223	0.1235
+	9	0.0063	0.1225	0.1235
+	10	0.0060	0.1214	0.1219
+	11	0.0060	0.1216	0.1219
+	12	0.0056	0.1211	0.1201
+	13	0.0056	0.1212	0.1219
+	14	0.0055	0.1214	0.1221
+	15	0.0053	0.1210	0.1217
+	16	0.0052	0.1206	0.1229
+	17	0.0050	0.1202	0.1241
+	18	0.0050	0.1202	0.1243
+	19	0.0048	0.1200	0.1239
+	20	0.0049	0.1199	0.1251
+	
+	
+2014-10-05  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* Testing:
+	msub "run_static_dynamic_1005('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv019', 0.372063662109375)"
+	msub "create_dumpfile_wsj('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv022a');"
+	msub "run_static_dynamic_1005('archybrid', 'conllWSJToken_wikipedia2MUNK-100', 'fv022a', 0.339506144311523)"
+	
+	* vectorparser.m (compute_scores): Handle rbf kernel (TODO:
+	compare with tparser)
+
+	* perceptron.m (val_f): Handle rbf kernel.
+
+	* run/run_static_dynamic_1005.m (run_static_dynamic_1005): This is
+	for rbf kernel. and ready dump files.
+
+	* run/create_dumpfile_wsj.m (create_dumpfile_wsj): This is for
+	conllWSJToken, saves each test section separately.
+
 2014-10-02  Deniz Yuret  <dyuret@ku.edu.tr>
 
+	* Test-dump: compare vectorparser vs tparser.
+	
+	% create_dumpfile_07('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv019')
+	m0.parser = eval(['@' parser]);
+	m0.feats = eval(['f.' feats]);
+	m0.step = 1e5; 
+	[~,trndump] = vectorparser(m0, trn, 'update', 0, 'predict', 0);
+
+	% create_dumpfile_07_dbg('archybrid', 'conll07EnglishToken_wikipedia2MUNK-100', 'fv019')
+	m0 = tparser(eval(['@' parser]), eval(['f.' feats]), [], trn);
+	m0.update = 0;
+	m0.predict = 0;
+	m0.output.feats = 1;
+	m0.gparse(trn);
+	trndump.x = m0.feats; trndump.y = m0.move;
+	
+	% Output comparison: ok.
+	
+	% Time comparison:
+	vectorparser: 29 x/s, tparser: 24 x/s. 
+	
+	These lines take more time compared to corresponding lines in vectorparser:
+	
+	tparser:
+	?  0.44    9578  255             if m.output.feats m.feats(:,end+1) = fcol; end 
+	?  0.38    9578  265           mymove = gparse_pick_move(m, valid, mycost, myscore); 
+	?  0.30    9578  266           if m.output.move m.move(end+1) = mymove; end 
+
+	vectorparser:
+	  0.14    9578   36       m.x(:,end+1) = ftr; 
+	  0.07    9578   30       [mincost, mincostmove] = min(cost); 
+	  0.01    9578   58       execmove = mincostmove; 
+	  0.28    9578   70       update_dump(); 
+
+	Using a local variable instead of a field is twice as fast:
+	  0.18    9578  257             if m.output.feats myfeats(:,end+1) = fcol; end %DBG 
+
+	Not calling a local function is three times faster:
+	0.13 if we copy gparse_pick_move.
+	
 	* Test-static: compare perceptron, vectorparser, tparser.
 
 	* Test-dynamic:
@@ -32,26 +286,6 @@ $$b41	[g1,f1,e1,o1] = run_optimize_gamma(0.339506144311523, w136.trndump, w136.d
 	
 	* features.m (features): Fixed nasty bug with feats 5,-5.  Need to
 	do the dumps and featselect again.
-
-	* Best points:
-	
-	corpus: conllWSJToken
-	arctype: archybrid (TODO: can archybrid13 be the same?)
-	embedding: wikipedia2MUNK-100
-	feats: fv022a (optimal with 339506)
-	kernel: rbf
-	gamma: 0.339506144311523 (tried optimize)
-	devscore: 0.03492252681764 (1-epoch move_pct)
-	test: (TODO)
-	
-	corpus: conll07EnglishToken (trn:16588s,398439w,763702m;dev:1989s,48134w,92290m;trn+dev:18577s,446573w,855992m;tst:214s,5003w)
-	arctype: archybrid
-	embedding: wikipedia2MUNK-100 (TODO: other embeddings, bansal)
-	feats: fv019 (tried featselect)
-	kernel: rbf (tried poly)
-	gamma: 0.372063662109375 (tried gamma_optimize) 
-	devscore: 0.0443168273919168 (1-epoch move_pct)
-	test: (TODO: debug run_static_dynamic)
 
 
 2014-09-10  Deniz Yuret  <dyuret@yunus.hpc.ku.edu.tr>
@@ -132,7 +366,7 @@ $$b42	[gamma,fval,exitflag,output] = run_optimize_gamma(0.339502, w130.trndump, 
 	f(0.339506)=0.0325637 (gamma=0.339506144311523)
 	
 	% try with other arctypes (archybrid13 is better in conll07).
-@@b40	m0.kerparam=struct('type', 'rbf', 'gamma', gamma);
+$$b40	m0.kerparam=struct('type', 'rbf', 'gamma', gamma);
 	m0.parser=@archybrid13;
 	m0.step=1e7;
 	cachefile='archybrid13_conllWSJToken_wikipedia2MUNK-100_rbf339506_cache.mat';
