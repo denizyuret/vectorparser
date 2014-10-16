@@ -85,6 +85,10 @@ function [model, dump] = vectorparser(model, corpus, varargin)
         model.SV = [gather(m.svtr1); gather(m.svtr2)]';
         model.beta = [gather(m.bfin1); gather(m.bfin2)]';
         model.beta2 = [gather(m.bavg1); gather(m.bavg2)]';
+        %%%DBG
+        model_cache = m.cache
+        clear model_cache;
+        %%%DBG
         model = compactify(model);
     end
 
