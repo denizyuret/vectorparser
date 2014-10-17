@@ -1,15 +1,44 @@
+2014-10-16  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* stop: run_static_dynamic_1014_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
+	* start: run_static_dynamic_1017_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
+
+	* Best points:
+	
+	corpus: conllWSJToken (trn02-21:39832s,950028w,1820392m;dev22:1700s,40117w,76384m;tst23:2416s,56684w,108536m)
+	arctype: archybrid (TODO: can archybrid13 be the same?)
+	embedding: wikipedia2MUNK-100
+	feats: fv021a
+	kernel: rbf
+	gamma: 0.333140404105682
+	devscore: 0.0325506937033084 (nsv=96326, single=0.0328500403467215)
+	test: (TODO)
+@@ilac	run_static_dynamic_1017_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
+	
+	corpus: conll07EnglishToken (trn:16588s,398439w,763702m;dev:1989s,48134w,92290m;trn+dev:18577s,446573w,855992m;tst:214s,5003w)
+	arctype: archybrid
+	embedding: wikipedia2MUNK-100 (TODO: other embeddings, bansal)
+	feats: fv022b (TODO: compare with wsj feats)
+	kernel: rbf
+	gamma: 0.376747095368119
+	tstscore: 0.0418668 (1-epoch full-trn/tst, nsv=57661)
+	test: (TODO: debug run_static_dynamic)
+@@ilac	run_static_dynamic_1016_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv022b_0_376747095368119_.out
+
+
+
 2014-10-15  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* conllWSJ-fv021a: debugging slow vectorparser with single.  cache problem?
 	a2=load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv021a_dump.mat'); % double
-	a1=convert_to_single(a3); % single
+	a1=convert_to_single(a2); % single
 	load('archybrid_conllWSJToken_wikipedia2MUNK-100_fv021a_dump.mat_1014_00.mat');
 	% initial model.
-	m1=perceptron(a1.trndump.x, a1.trndump.y, model);
+	% m1=perceptron(a1.trndump.x, a1.trndump.y, model);
 	% first question: why still merge?  
-	Merge is triggered by a fixed size for svtr2, so ok.
+	% Merge is triggered by a fixed size for svtr2, so ok.
 	% second question: why is beta double?	
-	Fixed perceptron to create zeros with the right type.
+	% Fixed perceptron to create zeros with the right type.
 
 	m1=perceptron(a1.trndump.x, a1.trndump.y, model); % 263.375s, 96326sv, single
 	m2=perceptron(a2.trndump.x, a2.trndump.y, model); % 517.095s, 96638sv, double
@@ -32,9 +61,11 @@
 	a1.trn100 = a1.trn(1:100);
 	[~,a1.trn100dump] = vectorparser(m1, a1.trn100, 'update', 0, 'predict', 0);
 	% same with a2...
+	a2.trn100 = a2.trn(1:100);
+	[~,a2.trn100dump] = vectorparser(m2, a2.trn100, 'update', 0, 'predict', 0);
 	% ok both a1 and a2 have double x,y in trn100dump; that's bad.  fixing...
 
-	m1.x = a1.trn100.x;
+	m1.x = a1.trn100dump.x;
 	m1.y = [];
 	m1a = vectorparser(m1, a1.trn100); % single, usecache, 1.58x/s.
 
@@ -51,25 +82,114 @@
 	isequal(m1a,m1b) % 1
 
 	m2.x = [];
-	m2b = vectorparser(m2, a2.trn100); % double, nocache, x/s.		
+	m2b = vectorparser(m2, a2.trn100); % double, nocache, 0.21x/s.		
 	isequal(m2a,m2b) %  
 
 	% And now with big cache:
 
 	m1.x = a1.trndump.x;
-	m1c = vectorparser(m1, a1.trn100); % single, bigcache, x/s.
+	m1c = vectorparser(m1, a1.trn100); % single, bigcache, 0.58x/s.
 	isequal(m1a,m1c) %
 
 	m2.x = a2.trndump.x;
-	m2c = vectorparser(m2, a2.trn100); % single, bigcache, x/s.
+	m2c = vectorparser(m2, a2.trn100); % double, bigcache, 0.82x/s.
 	isequal(m2a,m2c) %
 
+	% Are the cache hits and cache types normal?
+	% m1a.cache.rvec is double, fixing...
+	size: 517800, rvec: [1x1326 single], mean: 3.6339, std: 2.0385, hit: 3877, miss: 1301, nkeys: 5144
+
+	% Isn't this too high a miss rate?  Check m2a.cache: (0.83291x/s)
+	size: 517800, rvec: [1x1326 double], mean: 4.2281, std: 2.1084, hit: 4034, miss: 1144, nkeys: 5156
+
+	% Why are these numbers different and why is the miss rate so high?
+	a1.trn100dump.x has 5178 instances.
+	m1a.cache is initialized with 517800 empty cells.
+	number of keys that actually make it in is 5144 (some were lost to clashes).
+	Then we do m1a = vectorparser(m1, a1.trn100);
+	This should have exactly the same x's.  No actually vectorparser
+	modifies m1 and picks different parse paths.
+	[~,a1.trn100dump] = vectorparser(m1, a1.trn100, 'update', 0, 'predict', 0);
+	We get 3877 hits + 1301 misses in 5178 calls.  
+	This should be almost all hits??
+	Actually no, because vectorparser starts diverging from the original parse path.
+	Wrote test_kernel_cache.m(a1.trn100dump.x, a1.trn100dump.y)
+	5178 keys, 5175 unique, 5144 nkeys, 4941 hits?
+
+	OK, numerical difference between matrix mult vs vector mult caused
+	it.  After fixing:
+        hit: 5156 miss: 22 nkeys: 5153 keys_orig: [1326x5178 single]
+	keys_uniq: 5175
+
+	Trying m1a again:
+	m1.x = a1.trn100dump.x;
+	m1.y = [];
+	m1a = vectorparser(m1, a1.trn100); % single, usecache, 1.58x/s.
+	hit: 4055 miss: 1123 nkeys: 5153	
+	Improved from 3877/1301.  Speed 1.6 -> 1.8.
+
+	Trying m2a again: not much difference, I guess this effected
+	singles only.
+	1st run: speed: 0.8326 hit: 4030 miss: 1148 nkeys: 5152 nsv: 96799
+	2nd run: speed: 0.8322 hit: 4027 miss: 1151 nkeys: 5148 nsv: 96799
+
+	Try m1c, m2c again:
+	
+	m1.x = a1.trndump.x;
+	m1c = vectorparser(m1, a1.trn100); % single, bigcache, 0.58x/s -> 1.42x/s
+	isequal(m1a,m1c) % 1
+
+	% OK speed back to normal.
+	% nocache: 0.5, bigcache: 1.42, smallcache: 1.8
+	% nkeys: 1692875, hit: 3661, miss: 1517
+
+	m2.x = a2.trndump.x;
+	m2c = vectorparser(m2, a2.trn100); % double, bigcache, 0.82x/s. -> 0.81x/s
+	isequal(m2a,m2c) % 1
+	nkeys: 1781119, hit: 3998, miss: 1180
+
+	% double still has more nkeys and better hit rate consistent with m2a.
+	% single seems to have too many cache misses!  Debugging on a smaller case:
+
+	m1.x = a1.trndump.x(:,1:100000);
+	m1d = vectorparser(m1, a1.trn100); 
+	isequal(m1a, m1d);
+	% single, 100k cache, 1.7637x/s, hit:4039, miss:1139
+	% single, 500k cache, 1.6840x/s, hit:3957, miss:1221
+	% cache performance seems to decrease with cache size, bug?
+	
+	test_kernel_cache(a1.trndump.x(:,1:500000), a1.trn100dump.x);
+	% single, 5178 cache, 5153 nkeys, 22 miss
+	% single, 100k cache, 99208 nkeys, 49 miss
+	% single, 500k cache, 487330 nkeys, 168 miss
+	% single, 1m cache, 956955 nkeys, 327 miss
+	% the percentage of nkeys is decreasing as more keys are used.
+	
+	% does double have the same problem?
+	test_kernel_cache(a2.trn100dump.x, a2.trn100dump.x);
+	test_kernel_cache(a2.trndump.x(:,1:100000), a2.trn100dump.x);
+	% double, 5178 cache, 5148 nkeys, 27 miss
+	% double, 100k cache, 99263 nkeys, 49 miss
+	% double, 500k cache, 492707 nkeys, 47 miss
+	% double, 1m cache, 982095 nkeys, 56 miss
+	
+	% can we fix it using double rvec?
+	% with kernelcache_dbg where internal calculations are double:
+	% single, 500k cache, 492605 nkeys, 43 miss
+	% single, 1m cache, 982112 nkeys, 51 miss
+
+	% bring a maximum to cache size?  it turns out the empty cells do
+	not take that much space:
+	1.8e6 * 100 * 8 = 1.44e9 ~ 1gb in single
+	and the full cells (roughly 1.8m) take
+	1.8e6 * 1326 * 4 = 1e10 = 10gb in single
+	
 	
 2014-10-14  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* conllWSJ-fv021a: new best fv for conllWSJ, rerunning the experiment with single precision:
 	waiting for the dump file on biyofiz-4-3.  script ready at run_static_dynamic_1014.m.
-@@ilac	run_static_dynamic_1014_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
+$$ilac	run_static_dynamic_1014_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
 
 	DBG: static epoch gives nsv=96326, dev_stat_pct=0.0329
 	Using X batchsize=2528
@@ -90,10 +210,15 @@
 	
 	* conll07-reoptimize: conll07-full is worse than conll07-dev in spite of larger train set.
 	Trying gamma/feature optimization again with full train:
-@@ilac	run_featselect_rbf_1014_.out	
+$$ilac	run_featselect_rbf_1014_.out	
 	gamma_before_optimize = 0.372063662109375 ==> f(0.372064)=0.044999
 	% this is slightly different than 0.0443 which was trn/dev.
 	gamma_after_optimize = 0.376678123543739 ==> f(0.376678)=0.0432241 (fv019)
+	featselect best(22): 0.0422844
+	fv022b = [-3 0 8;-2 -1 -4;-2 -1 5;-2 0 -9;-2 0 -4;-2 0 4;-2 0 7;-2 1 1;-1 -1 -1;-1 -1 4;-1 0 -9;-1 0 -4;-1 0 4;-1 0 6;-1 1 4;0 -1 -4;0 -1 4;0 0 -4;0 0 -2;0 0 4;1 0 -4;1 0 4]
+	f(0.376752)=0.0420756
+	f(0.376747)=0.0418668
+	gamma_after_featselect = 0.376747095368119
 
 	
 	* conll07-full: with full training data.
