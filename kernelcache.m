@@ -10,12 +10,6 @@ classdef kernelcache < handle
         hit;
         miss;
         nkeys;
-
-        %%%DBG
-        % keys_orig;
-        % vals_orig;
-        %%%DBG
-
     end % properties
 
     methods
@@ -23,34 +17,32 @@ classdef kernelcache < handle
         function c = kernelcache(keys, vals);
             ndims = size(keys, 1);
             nkeys = size(keys, 2);
+
+            % The empty cells only take 8 bytes each
+            % So this is useless to limit memory:
+            % c.size = floor(min(100 * nkeys, 1e11/(bytes(keys(:,1))+bytes(vals(:,1)))));
+
             c.size = 100 * nkeys;
             c.keys = cell(1, c.size);
             c.vals = cell(1, c.size);
             rng(1);  % for reproducible random numbers
             c.rvec = rand(1, ndims);
 
-            %%%DBG
-            % c.keys_orig = keys;
-            % c.vals_orig = vals;
-            %%%DBG
-
-            % This should be replaced with rand(x,y,'like',keys) in
-            % a future matlab version.
-            if strcmp(class(keys), 'single')
-                c.rvec = single(c.rvec);
-            end
-
-            normval = c.rvec * keys;
+            % Do all internal calculations in double
+            % Otherwise we get bad cache performance
+            normval = c.rvec * double(keys);
             c.mean = mean(normval);
             c.std = std(normval);
 
-            % This works fast but gives slightly different results
-            % cnum = cellnum(c, keys, normval);
+            % This works fast but gives slightly different indices
+            % with single values compared to doing one at a time.
+            % However the rate is 1e-6 with internal calcs in double.
+            cnum = cellnum(c, keys, normval);
 
             c.nkeys = 0;
             for i=1:nkeys
-                % j = cnum(i);
-                j = cellnum(c, keys(:,i));
+                % j = cellnum(c, keys(:,i));
+                j = cnum(i);
                 if isempty(c.keys{j}) c.nkeys = c.nkeys + 1; end;
                 c.keys{j} = keys(:,i);
                 c.vals{j} = vals(:,i);
@@ -59,9 +51,15 @@ classdef kernelcache < handle
             c.miss = 0;
         end
 
+        % The dot product of any key with random vector rvec is normally
+        % distributed with c.mean and c.std.  Use normcdf to get a
+        % uniformly distributed number in (0,1) from a normally
+        % distributed number N(c.mean,c.std).  Convert that to an
+        % index by multiplying with c.size and taking ceil.
+
         function cnum = cellnum(c, keys, normval)
             if nargin < 3
-                normval = c.rvec * keys;
+                normval = c.rvec * double(keys);
             end
             unifval = normcdf(normval, c.mean, c.std);
             cnum = ceil(c.size * unifval);
