@@ -100,7 +100,7 @@ while j < nx
       updates_i = updates+i-1;          % updates uses (1,nk) indexing, updates_i uses (i,j) indexing
       m.svtr2 = [ m.svtr2; X(:,updates_i)' ];
 
-      newbeta = zeros(nc, nu, 'like', m.beta);
+      newbeta = zeros(nc, nu);
       newbeta(sub2ind(size(newbeta), yindex(updates), 1:nu)) = 1;
       newbeta(sub2ind(size(newbeta), zindex(updates), 1:nu)) = -1;
 
@@ -189,8 +189,8 @@ if (opts.update && (~isfield(model,'SV') || isempty(model.SV)))
   ns = 0;
   model.SV = zeros(nd,0,'like',X);
   % beta and beta2 need to be double otherwise averaging fails.
-  model.beta = zeros(nc,0,'double');
-  model.beta2 = zeros(nc,0,'double');
+  model.beta = zeros(nc,0);
+  model.beta2 = zeros(nc,0);
 else
   nc = size(model.beta, 1);
   ns = size(model.beta, 2);
