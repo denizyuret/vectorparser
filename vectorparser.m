@@ -81,7 +81,7 @@ function [model, dump] = vectorparser(model, corpus, varargin)
 
     %%%DBG
     dbg_m = m
-    clear(dbg_m);
+    clear dbg_m;
     %%%DBG
 
     if m.update
