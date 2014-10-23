@@ -79,6 +79,10 @@ function [model, dump] = vectorparser(model, corpus, varargin)
         dot(snum, numel(corpus), t0);
     end % for s1=corpus
 
+    %%%DBG
+    dbg_m = m
+    clear(dbg_m);
+    %%%DBG
 
     if m.update
         model.x = m.x;

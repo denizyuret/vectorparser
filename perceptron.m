@@ -100,7 +100,7 @@ while j < nx
       updates_i = updates+i-1;          % updates uses (1,nk) indexing, updates_i uses (i,j) indexing
       m.svtr2 = [ m.svtr2; X(:,updates_i)' ];
 
-      newbeta = zeros(nc, nu, 'like', X);
+      newbeta = zeros(nc, nu, 'like', m.beta);
       newbeta(sub2ind(size(newbeta), yindex(updates), 1:nu)) = 1;
       newbeta(sub2ind(size(newbeta), zindex(updates), 1:nu)) = -1;
 
@@ -188,8 +188,9 @@ if (opts.update && (~isfield(model,'SV') || isempty(model.SV)))
   nc = max(Y);
   ns = 0;
   model.SV = zeros(nd,0,'like',X);
-  model.beta = zeros(nc,0,'like',X);
-  model.beta2 = zeros(nc,0,'like',X);
+  % beta and beta2 need to be double otherwise averaging fails.
+  model.beta = zeros(nc,0,'double');
+  model.beta2 = zeros(nc,0,'double');
 else
   nc = size(model.beta, 1);
   ns = size(model.beta, 2);
@@ -218,7 +219,7 @@ m.kerparam = model.kerparam;
 % Accumulate on svtr2 and when svtr2 > sv_block_size merge it with svtr1
 m.sv_block_size = 1e8/nd;
 m.svtr1 = model.SV';
-m.svtr2 = zeros(0, nd, 'like', X);
+m.svtr2 = zeros(0, nd, 'like', model.SV);
 m.beta = model.beta;
 m.beta2 = model.beta2;
 
@@ -278,7 +279,7 @@ function new_sv_block()
 
 fprintf('g:%.2g merging sv blocks %dx%d %dx%d\n', gmem, size(m.svtr1), size(m.svtr2));
 m.svtr1 = [ gather(m.svtr1); gather(m.svtr2) ];
-m.svtr2 = zeros(0, nd, 'like', X);
+m.svtr2 = zeros(0, nd, 'like', m.svtr1);
 m.beta = gather(m.beta);
 m.beta2 = gather(m.beta2);
 if opts.gpu
