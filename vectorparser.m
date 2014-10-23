@@ -11,7 +11,7 @@
 function [model, dump] = vectorparser(model, corpus, varargin)
 
     msg('Initializing...');
-    m = vectorparser_init(model, corpus, varargin, nargout);
+    m = vectorparser_init(model, corpus, varargin, nargout)
     msg('Processing sentences...');
     t0 = tic;
 
@@ -86,8 +86,10 @@ function [model, dump] = vectorparser(model, corpus, varargin)
         model.beta = [gather(m.bfin1); gather(m.bfin2)]';
         model.beta2 = [gather(m.bavg1); gather(m.bavg2)]';
         %%%DBG
-        model_cache = m.cache
-        clear model_cache;
+        if isfield(m, 'cache')
+            model_cache = m.cache
+            clear model_cache;
+        end
         %%%DBG
         model = compactify(model);
     end
@@ -231,10 +233,11 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
             if m.update
                 m.svtr1 = zeros(0, nd, 'like', x1);
                 m.svtr2 = zeros(0, nd, 'like', x1);
-                m.bfin1 = zeros(0, nc, 'like', x1);
-                m.bfin2 = zeros(0, nc, 'like', x1);
-                m.bavg1 = zeros(0, nc, 'like', x1);
-                m.bavg2 = zeros(0, nc, 'like', x1);
+                % if beta/beta2 is not double, averaging fails
+                m.bfin1 = zeros(0, nc, 'double');
+                m.bfin2 = zeros(0, nc, 'double');
+                m.bavg1 = zeros(0, nc, 'double');
+                m.bavg2 = zeros(0, nc, 'double');
             else
                 error('Please specify model.SV');
             end
@@ -243,19 +246,20 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
             assert(size(m.beta, 1) == nc);
             assert(size(m.SV, 2) == size(m.beta, 2));
             assert(all(size(m.beta) == size(m.beta2)));
+            assert(isa(m.beta, 'double') && isa(m.beta2, 'double'));
             m.svtr1 = m.SV';
             m.svtr2 = zeros(0, nd, 'like', x1);
             m.bfin1 = m.beta';
-            m.bfin2 = zeros(0, nc, 'like', x1);
+            m.bfin2 = zeros(0, nc, 'like', m.bfin1);
             m.bavg1 = m.beta2';
-            m.bavg2 = zeros(0, nc, 'like', x1);
+            m.bavg2 = zeros(0, nc, 'like', m.bavg1);
         end
 
         if isfield(m, 'x') && ~isempty(m.x)
             msg('Computing cache scores.');
             [~,scores] = perceptron(m.x, [], m, 'update', 0, 'average', m.average);
             msg('Initializing kernel cache.');
-            m.cache = kernelcache(m.x, scores);
+            m.cache = kernelcache(m.x, scores)
             msg('done');
         end
 
