@@ -1,8 +1,156 @@
+2014-10-24  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* run_static_dynamic_1023_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_ilac.out:
+	First two epochs identical to 1017 run.
+	
+		stat_pct		move_pct	      	head_pct	      
+	epoch	trn	dev	tst	trn	dev	tst   	trn	dev	tst   
+	1	0.0142	0.0329	0.0346	0.0203	0.0409	0.0423	0.0590	0.1081	0.1134
+	2	0.0138	0.0376	0.0389	0.0136	0.0373	0.0374	0.0400	0.0994	0.1023
+
+	* beta-eval: If we eval the 1017 run using beta instead of beta2.
+	Note that head accuracy below 90% without averaging.
+
+		stat_pct		move_pct	      	head_pct	      
+	epoch	trn	dev	tst	trn	dev	tst   	trn	dev	tst   
+	1	0.0245	0.0423	0.0447	0.0349	0.0529	0.0538	0.0951	0.1393	0.1442
+	2	0.0247	0.0482	0.0517	0.0255	0.0467	0.0488	0.0764	0.1285	0.1347
+	3	0.0180	0.0457	0.0473	0.0168	0.0435	0.0436	0.0492	0.1128	0.1161
+	4	0.0141	0.0438	0.0445	0.0119	0.0412	0.0417	0.0375	0.1106	0.1133
+	5	0.0128	0.0428	0.0446	0.0097	0.0400	0.0410	0.0317	0.1065	0.1106
+	6	0.0111	0.0412	0.0431	0.0073	0.0395	0.0395	0.0263	0.1058	0.1062
+	7	0.0100	0.0416	0.0433	0.0064	0.0390	0.0396	0.0232	0.1029	0.1065
+	8	0.0089	0.0412	0.0423	0.0067	0.0400	0.0394	0.0231	0.1049	0.1043
+	9	0.0091	0.0410	0.0421	0.0049	0.0390	0.0388	0.0187	0.1031	0.1032
+	10	0.0082	0.0410	0.0416	0.0043	0.0390	0.0381	0.0174	0.1033	0.1021
+	11	0.0079	0.0406	0.0413	0.0044	0.0387	0.0383	0.0179	0.1021	0.1027
+	12	0.0080	0.0396	0.0416	0.0029	0.0377	0.0369	0.0143	0.0999	0.1005
+
+2014-10-23  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conllWSJ-debug: problem is with beta2 in single precision.
+	- cache.rvec was single in log file.  should be double?
+	- replicated 5->6 on biyofiz-4-3.  same bad result?
+	- overflow in beta2?  m6 is better in beta.  m5 is better in beta2!
+	- So let us eval with beta rather than beta2.
+	- Then either change the way beta2 is computed or use double.
+
+	stat_pct with beta	stat_pct with beta2
+	epoch	trn	dev	trn	dev	tst   
+	1	0.02451	0.04223	0.0142	0.0329	0.0346
+	2	0.02466	0.04817	0.0138	0.0376	0.0389
+	3	0.01802	0.04570	0.0102	0.0364	0.0380
+	4	0.01415	0.04380	0.0088	0.0361	0.0379
+	5	0.01282	0.04280	0.0083	0.0367	0.0381
+	6	0.01109	0.04118	0.0264	0.0578	0.0592
+	7	0.01002	0.04158	0.0470	0.0806	0.0819
+	8	0.00893	0.04119	0.0924	0.1272	0.1277
+	9	0.00901	0.04104	0.1231	0.1596	0.1611
+	10	0.00822	0.04101	0.1489	0.1865	0.1886
+	11	0.00794	0.04058	0.3828	0.4147	0.4139
+	12	0.00801	0.03962	0.4992	0.5284	0.5252
+	
+$$b43	- evaluate all with beta...
+@@ilac	- restart: run_static_dynamic_1023_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_ilac.out
+$$b42	- do the 5->6 experiment with new vectorparser: gave error, just wait for ilac...
+	
+2014-10-22  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conllWSJ: seems buggy after epoch 5.
+	
+	@@ilac	run_static_dynamic_1017_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
+	head_pct
+	epoch	trn	dev	tst	nsv
+	1	0.0590	0.1081	0.1134	96326
+	2	0.0400	0.0994	0.1023	145946
+	3	0.0269	0.0934	0.0969	176485
+	4	0.0210	0.0919	0.0959	196535
+	5	0.0197	0.0947	0.0963	210625
+	6	0.0954	0.1750	0.1749	220682
+	7	0.1857	0.2543	0.2524	228294
+	8	0.3307	0.3836	0.3751
+	9	0.4114	0.4529	0.4478
+	10	0.4724	0.5165	0.5084
+	Speed: 0.92x/s, 12h/epoch
+	
+	
+	* conll07: Not better than trn/dev split?  Did we optimize
+	features and gamma on trn/tst split?  Yes.  stat_pct for epoch 1
+	is 0.0419.  Used to be 0.0459 with trn/dev.  head_pct is also
+	better, it was 0.1455 for trn/dev, it starts at 0.1411 now.  All
+	this tells us that the performance at the end of the first
+	(static) epoch is not necessarily predictive of the eventual
+	performance, which makes it difficult to optimize features /
+	gamma...
+	
+	@@ilac	run_static_dynamic_1016_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv022b_0_376747095368119_.out
+	head_pct
+	epoch	trn	dev	tst	nsv
+	1	0.0696	0.0696	0.1411	57661
+	2	0.0454	0.0454	0.1361	87989
+	3	0.0254	0.0254	0.1263	105806
+	4	0.0176	0.0176	0.1259	116869
+	5	0.0138	0.0138	0.1263	123934
+	6	0.0114	0.0114	0.1245	128757
+	7	0.0108	0.0108	0.1255
+	8	0.0100	0.0100	0.1273
+	9	0.0095	0.0095	0.1279
+	10	0.0095	0.0095	0.1269
+	11	0.0092	0.0092	0.1301
+	12	0.0091	0.0091	0.1317
+`	13	0.0088	0.0088	0.1285
+	14	0.0086	0.0086	0.1271
+	15	0.0086	0.0086	0.1283
+	16	0.0084	0.0084	0.1277
+	17	0.0084	0.0084	0.1301
+	18	0.0083	0.0083	0.1315
+	19	0.0083	0.0083	0.1303
+	20	0.0082	0.0082	0.1295
+	Speed 1.2x/s, 4.3h/epoch
+
+	
+2014-10-18  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* features: only 11 common, marked by '+' below.
+	
+	>> c7 = load('archybrid_conll07EnglishToken_wikipedia2MUNK-100_rbf376678_1014_cache.mat');
+	>> c8 = load ('archybrid_conllWSJToken_wikipedia2MUNK-100_rbf333140_cache.mat');
+	>> [c71, c72, c73] = run_sort_bestfeats(c7.cache);
+	>> [c81, c82, c83] = run_sort_bestfeats(c8.cache);
+	
+
+	fv022b/conll07				fv021a/conllWSJ
+	
+	+[-208]    '-n0w'       '[0 0 4]'   	+[-157]    '-s0w'       '[-1 0 4]'  
+	+[-152]    '-s0w'       '[-1 0 4]'  	+[-141]    '-n0w'       '[0 0 4]'   
+	+[ -69]    '-s1w'       '[-2 0 4]'  	+[ -70]    '-s1w'       '[-2 0 4]'  
+	+[ -68]    '-n1w'       '[1 0 4]'   	+[ -55]    '-n1w'       '[1 0 4]'   
+	+[ -60]    '-n0l1w'     '[0 -1 4]'  	-[ -21]    '-s2w'       '[-3 0 4]'  
+	+[ -50]    '-n1c'       '[1 0 -4]'  	+[ -21]    '-s0l1w'     '[-1 -1 4]' 
+	+[ -40]    '-s0c'       '[-1 0 -4]' 	+[ -21]    '-s0c'       '[-1 0 -4]' 
+	+[ -34]    '-s0r1w'     '[-1 1 4]'  	+[ -18]    '-n0l1w'     '[0 -1 4]'  
+	+[ -33]    '-n0c'       '[0 0 -4]'  	+[ -18]    '-n1c'       '[1 0 -4]'  
+	-[ -32]    '-s0r<'      '[-1 0 6]'  	-[ -16]    '-s1r<'      '[-2 0 6]'  
+	-[ -31]    '-s1d>'      '[-2 0 7]'  	-[ -16]    '-s0r='      '[-1 0 2]'  
+	+[ -31]    '-s0l1w'     '[-1 -1 4]' 	+[ -15]    '-n0c'       '[0 0 -4]'  
+	-[ -28]    '-s1l1c'     '[-2 -1 -4]'	-[ -14]    '-n0l1-'     '[0 -1 -1]' 
+	-[ -28]    '-s0l1-'     '[-1 -1 -1]'	-[ -13]    '-s2r1l='    '[-3 1 -2]' 
+	+[ -28]    '-n0l1c'     '[0 -1 -4]' 	+[ -13]    '-s0r1w'     '[-1 1 4]'  
+	-[ -28]    '-s2aw'      '[-3 0 8]'  	-[ -11]    '-s1r1l='    '[-2 1 -2]' 
+	-[ -25]    '-n0l='      '[0 0 -2]'  	-[ -11]    '-s0l1r='    '[-1 -1 2]' 
+	-[ -22]    '-s1r1+'     '[-2 1 1]'  	-[  -9]    '-s0l1c'     '[-1 -1 -4]'
+	-[ -20]    '-s1c'       '[-2 0 -4]' 	-[  -9]    '-s0-'       '[-1 0 -1]' 
+	-[ -19]    '-s0h-'      '[-1 0 -9]' 	-[  -7]    '-s0r1r='    '[-1 1 2]'  
+	-[ -11]    '-s1h-'      '[-2 0 -9]' 	+[  -7]    '-n0l1c'     '[0 -1 -4]' 
+	-[  -4]    '-s1l1r>'    '[-2 -1 5]' 
+	
+	
 2014-10-16  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* stop: run_static_dynamic_1014_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
 	* start: run_static_dynamic_1017_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
-
+$$b42	* start: run_static_dynamic_1017_archybrid_conllWSJToken_glove6B_100_fv021a_0_333140404105682_.out
+	
 	* Best points:
 	
 	corpus: conllWSJToken (trn02-21:39832s,950028w,1820392m;dev22:1700s,40117w,76384m;tst23:2416s,56684w,108536m)
@@ -13,7 +161,6 @@
 	gamma: 0.333140404105682
 	devscore: 0.0325506937033084 (nsv=96326, single=0.0328500403467215)
 	test: (TODO)
-@@ilac	run_static_dynamic_1017_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
 	
 	corpus: conll07EnglishToken (trn:16588s,398439w,763702m;dev:1989s,48134w,92290m;trn+dev:18577s,446573w,855992m;tst:214s,5003w)
 	arctype: archybrid
@@ -23,7 +170,6 @@
 	gamma: 0.376747095368119
 	tstscore: 0.0418668 (1-epoch full-trn/tst, nsv=57661)
 	test: (TODO: debug run_static_dynamic)
-@@ilac	run_static_dynamic_1016_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv022b_0_376747095368119_.out
 
 
 
@@ -270,6 +416,16 @@ $$ilac	msub "run_static_dynamic_1010('archybrid', 'conll07EnglishToken_wikipedia
 
 
 2014-10-12  Deniz Yuret  <dyuret@ku.edu.tr>
+
+	* conllWSJ: run/log2table.pl head_pct run_static_dynamic_1005_archybrid_conllWSJToken_wikipedia2MUNK_100_fv022a_0_339506144311523_.out 
+	head_pct
+	epoch	trn	dev	tst
+	1	0.0567	0.1104	0.1140
+	2	0.0373	0.0989	0.0996
+	3	0.0243	0.0945	0.0954
+	4	0.0188	0.0914	0.0939
+	5	0.0154	0.0897	0.0936
+	6	0.0141	0.0885	0.0937
 
 	* conllWSJ:
 	- Gave out of memory error after epoch 6.
