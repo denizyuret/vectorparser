@@ -1,12 +1,33 @@
-2014-10-24  Deniz Yuret  <dyuret@ku.edu.tr>
+2014-10-27  Deniz Yuret  <dyuret@ku.edu.tr>
 
-	* run_static_dynamic_1023_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_ilac.out:
-	First two epochs identical to 1017 run.
+$$ilac	* run_static_dynamic_1023_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_ilac.out:
+	First two epochs identical to 1017 run.  For conll07 use the 2014-10-10 result.
 	
-		stat_pct		move_pct	      	head_pct	      
-	epoch	trn	dev	tst	trn	dev	tst   	trn	dev	tst   
-	1	0.0142	0.0329	0.0346	0.0203	0.0409	0.0423	0.0590	0.1081	0.1134
-	2	0.0138	0.0376	0.0389	0.0136	0.0373	0.0374	0.0400	0.0994	0.1023
+		stat_pct		move_pct	      	head_pct	      	word_pct
+	epoch	trn	dev	tst	trn	dev	tst   	trn	dev	tst   	trn	dev	tst   
+	1	0.0142	0.0329	0.0346	0.0203	0.0409	0.0423	0.0590	0.1081	0.1134	0.0509	0.0946	0.0983
+	2	0.0138	0.0376	0.0389	0.0136	0.0373	0.0374	0.0400	0.0994	0.1023	0.0359	0.0881	0.0912
+	3	0.0102	0.0364	0.0380	0.0081	0.0351	0.0355	0.0269	0.0934	0.0969	0.0246	0.0832	0.0860
+	4	0.0088	0.0361	0.0378	0.0058	0.0348	0.0352	0.0209	0.0921	0.0955	0.0193	0.0819	0.0845
+	5	0.0076	0.0360	0.0376	0.0043	0.0342	0.0349	0.0174	0.0910	0.0950	0.0162	0.0810	0.0839
+	6	0.0071	0.0359	0.0375	0.0033	0.0341	0.0347	0.0150	0.0907	0.0940	0.0142	0.0807	0.0835
+	7	0.0068	0.0359	0.0374	0.0025	0.0336	0.0346	0.0131	0.0894	0.0940	0.0123	0.0795	0.0835
+	8	0.0067	0.0360	0.0374	0.0023	0.0336	0.0343	0.0125	0.0892	0.0934	0.0118	0.0792	0.0832
+	9	0.0068	0.0359	0.0377	0.0023	0.0333	0.0342	0.0125	0.0888	0.0935	0.0119	0.0789	0.0833
+	10	0.0068	0.0358	0.0376	0.0021	0.0333	0.0342	0.0121	0.0885	0.0933	0.0116	0.0786	0.0830
+	11	0.0068	0.0360	0.0377	0.0021	0.0335	0.0341	0.0120	0.0891	0.0928	0.0116	0.0792	0.0827
+	12	0.0068	0.0361	0.0378	0.0021	0.0335	0.0341	0.0119	0.0889	0.0925	0.0116	0.0790	0.0824
+	13	0.0068	0.0359	0.0379	0.0020	0.0332	0.0339	0.0117	0.0884	0.0920	0.0114	0.0785	0.0821
+	14	0.0069	0.0359	0.0380	0.0020	0.0333	0.0340	0.0116	0.0888	0.0921	0.0112	0.0788	0.0823
+	15	0.0068	0.0360	0.0380	0.0019	0.0334	0.0340	0.0115	0.0888	0.0920	0.0111	0.0787	0.0820
+	16	0.0068	0.0364	0.0380	0.0019	0.0338	0.0340	0.0116	0.0899	0.0919	0.0113	0.0798	0.0820
+	17	0.0069	0.0364	0.0379	0.0019	0.0337	0.0340	0.0114	0.0898	0.0918	0.0110	0.0799	0.0819
+	18	0.0069	0.0363	0.0380	0.0018	0.0336	0.0341	0.0115	0.0894	0.0922	0.0110	0.0795	0.0823
+	19	0.0069	0.0365	0.0380	0.0018	0.0336	0.0341	0.0115	0.0893	0.0921	0.0109	0.0795	0.0822
+	20	0.0069	0.0364	0.0380	0.0017	0.0337	0.0342	0.0113	0.0894	0.0927	0.0108	0.0796	0.0827
+	
+
+2014-10-24  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* beta-eval: If we eval the 1017 run using beta instead of beta2.
 	Note that head accuracy below 90% without averaging.
@@ -51,14 +72,14 @@
 	12	0.00801	0.03962	0.4992	0.5284	0.5252
 	
 $$b43	- evaluate all with beta...
-@@ilac	- restart: run_static_dynamic_1023_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_ilac.out
+	- restart: run_static_dynamic_1023_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_ilac.out
 $$b42	- do the 5->6 experiment with new vectorparser: gave error, just wait for ilac...
 	
 2014-10-22  Deniz Yuret  <dyuret@ku.edu.tr>
 
 	* conllWSJ: seems buggy after epoch 5.
 	
-	@@ilac	run_static_dynamic_1017_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
+$$ilac	run_static_dynamic_1017_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_.out
 	head_pct
 	epoch	trn	dev	tst	nsv
 	1	0.0590	0.1081	0.1134	96326
@@ -83,7 +104,7 @@ $$b42	- do the 5->6 experiment with new vectorparser: gave error, just wait for 
 	performance, which makes it difficult to optimize features /
 	gamma...
 	
-	@@ilac	run_static_dynamic_1016_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv022b_0_376747095368119_.out
+$$ilac	run_static_dynamic_1016_archybrid_conll07EnglishToken_wikipedia2MUNK_100_fv022b_0_376747095368119_.out
 	head_pct
 	epoch	trn	dev	tst	nsv
 	1	0.0696	0.0696	0.1411	57661
