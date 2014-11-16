@@ -1,3 +1,375 @@
+2014-11-16    <dyuret@ku.edu.tr>
+
+@@	* run/nnet_minibatch_random.m: Do random search of the
+	hyperparameter space.  Single layer at @@biyofiz-4-0, two layer at
+	@@biyofiz-4-2.  Range [10-200] for all params.  Also search the
+	batchepochs.
+
+	- how do we optimize:
+	- batch-epochs
+	- layers
+	- units per layer
+	- is this the right way to train?
+	- is this the right objective function?
+	- does averaging help?
+	- does pre-training help?
+	- going beyond 200?
+	
+2014-11-15    <dyuret@ku.edu.tr>
+
+	* run/nnet_minibatch.m: We are able to get dev cost to 0.0298138
+	using 100K minibatches and the whole dataset with patternnet(25).
+	
+	==> epoch=1 batch=19 trn=0.030597 val=0.0304265
+	==> epoch=2 batch=19 trn=0.0305259 val=0.0301641
+	==> epoch=3 batch=19 trn=0.0304675 val=0.0300263
+	==> epoch=4 batch=19 trn=0.0298717 val=0.0299105
+	==> epoch=5 batch=19 trn=0.0300261 val=0.0298338
+	==> epoch=6 batch=19 trn=0.030053 val=0.0298138
+	==> epoch=7 batch=19 trn=0.030053 val=0.0298138	***
+	
+	* q: what is the trn/dev/test accuracy?
+	0.0298 dev loss corresponds to 0.0574 prediction error
+	0.0289 trn loss corresponds to 0.0560 prediction error
+	
+	This is consistent with out-of-sample test set:
+	tst_out=net(p_tst);
+	mean((tst_out(:)-t_tst(:)).^2) % 0.0301
+	[~,tst_max]=max(tst_out);
+	mean(tst_max ~= double(y_tst)) % 0.0587
+	
+	* q: less epochs per batch in the beginning help?
+	
+	Restrict each batch to max 10 epochs: net.trainParam.epochs=10;
+	Seems to get stuck in a bad minimum:
+	==> epoch=1 batch=19 trn=0.0364139 val=0.0372686
+	==> epoch=2 batch=19 trn=0.0343426 val=0.034399
+	==> epoch=3 batch=19 trn=0.0342088 val=0.0342703
+	==> epoch=4 batch=19 trn=0.0340899 val=0.0341482
+	
+	net.trainParam.epochs=20;
+	==> epoch=1 batch=19 trn=0.0322025 val=0.0322322
+	==> epoch=2 batch=19 trn=0.0320921 val=0.0321144
+
+	net.trainParam.epochs=40; % found sweet spot
+	==> epoch=1 batch=19 trn=0.0295118 val=0.029725
+	==> epoch=2 batch=19 trn=0.0292515 val=0.0294362	***
+	
+	net.trainParam.epochs=50; % very fickle and not convex (comp with full)
+	==> epoch=1 batch=19 trn=0.0314811 val=0.0314628
+	==> epoch=2 batch=19 trn=0.03133 val=0.0313066
+	
+	net.trainParam.epochs=30; % this is why i dont like nnets
+	==> epoch=1 batch=19 trn=0.0307661 val=0.0311372
+	==> epoch=2 batch=19 trn=0.0306145 val=0.0309189
+	
+	% we can't do regularization as given in the smola paper because
+	it measures distance from previous point, not 0.
+	
+	* q: more hidden units/layers help? (prev results were with 25)
+	% keeping net.trainParam.epochs=40; may not be ideal...
+
+	net=patternnet(30);
+	==> epoch=1 batch=19 trn=0.0297247 val=0.0293575
+	==> epoch=2 batch=19 trn=0.0298361 val=0.029128	***
+	
+	net=patternnet(40);
+	==> epoch=1 batch=19 trn=0.0296167 val=0.0286256
+	==> epoch=2 batch=19 trn=0.0295002 val=0.0284329	***
+	
+	net=patternnet(50);	% this is good news, never worked for small data
+	==> epoch=1 batch=19 trn=0.0281019 val=0.0270577
+	==> epoch=2 batch=19 trn=0.0280043 val=0.0268897	***
+	
+	net=patternnet(60);
+	==> epoch=1 batch=19 trn=0.0303423 val=0.0294406
+
+	net=patternnet(70);	% not convex!
+	==> epoch=1 batch=19 trn=0.0282054 val=0.0277522
+
+	net=patternnet(80);
+	==> epoch=1 batch=19 trn=0.0279242 val=0.0269423
+
+	net=patternnet(90);	% gets stuck with rng(1), restart rng(2)
+	==> epoch=1 batch=19 trn=0.027014 val=0.026036
+	==> epoch=2 batch=19 trn=0.0271728 val=0.0259386
+	==> epoch=3 batch=19 trn=0.0271773 val=0.0259049	
+	==> epoch=4 batch=6 trn=0.0242783 val=0.0258576	***
+
+	Error at this point:
+	trn/dev/tst: 0.0485/0.0500/0.0514 (loss: 0.0253/0.0259/0.0265)
+	Compare to: 0.0175/0.0329/0.0346 of 1-epoch perceptron
+
+	net=patternnet(120);
+	==> epoch=1 batch=19 trn=0.0284414 val=0.0271286 (rng(2))
+	==> epoch=1 batch=19 trn=0.0275835 val=0.025687  (rng(1))  ***
+	==> epoch=1 batch=19 trn=0.0275591 val=0.0260256 (rng(42))
+	==> epoch=1 batch=19 trn=0.0282292 val=0.0270393 (rng(3))
+
+	net=patternnet([90 60]);
+	==> epoch=1 batch=19 trn=0.0280835 val=0.0270758 (rng(2))
+	==> epoch=1 batch=19 trn=0.0275355 val=0.0264942 (rng(1))
+
+	net=patternnet([120 30]);
+	==> epoch=1 batch=19 trn=0.0281179 val=0.0277087 (rng(2))
+	==> epoch=1 batch=19 trn=0.0281958 val=0.0268038 (rng(1))
+
+	net=patternnet(150);
+	==> epoch=1 batch=19 trn=0.027346 val=0.0264134 (rng(1))
+	==> epoch=1 batch=19 trn=0.0278695 val=0.0269375 (rng(2))
+	
+	net=patternnet([90 30 30]);
+	==> epoch=1 batch=19 trn=0.0269697 val=0.0261999 (rng(2))
+	==> epoch=1 batch=19 trn=0.0270478 val=0.0257561 (rng(3))
+	
+	net=patternnet(180); % out of memory, reduce batchsize?
+	==> epoch=1 batch=19 trn=0.0286053 val=0.0273498 (rng(42))
+	
+	net=patternnet([90 30]);
+	==> epoch=1 batch=19 trn=0.0269882 val=0.0255406 (rng(1)) ***
+	==> epoch=1 batch=19 trn=0.0261928 val=0.0254736 (rng(2)) ***
+
+	How about if we don't use validation for the first epoch:
+	Yes, that works!
+	We just weren't learning much from the last 80% of train data!
+	
+	net=patternnet([90 30]);
+	==> epoch=2 batch=1 trn=0.0178031 val=0.0237843
+	
+	Can we just switch test and validation?
+	Find the minimum.  Then play with batch-epoch=40.
+	That's like step size, maybe should reduce gradually.
+	We need to reoptimize layers and hidden units.
+	
+	net=patternnet([90 30]);
+	==> epoch=2 batch=1 trn=0.0150816 val=NaN tst=0.0246039
+	==> epoch=2 batch=11 trn=0.0127859 val=NaN tst=0.0223863
+	==> epoch=3 batch=1 trn=0.0133801 val=NaN tst=0.0236835
+	==> epoch=4 batch=1 trn=0.0120749 val=NaN tst=0.0231974
+	==> epoch=5 batch=1 trn=0.0114838 val=NaN tst=0.0235363	
+	
+	The last small epoch really screws us up (0.0268).  Pick epoch
+	data randomly?  Find a way to adjust batch-epoch number.  Read up
+	on SGD theory.
+	
+	net=patternnet([90 30]); with batch-epochs=10
+	==> epoch=2 batch=1 trn=0.0327633 val=NaN tst=0.0333506
+	==> epoch=3 batch=1 trn=0.0278755 val=NaN tst=0.0286027
+	==> epoch=4 batch=1 trn=0.0255721 val=NaN tst=0.0263425
+	==> epoch=5 batch=1 trn=0.0242439 val=NaN tst=0.0250586
+	==> epoch=6 batch=1 trn=0.0228968 val=NaN tst=0.0238428
+	==> epoch=7 batch=1 trn=0.0220123 val=NaN tst=0.0231609
+	==> epoch=8 batch=1 trn=0.0214357 val=NaN tst=0.0224017
+	==> epoch=9 batch=1 trn=0.0208732 val=NaN tst=0.0219181
+	==> epoch=10 batch=1 trn=0.0206029 val=NaN tst=0.0217161
+	==> epoch=10 batch=12 trn=0.0179716 val=NaN tst=0.0213889 ***
+
+	Random sampling with batch-epochs=40 (each old epoch =~ 20xnew batch)
+	loss measures mse, err measures 0-1 error rate.
+	==> batch=20 tloss=0.0137094 terr=0.0235 vloss=0.0237919 verr=0.0461645
+	==> batch=33 tloss=0.0113816 terr=0.01808 vloss=0.0232309 verr=0.0434834
+	==> batch=40 tloss=0.0110373 terr=0.01823 vloss=0.0242332 verr=0.0462035
+	==> batch=60 tloss=0.010301 terr=0.01627 vloss=0.0229451 verr=0.0427805
+	==> batch=78 tloss=0.0102041 terr=0.01597 vloss=0.0228 verr=0.0418304
+	==> batch=80 tloss=0.0101979 terr=0.0159 vloss=0.0229248 verr=0.042273
+	==> batch=100 tloss=0.00889762 terr=0.01379 vloss=0.0237851 verr=0.043184
+	
+	Random sampling with batch-epochs=25 (each old epoch =~ 20xnew batch)
+	==> batch=91 tloss=0.0127161 terr=0.02168 vloss=0.0206887 verr=0.0396699
+	
+	Random sampling with batch-epochs=10 (each old epoch =~ 20xnew batch)
+	==> batch=100 tloss=0.0209893 terr=0.03985 vloss=0.0232879 verr=0.0454356
+
+	
+	* q: Can a single epoch of perceptron be this good?  What if we run it multiple epochs?
+	
+	>> m0 = struct('step', 1e5, 'batchsize', 1e3, 'kerparam', struct('type', 'rbf', 'gamma', 0.333140404105682));
+	>> m1 = perceptron(x_trn, single(y_trn), m0);
+	Using X batchsize=1000
+	nd=1326 nx=1820392 nc=3 ns=0
+	inst	err	nsv	batch	time	mem
+	1820392	5.2815	96646	392	251.97	3.91e+08
+	Saving 96326 unique SV.
+	>> [~, trn_out, trn_aer] = perceptron(x_trn, single(y_trn), m1, 'update', 0);
+	0.0175 % 0.0142 was on a 1000 sample
+	>> [~, dev_out, dev_aer] = perceptron(x_dev, single(y_dev), m1, 'update', 0);
+	0.0329 % confirmed manually as well
+	>> [~, tst_out, tst_aer] = perceptron(x_tst, single(y_tst), m1, 'update', 0);
+	0.0346 % so it is real!
+	>> m2 = perceptron(x_trn, single(y_trn), m1);
+	1820392	2.0441	133536	392	488.12	3.67e+08
+	Saving 122579 unique SV.
+	>> [~,dev_out,dev_aer] = perceptron(x_dev, single(y_dev), m2, 'update', 0);
+	0.0310
+	>> [~, tst_out, tst_aer] = perceptron(x_tst, single(y_tst), m2, 'update', 0);
+	0.0328
+
+	* q:  need better loss function (crossentropy)?
+
+	The 2014a version of matlab has softmax final layer with
+	crossentropy loss function as default for patternnet.  Here is a comparison:
+
+	time	epoch	gpu	data	trnfcn	hidden	trn/val/tst loss
+	327	127	n	dev	scg	10	0.0292/0.0424/0.0419 (2013a)
+	149	83	n	dev	scg	10	0.1208/0.1558/0.1525 (2014a)
+
+	Of course loss functions are incomparable.  We need to look at accuracy:
+	dev/tst 0.0749/0.0904 for 2014a
+	dev/tst 0.0597/0.0814 for 2013a
+
+	Is this an optimization problem?  Bigger network?
+	
+	* q: So figure out how to train bigger networks?
+	
+	- remove validation set always taking n steps?
+	- remove preprocessing and use logsig?
+	- randomly sample each batch?
+	- average each batch model?
+
+2014-11-14    <dyuret@ku.edu.tr>
+
+	* matlab-nnet:
+	
+	- there are default preprocessing fns, be careful.
+	net.inputs{1}.processFcns, net.outputs{i}.processFcns
+	we can remove them, but output should be logsig.
+	
+	- it automatically divides trn/dev/tst.
+	divideFcn, divideParam, divideMode
+	use rng(1) for repeatability.
+	use net.divideFcn='' to cancel data division
+	
+	- it uses scg by default: ok
+	trainFcn, trainParam	
+	
+	- warning: it may be using the wrong performFcn: 'mse'
+	2013 does not have crossentropy.
+	
+	- the default transfer function is tansig (i.e.[-1,+1], not logsig=[0,1])
+	help nntransfer, net.layers{i}.transferFcn
+	
+	- it may be using regularization?  not by default
+	net.performFcn, net.performParam.regularization=0.
+	btw, it applies regularization to biases as well.
+	there is also normalization which is for multiple outputs with diff scales.
+	
+	- more properties at:
+	http://www.mathworks.com/help/nnet/ug/neural-network-object-properties.html
+	http://www.mathworks.com/help/nnet/ug/neural-network-subobject-properties.html
+	
+	- it is not using a softmax layer.
+	- it cannot handle single with or without gpu.
+	- it cannot use trainlm,br on gpu. bfg gets stuck.
+	
+	Default commands used:
+	>> load 'mat/archybrid_conllWSJToken_wikipedia2MUNK-100_fv021a_xy.mat'
+	>> t_dev = (full(sparse(double(y_dev), 1:numel(y_dev), 1)));
+	>> p_dev = double(x_dev);
+	>> net=patternnet;
+	>> rng(1)
+	>> [a,b]=train(net, p_dev, t_dev, 'useGPU', 'yes');
+	
+	time	epoch	gpu	data	trnfcn	hidden	trn/val/tst
+	327	127	n	dev	scg	10	0.0292/0.0424/0.0419
+	29	127	y	dev	scg	10	0.0292/0.0424/0.0419
+	16.8	138	y	dev	rp	10	0.0369/0.0516/0.0507
+	36.2	109	y	dev	cgb	10	0.0305/0.0441/0.0438
+	35.4	107	y	dev	cgf	10	0.0355/0.0487/0.0484
+	35.3	104	y	dev	cgp	10	0.0317/0.0442/0.0437
+	102.3	329	y	dev	oss	10	0.0276/0.0403/0.0389
+	21.4	176	y	dev	gdx	10	0.0625/0.0651/0.0659
+	120.4	1000	y	dev	gdm	10	0.1439/0.1433/0.1449
+	19	81	y	dev	scg	20	0.0277/0.0387/0.0399
+	17.9	74	y	dev	scg	40	0.1178/0.1213/0.1231 ? convergence
+	23.6	102	y	dev	scg	30	0.0226/0.0384/0.0384
+	27.3	121	y	dev	scg	5	0.0385/0.0453/0.0443
+	20.9	88	y	dev	scg	35	0.0265/0.0403/0.0408
+	31.6	132	y	dev	scg	35	0.0214/0.0397/0.0412 ? min_grad=1e-10 max_fail=32
+	25.4	110	y	dev	scg	25	0.0227/0.0379/0.0381
+	23.9	100	y	tst	scg	25	0.0287/0.0379/0.0375
+	30.2	126	y	tst	scg	25	0.0287/0.0379/0.0375
+
+	Kernel perceptron after one epoch with full train:
+	trn=0.0142, dev=0.0329, tst=0.0346
+	
+	25 hidden units seems close to optimal.
+	
+	dev:76384, tst:108536, trn:1820392 x1326
+	
+	trn gives memory error as expected. 19.3GB.  Since we don't have
+	single available, we need to split train and do minibatch
+	training.  Try 200K batches: 51 secs/128 epochs.  250K batches fail.
+	
+	time	epoch	gpu	data	trnfcn	hidden	trn/val/tst
+	48.4	126	y	trn200	scg	25	0.0265/0.0334/0.0326
+	63.4	160	y	trn200	scg	30	0.0234/0.0322/0.0338
+	65.0	162	y	trn200	scg	35	0.0254/0.0344/0.0347
+
+	Hidden units are up +5 when data doubled.
+	
+	This network has 0.08 error on real test data.  So what does
+	0.0347 refer to?  Is it some other performance metric?  It seems
+	it refers to the MSE on the 3xN matrix of answers.  Maybe this is
+	not so surprizing as we are only using 10% of the training data.
+
+	In the new version crossentropy is a possible performFcn but not
+	in our version.  The first arg can be an array for multiple hidden
+	layers.
+
+	time	epoch	gpu	data	trnfcn	hidden	trn/val/tst
+	61.6	123	y	trn200	scg	30,10	0.0242/0.0319/0.0318
+	58.8	116	y	trn200	scg	30,20	0.0249/0.0328/0.0328
+	72.8	146	y	trn200	scg	20,10	0.0246/0.0322/0.0318
+	82.4	166	y	trn200	scg	30,5	0.0265/0.0336/0.0330
+	60.0	118	y	trn200	scg	35,10	0.0258/0.0338/0.0340
+	78.2	156	y	trn200	scg	25,10	0.0248/0.0316/0.0315
+
+	Can we just remove the processFcns from the last net:
+	>> net.inputs{1}.processFcns={};
+	>> net.outputs{3}.processFcns={};
+	>> rng(1);
+	>> [a,b]=train(net, p_trn1, t_trn1, 'useGPU', 'yes');
+	
+	Gets stuck. Wrong sigmoid type incompatible with 0/1 output?
+	Let's try on simpler architecture:
+	
+	>> net=patternnet(25);
+	>> rng(1)
+	>> [a,b]=train(net, p_trn1, t_trn1, 'useGPU', 'yes');
+	0.0265/0.0334/0.0326	
+	>> net.inputs{1}.processFcns={}
+ 	>> rng(1)
+	>> [a,b]=train(net, p_trn1, t_trn1, 'useGPU', 'yes');
+	0.0251/0.0312/0.0312
+	>> net.outputs{2}.processFcns={};
+	>> rng(1)
+	>> [a,b]=train(net, p_trn1, t_trn1, 'useGPU', 'yes');
+	0.0326/0.0367/0.0357 (1000 epochs)
+
+	Having a hard time probably because of tansig:
+
+	>> net.layers{2}.transferFcn='logsig'
+	>> rng(1)
+	>> [a,b]=train(net, p_trn1, t_trn1, 'useGPU', 'yes');
+	0.0270/0.0322/0.0322
+
+	Let's make it all logsig:
+
+	>> net.layers{1}.transferFcn='logsig';
+	>> rng(1)
+	>> [a,b]=train(net, p_trn1, t_trn1, 'useGPU', 'yes');
+	0.0249/0.0315/0.0312
+
+	So we can use logsig everywhere and cancel pre/postprocessing.
+	
+	TODO:
+	+ check the question marks above.
+	- try minibatch.
+	- try sophisticated optimizers.
+	- find cross-entropy cost, softmax layer, or write it.
+
+	
+	
 2014-10-27  Deniz Yuret  <dyuret@ku.edu.tr>
 
 $$ilac	* run_static_dynamic_1023_archybrid_conllWSJToken_wikipedia2MUNK_100_fv021a_0_333140404105682_ilac.out:
