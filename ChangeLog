@@ -1,3 +1,23 @@
+2014-11-17    <dyuret@ku.edu.tr>
+
+	* crossentropy: The softmax experiment finished
+	(net-90-30.mat,log).  The trn/dev combination was used (no
+	minibatch).  Convergence in 403 iterations, 84109 secs on balina.
+	
+	0-1 error rate: trn/dev/tst: 0.0326/0.0378/0.0396.
+
+	We are within .5 percent of the perceptron: 0.0175/0.0329/0.0346.
+
+	Best dev err from random search so far:
+	==> best_err	0.0373663	172	38
+	Single layer with 172 nodes and 38 batch-epochs per 100K random batch.
+
+	Best dev err from two-layer random search:
+	==> best_err	0.0387198	83	96	22
+	i.e. two layers with 83 and 96 and 22 batch-epochs per 100K random batch.
+
+	Try random network for optimization...
+	
 2014-11-16    <dyuret@ku.edu.tr>
 
 @@	* run/nnet_minibatch_random.m: Do random search of the
@@ -14,6 +34,8 @@
 	- does averaging help?
 	- does pre-training help?
 	- going beyond 200?
+	- can we optimize structure with random networks?  (ELM)
+	
 	
 2014-11-15    <dyuret@ku.edu.tr>
 
