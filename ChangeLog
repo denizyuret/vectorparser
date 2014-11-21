@@ -1,3 +1,269 @@
+2014-11-21    <dyuret@ku.edu.tr>
+
+	* nnet_minibatch_adaptive.m: adaptive schedule.  Do not slow down
+	until you haven't made progress for a while.
+	
+	!!! Cancelling moves that do not improve dev seems to be a bad
+	idea.  Let it roam around, while shrinking the step size.  Should
+	we consider improvement from the best or improvement from the
+	last?
+
+	Should I make max_fail a function of successive improvements
+	preceding?  Can we get a probabilistic derivation?
+	
+2014-11-20    <dyuret@ku.edu.tr>
+
+	* convergence: need to find best training / convergence schedule.
+	Keep hidden units fixed.  Keep data size so we can do batch
+	training on gpu.  Then play with minibatches and training schedule
+	/ averaging etc.  First, can we adjust regularization to use
+	(w-wi)^2 as in Smola's
+	http://www.cs.cmu.edu/~muli/file/minibatch_sgd.pdf?
+
+	% Run batch until full convergence.
+	
+	run1:
+	>> net=patternnet(172);
+	>> net.divideFcn='';
+	>> tic;net=train(net, p_trn(:,1:100000), t_trn(:,1:100000), 'useGPU', 'yes');toc;
+	Epoch 25/1000, Time 12.9436, Performance 0.069445/0, Gradient 0.046517/1e-06, Validation Checks 0/6
+	Epoch 100/1000, Time 45.5907, Performance 0.02715/0, Gradient 0.0095009/1e-06, Validation Checks 0/6
+	Epoch 375/1000, Time 165.235, Performance 0.0038649/0, Gradient 0.00086941/1e-06, Validation Checks 0/6
+	Epoch 575/1000, Time 249.1637, Performance 0.0033475/0, Gradient 5.0178e-05/1e-06, Validation Checks 0/6
+	Epoch 1000/1000, Time 424.796, Performance 0.0030821/0, Gradient 0.00031762/1e-06, Validation Checks 0/6
+	
+	% 172 gave good result with full dataset, will probably overfit 100K.
+	% Has not converged fully in 1000 epochs.
+	% What is the variance?  Rerun:
+
+	run2:
+	Epoch 25/1000, Time 10.667, Performance 0.072784/0, Gradient 0.033849/1e-06, Validation Checks 0/6
+	Epoch 100/1000, Time 42.5621, Performance 0.030901/0, Gradient 0.014193/1e-06, Validation Checks 0/6
+	Epoch 375/1000, Time 160.0595, Performance 0.0072034/0, Gradient 0.0005233/1e-06, Validation Checks 0/6
+	Epoch 575/1000, Time 240.5866, Performance 0.0068664/0, Gradient 0.00012498/1e-06, Validation Checks 0/6
+	Epoch 1000/1000, Time 415.7729, Performance 0.0065358/0, Gradient 4.2006e-05/1e-06, Validation Checks 0/6
+	
+	% The difference of 0.003 with the first run is preserved
+	throughout!  Not much improvement after epoch 375.  Difference
+	between epoch 25 and epoch 1000 is 0.0664 for run1, 0.0662 for
+	run2, 0.0687 for run3.
+
+	run3:
+	Epoch 25/1000, Time 10.0876, Performance 0.077054/0, Gradient 0.054168/1e-06, Validation Checks 0/6
+	Epoch 100/1000, Time 42.2755, Performance 0.029656/0, Gradient 0.016406/1e-06, Validation Checks 0/6
+	Epoch 375/1000, Time 159.8604, Performance 0.0091682/0, Gradient 0.00013638/1e-06, Validation Checks 0/6
+	Epoch 575/1000, Time 239.8406, Performance 0.0088202/0, Gradient 0.00010235/1e-06, Validation Checks 0/6
+	Epoch 1000/1000, Time 412.1733, Performance 0.0083196/0, Gradient 2.6072e-05/1e-06, Validation Checks 0/6
+
+	run4:
+	Epoch 25/1000, Time 10.3772, Performance 0.069949/0, Gradient 0.032253/1e-06, Validation Checks 0/6
+	Epoch 100/1000, Time 42.9895, Performance 0.02997/0, Gradient 0.012972/1e-06, Validation Checks 0/6
+	Epoch 375/1000, Time 162.2832, Performance 0.0067342/0, Gradient 0.00040182/1e-06, Validation Checks 0/6
+	Epoch 575/1000, Time 244.2793, Performance 0.0063362/0, Gradient 7.9733e-05/1e-06, Validation Checks 0/6
+	Epoch 1000/1000, Time 421.4627, Performance 0.0059912/0, Gradient 0.00018068/1e-06, Validation Checks 0/6
+
+	% so if the performance at 25 is an indicator of convergence
+	point, we should be able to sample a bunch of networks and keep
+	the ones that do well at 25 for further training.
+
+	>> nets=cell(1,100);
+	>> for i=1:100 nets{i}=patternnet(172);nets{i}.divideFcn='';end
+	>> for i=1:100 nets{i}.trainParam.epochs=25; end
+	>> for i=1:100 rng(i);nets{i}=train(nets{i}, p_trn(:,1:100000), t_trn(:,1:100000), 'useGPU', 'yes');end;
+	
+	25 epoch Results are in [0.064734:0.33333] (80% is less than 0.1).
+	Best result at nets{56}: 0.064734.
+	Train the best net:
+	
+	>> net56=patternnet(172);net56.divideFcn='';
+	>> tic;rng(56);net56=train(net56, p_trn(:,1:100000), t_trn(:,1:100000), 'useGPU', 'yes');toc;
+	Epoch 25/1000, Time 10.8775, Performance 0.064734/0, Gradient 0.054358/1e-06, Validation Checks 0/6
+	Epoch 100/1000, Time 43.4348, Performance 0.028196/0, Gradient 0.013142/1e-06, Validation Checks 0/6
+	Epoch 375/1000, Time 161.6486, Performance 0.0063895/0, Gradient 0.0001728/1e-06, Validation Checks 0/6
+	Epoch 575/1000, Time 245.8455, Performance 0.006069/0, Gradient 7.4304e-05/1e-06, Validation Checks 0/6
+	Epoch 1000/1000, Time 421.6591, Performance 0.0056706/0, Gradient 0.00010329/1e-06, Validation Checks 0/6
+
+	% Never get as lucky as the first try :(
+	% Validation stop around 150.
+
+	>> net56a=patternnet(172);
+	>> net56a.trainParam.max_fail=32;
+	>> tic;rng(56);net56a=train(net56a, p_trn(:,1:100000), t_trn(:,1:100000), 'useGPU', 'yes');toc;
+	Epoch 185/1000, Time 80.3111, Performance 0.01148/0, Gradient 0.010684/1e-06, Validation Checks 32/32
+
+	dev loss/err: 0.0333/0.0623
+	trn loss/err: 0.0211/0.0367
+
+	% Full 100K data for 150 epochs:
+	Epoch 150/150, Time 65.2703, Performance 0.019709/0, Gradient 0.0098602/1e-06, Validation Checks 0/6
+	
+	dev loss/err: 0.0340/0.0624
+	trn loss/err: 0.0197/0.0343
+
+	% Now let's try minibatch with 20K random batches, ~5 batches to
+	cover the whole 100K dataset, with batchepochs at 5,10,15.  Record
+	best performance in 60 seconds:
+
+	>> nnet_minibatch_timed(172, 30, 20000, 60, 56, p_trn(:,1:100000), t_trn(:,1:100000), p_dev, t_dev)
+	
+	bepoch	deverr	batch
+	5	0.1065	19/19
+	10	0.0769	15/16
+	15	0.0691	13/14
+	20	0.0664	11/13
+	25	0.0643	12/12
+	30	0.0642	11/11
+	35	0.0644	10/10
+	40	0.0659	8/10
+	45	0.0666	8/9
+	50	0.0670	7/9		
+	
+	% These all tend to give the best results at last epoch, i.e. have
+	not converged yet.  Note that the seed is kept the same so the
+	same epochs should have the same data.  Note that we are spending
+	time calculating trn/dev error after every batch, which works
+	against small batches.  Try more time: 120 seconds:
+
+	>> for i=5:5:50 [a,b]=nnet_minibatch_timed(172, i, 20000, 120, 56, p_trn(:,1:100000), t_trn(:,1:100000), p_dev, t_dev);fprintf('==> %d %g %g\n', i, a, b);end
+
+	bepoch	deverr	batch
+	5	0.0868	38/38
+	10	0.0650	32/32
+	15	0.0607	28/29
+	20	0.0589	25/25
+	25	0.0594	24/24
+	30	0.0605	21/22
+	35	0.0606	18/20
+	40	0.0619	18/18
+	45	0.0633	16/17
+	50	0.0649	16/16	
+
+	% Improvement across the board.  Still no convergence.  Best beats
+	batch (0.0623)!  Best bepoch shifted from 30 to 20 when we went
+	from 60 secs to 120 secs.  Suggests a slowing schedule.
+
+	* q: Should bepoch be dynamically adjusted?  Smola2014 uses as sgd
+	learning rate: n*sqrt(a/(a+t)) where n is the initial rate, a is a
+	decay constant and t is the iteration number.  Convnet uses
+	exponential or linear decay.  Estimating a mean with minibatch
+	uses 1/t.
+
+	With 30 seconds		With 60 seconds		With 120 seconds	With 180 seconds
+	
+	bepoch	deverr	batch	bepoch	deverr	batch	bepoch	deverr	batch	bepoch	deverr	batch
+	5	0.1271	10	5	0.1065	19/19	5	0.0868	38/38	5	0.0779	55/56
+	10	0.0917	9	10	0.0769	15/16	10	0.0650	32/32	10	0.0615	46/46
+	15	0.0825	7	15	0.0691	13/14	15	0.0607	28/29	15	0.0589	40/42
+	20	0.0755	7	20	0.0664	11/13	20	0.0589	25/25	20	0.0589	25/39
+	25	0.0736	5	25	0.0643	12/12	25	0.0594	24/24	25	0.0589	36/36
+	30	0.0696	6	30	0.0642	11/11	30	0.0605	21/22	30	0.0595	23/32
+	35	0.0701	5	35	0.0644	10/10	35	0.0606	18/20	35	0.0603	23/28
+	40	0.0716	5	40	0.0659	8/10	40	0.0619	18/18	40	0.0604	24/27
+	45	0.0711	5	45	0.0666	8/9	45	0.0633	16/17	45	0.0599	24/25
+	50	0.0700	4	50	0.0670	7/9	50	0.0649	16/16	50	0.0606	23/24
+
+	Scheduled 180 seconds:
+	(1) 1000/(25+t): gives 0.0587 in 36 epochs 
+	(2) 66*sqrt(2.66/(2.66+t)): gives 0.0581 in 33 epochs
+	The constants should be a function of batchsize.
+	Will be another thing to optimize.
+	Variance goes down as 1/N where N is the batch size.
+	Our step size should scale with sqrt(N)?
+
+	Results depend on random seed again.  561 blows up, 456 gives
+	0.600.
+	
+	* nnet1120.log: Do another large experiment: 3600 seconds full dataset.
+
+	[a,b]=nnet_minibatch_timed(172, 100, 100000, 3600, 56, p_trn, t_trn, p_dev, t_dev)
+	deverr=0.0352 achieved at 193/254 batches.
+	the batchepoch sizes went from 85 to 10.
+	final terr=0.01968 above perceptron's 0.0026, we could use more nodes.
+
+	* nnet1121.log: Larger hidden layer.
+
+	[a,b]=nnet_minibatch_timed(500, 66, 100000, 24000, 7, p_trn, t_trn, p_dev, t_dev)
+	deverr=0.0327 achieved at 1990/2289 batches.
+	batchepoch sizes from 56 to 2.
+	final terr=0.02553.
+	best at 3600secs=0.0348 vs 172=>0.0352, so is it only longer training?
+	
+	* nnet1121b.log: 2000 layer.
+	[a,b,n]=nnet_minibatch_timed(2000, 100, 40000, 3600, 5, p_trn, t_trn, p_dev, t_dev);
+	deverr=0.0386 at batch 94 in 3600 secs.
+	batches are slow.  but also convergence seems worse.  
+	h172 was at 0.0366 at batch 94, h500 was at 0.0365.
+	could also be bad initialization.
+	
+	TODO: Can we optimize load/unload to gpu in minibatch?
+	TODO: Can we customize regularization?  Do we need to?
+	TODO: How about other optimization algs?  Try again?
+	
+2014-11-18    <dyuret@ku.edu.tr>
+
+	* ufldl/softmax_exercise: Pure softmax gives trn/dev accuracy of
+	0.1110/0.1131 in 100 epochs, 441 seconds on balina.  The only
+	adjustable parameter is lambda (1e-4).  We need to optimize
+	lambda.  We could also use liblinear, or modify matlab perceptron.
+	
+	lambda=0.001 trnerr=0.132451 deverr=0.134498
+	lambda=1e-05 trnerr=0.10041 deverr=0.104042 483.454480 seconds.
+	lambda=1e-06 trnerr=0.0967901 deverr=0.100229 467.571426 seconds.
+	lambda=1e-07 trnerr=0.0963716 deverr=0.100242 486.261751 seconds.
+	lambda=0 trnerr=0.096822 deverr=0.100633 482.748054 seconds.
+	
+	lambda multiplies the regularization penalty:
+	cost = (-1/numCases) * sum(log(sum(groundTruth .* h))) + ...
+	       (lambda / 2) * norm(theta, 'fro')^2;
+
+	liblinear takes 151 secs to train with dev data.  Not competitive.
+
+	We can use patternnet([]) which has no hidden layer:
+	>> nnet_minibatch_fn([], 40, 100, 200000, 1, p_trn, t_trn, p_dev, t_dev);
+	best: ==> batch=83 tloss=0.157946 terr=0.092615 vloss=0.164955 verr=0.0979644
+	It drops below 0.10 at batch=44.
+	Each batch is a 200K sample for 40 epochs, takes 12 seconds.
+	Seems to spend 10 secs extra / epoch for gpu transfers?
+	So roughly the same amount of time to reach the same accuracy.
+	How can it do better than softmax I don't know.
+	
+	net1119: try nnet with full data on balina.
+	>> net=patternnet([]);
+	>> net=train(net, p_trn, t_trn);
+	31 seconds per epoch.
+	Converged in 973 epochs.
+	trn/dev = 0.0902/0.0946
+	
+	Once ready, try adding the random layer:
+	With 2000 hidden units verr=0.0965, not that much better than softmax.
+	The weights were standard normal, no biases, tansig transfer function.
+	With 180 hidden units verr=0.20 much worse.
+	Is ELM a big lie?
+	Do I need some other weight distribution, bias, transfer function, final layer optimization?
+	They have some ELM code we can try...
+	Also this paper: http://www.ntu.edu.sg/home/egbhuang/pdf/ELM-NC-2006.pdf
+	They leave the output layer linear and solve with pseudo-inverse (pinv).
+	The weights are rand*2-1, the biases are rand.
+	Downloaded code for: Sample2 classification: elm('diabetes_train', 'diabetes_test', 1, 20, 'sig')
+	From: http://www.ntu.edu.sg/home/egbhuang/elm_random_hidden_nodes.html
+	All depends on the speed of pinv.
+	TODO: check out their claims and code.
+	
+	* stat: test 3% model on dev data to see corresponding head accuracy. @@biyofiz-4-0.
+
+		stat_pct		move_pct	      	head_pct	      	word_pct
+	epoch	trn	dev	tst	trn	dev	tst   	trn	dev	tst   	trn	dev	tst   
+	perc1	0.0142	0.0329	0.0346	0.0203	0.0409	0.0423	0.0590	0.1081	0.1134	0.0509	0.0946	0.0983
+	perc6	0.0026	0.0302	0.0315	0.0044	0.0376	0.0392	0.0173	0.0993	0.1058	0.0156	0.0872	0.0916
+	dyn17	0.0069	0.0364	0.0379	0.0019	0.0337	0.0340	0.0114	0.0898	0.0918	0.0110	0.0799	0.0819
+	
+
+	* run/nnet_minibatch_random3.m: Try more hidden units.  Single
+	layer, [100:2000] range.  Batchsize 40000.  Best deverr with
+	[10:200] range was: (0.0373663 172 38) with batchsize 100K.
+	Running on ilac.  Still running the same number of batches may
+	be unfair.  Best result: (0.038004 1766 42).
+	
 2014-11-17    <dyuret@ku.edu.tr>
 
 	* crossentropy: The softmax experiment finished
@@ -6,7 +272,8 @@
 	
 	0-1 error rate: trn/dev/tst: 0.0326/0.0378/0.0396.
 
-	We are within .5 percent of the perceptron: 0.0175/0.0329/0.0346.
+	We are within .5 percent of the perceptron (1-epoch, see below for multi epoch): 
+	trn/dev/tst: 0.0175/0.0329/0.0346.
 
 	Best dev err from random search so far:
 	==> best_err	0.0373663	172	38
@@ -17,14 +284,39 @@
 	i.e. two layers with 83 and 96 and 22 batch-epochs per 100K random batch.
 
 	Try random network for optimization...
+	2014a matlab works with single (in cpu, how about gpu?, k40?).
+
+	* run141117: run perceptron until convergence:
+	==> epoch=1 trnerr=0.0175111 deverr=0.03285
+	==> epoch=2 trnerr=0.00896236 deverr=0.0309759
+	==> epoch=3 trnerr=0.00558836 deverr=0.0305203
+	==> epoch=4 trnerr=0.004031 deverr=0.03026
+	==> epoch=5 trnerr=0.00310592 deverr=0.0302861
+	==> epoch=6 trnerr=0.00255055 deverr=0.030247	***
+	==> epoch=7 trnerr=0.00219074 deverr=0.0303251
+	==> epoch=8 trnerr=0.00193145 deverr=0.0303251
+	==> epoch=9 trnerr=0.00173259 deverr=0.0304813
+	==> epoch=10 trnerr=0.00158098 deverr=0.0304813
+	==> epoch=11 trnerr=0.00146397 deverr=0.0305073
+	
 	
 2014-11-16    <dyuret@ku.edu.tr>
 
-@@	* run/nnet_minibatch_random.m: Do random search of the
-	hyperparameter space.  Single layer at @@biyofiz-4-0, two layer at
-	@@biyofiz-4-2.  Range [10-200] for all params.  Also search the
+	* run/nnet_minibatch_random.m: Do random search of the
+	hyperparameter space.  Single layer at biyofiz-4-0, two layer at
+	biyofiz-4-2.  Range [10-200] for all params.  Also search the
 	batchepochs.
 
+	Results at nnet-minibatch-random.out and
+	nnet-minibatch-random2.out.  The best results:
+
+	deverr		hidden1	hidden2	batchepoch
+	0.0373663	172	-	38
+	0.0387198	83	96	22
+
+	But: did it converge in 100 batches?  how much of this is noise?
+	how about larger hidden layers?
+	
 	- how do we optimize:
 	- batch-epochs
 	- layers
