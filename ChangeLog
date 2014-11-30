@@ -1,3 +1,500 @@
+2014-11-30    <dyuret@ku.edu.tr>
+
+	* TODO: get ready for fine-tuning.
+
+	* q: start trying two-layer nets. @@ilac-3-0
+
+	* q: try 5k and 20k 50k 100k hidden long training.  100 epochs,
+	1.8e8 instances total.  File:
+	caffe_bin_train_solver_try*_solver.dat,out
+	;(x1000 hidden, best-inst, best-err, last-inst, last-err):
+
+	5	1.5232e+08	0.968657	1.8176e+08	0.968539
+	10	1.2992e+08	0.969549	1.82016e+08	0.969182
+	20	1.408e+08	0.970071	1.8176e+08	0.969873
+	50	7.552e+07	0.970058	8.832e+07	0.969809	crashed.
+	100	1.664e+07	0.969626	2.304e+07	0.969351	@@ilac
+
+	* optimize01big2: Unfortunately nets larger than ~12000 fail!
+	Possibly because I don't batch test set.  Partial results suggest
+	still preferring big networks.  After fixing, still prefers big
+	nets:
+
+	$ analyze.pl -t 0.1 optimize01big2.out
+	iter   GOOD: 14221 */ 1   BAD: 14221 */ 1   ALL: 14221 */ 1
+	hidden_type   GOOD: RELU:13   BAD: RELU:87   ALL: RELU:100
+	status   GOOD: ok:13   BAD: ok:87   ALL: ok:100
+	time   GOOD: 839.432 */ 1.32284   BAD: 277.928 */ 2.47621   ALL: 320.877 */ 2.5328
+	base_lr   GOOD: 0.0212872 */ 1.36468   BAD: 0.018504 */ 9.33697   ALL: 0.0188441 */ 8.06283
+	solver_type   GOOD: ADAGRAD:13   BAD: ADAGRAD:87   ALL: ADAGRAD:100
+	loss   GOOD: 0.0995812 */ 1.00284   BAD: 0.12355 */ 1.31899   ALL: 0.120134 */ 1.30765
+	filler   GOOD: xavier:13   BAD: xavier:87   ALL: xavier:100
+	hidden_size   GOOD: 36747.9 */ 1.34561   BAD: 9342.57 */ 3.49491   ALL: 11163.1 */ 3.5229
+	batch_size   GOOD: 128 */ 1   BAD: 128 */ 1   ALL: 128 */ 1
+	accuracy   GOOD: 0.962935 */ 1.00029   BAD: 0.953317 */ 1.01653   ALL: 0.954562 */ 1.01578
+
+	* try.net: trying best guess network on multi-epoch.  Reached .031
+	error with 10K hidden layer.
+	Error curve is a good fit to: f(x)=a*(x**b)+c with
+	a               = 444.994          +/- 48.55        (10.91%)
+	b               = -0.760042        +/- 0.007633     (1.004%)
+	c               = 0.0303667        +/- 1.943e-05    (0.06398%)
+	x: number of instances processed
+	which obviously asymptotes at 0.0303667 (1-0.969633).
+
+
+2014-11-29    <dyuret@ku.edu.tr>
+
+	* julia-vs-matlab: Even though julia seems to multiply large
+	square matrices faster, matlab beats it on nnet code:
+	sparseAutoencoderCost x 100 1.56 seconds vs 5.05 seconds.  Top
+	shows julia utilizing 16 threads, matlab 9 threads.
+
+	Splitting the julia script for timing:
+	total: 50.5 ms
+	reshape: 0.0217 ms
+	+cost: 29.32 ms
+
+	Here is the core forward calculation:
+
+	julia:
+	w=rand(25,64);x=rand(64,10000);
+	tic();for i=1:1000; c=w*x; end; toc()
+	elapsed time: 2.811285643 seconds
+
+	matlab:
+	w=rand(25,64);x=rand(64,10000);
+	tic(); for i=1:1000; c=w*x; end; toc()
+	Elapsed time is 0.789418 seconds.
+
+	Note that for 1000x1000 square matrices julia wins:
+	11.89ms vs 13.81ms.
+
+	But when the dims are nnet like: 100x100x10000:
+	julia:5.86ms matlab:2.80ms
+
+	So it is the blas difference.  Now comes a bigger one:
+
+	julia:
+	size(c) => (100,10000)
+	tic(); for i=1:1000; d=1./(1+exp(-c)); end; toc()
+	46.63ms
+
+	matlab:
+	tic(); for i=1:1000; d=1./(1+exp(-c)); end; toc()
+	2.066ms
+
+	julia:
+	tic(); for i=1:1000; sigmoid!(c); end; toc()
+	15.73ms
+
+	In both experiments Julia uses single core.  Matlab uses all
+	available (19) cores.  Let's try julia with multicore.
+
+	First of all, the blas calculation slows down:
+	tic();for i=1:1000; c=w*x; end; toc();
+	11.5ms instead of 5.86ms
+
+	Elementwise calculation uses single core and does not improve.
+	tic(); for i=1:1000; sigmoid!(c);end; toc()
+	elapsed time: 15.731746731 seconds
+
+	Seems we need to tell Julia explicitly to use a distributed array.
+	DArray or SharedArray: In a DArray, each process has local access
+	to just a chunk of the data, and no two processes share the same
+	chunk; in contrast, in a SharedArray each “participating” process
+	has access to the entire array. A SharedArray is a good choice
+	when you want to have a large amount of data jointly accessible to
+	two or more processes on the same machine.
+
+	function shsigm!(x)
+	for i in localindexes(x)
+        x[i] = 1.0 / (1.0 + exp(-x[i]))
+	end
+	end
+
+	tic();  for i=1:1000; @sync for p in procs(cs); @async remotecall_wait(p, shsigm!, cs); end; end; toc()
+	elapsed time: 4.623549889 seconds
+
+	tic(); @sync for i=1:1000;  for p in procs(cs);  remotecall(p, shsigm!, cs); end; end; toc()
+	elapsed time: 4.306722203 seconds
+
+	So we need to use shared arrays for elementwise non-blas
+	operations.  Or just use cuda.
+
+	* julia: what do we really need:
+	1. we can look at all the array operators in julia.
+	2. we can look at the ufldl code.
+
+	Here is some julia code in ufldl: ~/ufldl/sparseae_exercise/julia
+
+	2.1 matrix mult (gemm)
+	2.2 broadcast? broadcast(+, W1 * data, b1))
+	2.3 elementwise sigmoid, log
+	2.4 normsq (blas?)
+	2.5 mean, sum, std (row and column-wise?)
+	2.6 array-array ops
+	2.7 scalar-array ops
+	2.8 reshape, concat
+	2.9 inplace versions
+
+	Is this really worth it?  Why not just use python where people
+	already have done the work?
+
+	* optimize01: 	restarting optimize01 with just adagrad and batchsize=128.
+
+	epoch01a: (t=0.09, 13/161)
+	base_lr: 0.0405939188295189 */ 1.40090316764676
+	hidden_size: 7682.650574705 */ 1.23317528466568
+	hidden_type: RELU:13
+	filler: xavier:12 gaussian:1
+
+	Best fit power law with epoch01a and epoch5:
+	inv: rate = base_lr * pow(1 + gamma * iter, -power)
+	base_lr = 0.0406889
+	gamma = 2.53082
+	power = 0.81739
+
+	It chooses huge nets that probably overfit.
+
+	{'status': 'ok', 'loss': 0.0881099, 'accuracy': 0.967216, 'filler': 'xavier', 'batch_size': 128, 'hidden_type': 'RELU', 'base_lr': 0.03625285061190084, 'iter': 14221.0, 'sparse': -1, 'time': 331.99004197120667, 'hidden_size': 9871.0, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	caffe.bin test -model optimize01t.net -weights data/optimize01_iter_14221.caffemodel -gpu 0 -iterations 1
+	accuracy = 0.961471, Loss: 0.103898
+
+	I better pick the net size and type based on dev set performance:
+
+	optimize01dev (-t0.103, 10/100):
+	base_lr: 0.0256353 */ 1.48226
+	hidden_type: RELU
+	filler: xavier (9/10)
+	hidden_size: 6175.21 */ 1.40084
+
+	The top entry: {'status': 'ok', 'loss': 0.10075, 'accuracy': 0.962636, 'filler': 'xavier', 'batch_size': 128, 'hidden_type': 'RELU', 'base_lr': 0.02818327987838749, 'iter': 14221.0, 'sparse': -1, 'time': 225.74818801879883, 'hidden_size': 8526.0, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	The minimum hidden_size in the top 10 is 3611.  So it really
+	prefers big nets.  I should change the range and re-experiment.
+	We can fix ADAGRAD, xavier and RELU, leaving only lr and
+	hidden_size to optimize.
+
+2014-11-28    <yuret@biyofiz-4-2>
+
+	* julia: speedtest julia.  does it matter which
+	atlas/blas/lapack/cublas/mkl we compile it with?
+
+	Figure out how to add new types.
+
+	Figure out how to call C code.
+
+	Standard Julia release-3.0 links to its own openblas, utilizes
+	multicore, beats MATLAB in multiplying square matrices (6 seconds
+	vs 10)!  How come I got beat in the ufldl code?  Was it the
+	optimization algorithm?
+
+	Both cublas and julia use column major arrays (meaning columns are
+	contiguous, also matlab).  C and python uses row major.
+
+2014-11-28    <dyuret@ku.edu.tr>
+
+	* caffe-sparse-bug: blobs are defined n,k,h,w where w changes
+	fastest.  k-dimensional vector inputs are represented n,k,1,1.  An
+	fc layer the dimensions are 1,1,o,i.
+
+	* optimize:
+	epoch1:
+	{'status': 'ok', 'loss': 0.0931981, 'weight_filler_type': 'gaussian', 'accuracy': 0.965215, 'hidden_type': 'RELU', 'weight_filler_sparse': 159.0, 'batch_size': 139.0, 'base_lr': 0.027778874681287355, 'iter': 13096.0, 'time': 158.6161048412323, 'hidden_size': 2291.0, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	epoch2: base_lr (t=0.08): 0.0148726826498462 */ 1.4162664820824
+	{'status': 'ok', 'loss': 0.0788819, 'iter': 37150.0, 'base_lr': 0.015652133746125764, 'batch_size': 49.0, 'time': 224.79885601997375, 'accuracy': 0.970867, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	epoch3: base_lr (t=0.071): 0.00909809585906311 */ 1.13924993300822
+	{'status': 'ok', 'loss': 0.0708306, 'iter': 7166.0, 'base_lr': 0.0081855879990424, 'batch_size': 254.0, 'time': 122.43483400344849, 'accuracy': 0.97385, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	epoch4: base_lr (t=0.0665): 0.00681034131604815 */ 1.43373450020877
+	{'status': 'ok', 'loss': 0.0658699, 'iter': 4815.0, 'base_lr': 0.006898358995819238, 'batch_size': 378.0, 'time': 95.30875086784363, 'accuracy': 0.975837, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	With a batchsize of 128 we have 14222 iterations per epoch.
+	;(1820392 total).
+
+	lr_policy types:
+	fixed: rate = base_lr
+	step: rate = base_lr * pow(gamma, floor(iter/stepsize))
+	exp: rate = base_lr * pow(gamma, iter)
+	inv: rate = base_lr * pow(1 + gamma * iter, -power)
+
+	The decay slows down so it is not step or exp.
+	Best fit inv parameters (assuming iter=epoch):
+	base_lr: 0.221148
+	gamma: 41.1619
+	power: 0.721446
+
+	This predicts the next epoch lr=0.00554191.  Let's try.
+
+	epoch5:	base_lr (t=0.062): 0.00586389209910822 */ 1.28203764210223
+	{'status': 'ok', 'loss': 0.0616636, 'iter': 2011.0, 'base_lr': 0.005861326575159059, 'batch_size': 905.0, 'time': 91.94862985610962, 'accuracy': 0.977491, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+2014-11-27    <dyuret@ku.edu.tr>
+
+	* summary: Use ADAGRAD.  Fix batch_size at something like 128/256,
+	result not very sensitive.  But batchsize effects the exact point
+	of lr so we should fix it.  Then optimize lr schedule and network
+	size.  Check if the two are correlated looking at optimize0?.out.
+	Next try two hidden layers.  Next try finetuning word embeddings.
+
+	ADAGRAD is best and gets rid of momentum.  Batchsize is
+	unimportant: the top-10 in epoch 1 is in [35,281].  The filler
+	does not have that much affect in one-layer.  That leaves base_lr
+	and hidden_size: top-10 in range [342:9457].  Since we are looking
+	at training error, it might favor large hidden layers that may not
+	generalize well.  If there is interaction between learning rate
+	and hidden size that's also bad.
+
+	* optimize02.*: Optimizing the second epoch.  This was the optimal settings for epoch-1:
+
+	{'status': 'ok', 'loss': 0.0931981, 'weight_filler_type': 'gaussian', 'accuracy': 0.965215, 'hidden_type': 'RELU', 'weight_filler_sparse': 159.0, 'batch_size': 139.0, 'base_lr': 0.027778874681287355, 'iter': 13096.0, 'time': 158.6161048412323, 'hidden_size': 2291.0, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	Here is the optimum for epoch-2.  ADAGRAD wins again (the top 10):
+
+	{'status': 'ok', 'loss': 0.0788819, 'iter': 37150.0, 'base_lr': 0.015652133746125764, 'batch_size': 49.0, 'time': 224.79885601997375, 'accuracy': 0.970867, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	A very close second and third with larger batch-size and faster training:
+
+	{'status': 'ok', 'loss': 0.0788897, 'iter': 6817.0, 'base_lr': 0.019324857282157396, 'batch_size': 267.0, 'time': 116.07905602455139, 'accuracy': 0.970713, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+	{'status': 'ok', 'loss': 0.0788908, 'iter': 17013.0, 'base_lr': 0.013628816570904334, 'batch_size': 107.0, 'time': 162.01521611213684, 'accuracy': 0.970711, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	Ideal base_lr is affected by batchsize.  But the absolute
+	batchsize does not seem to affect performance much.  We should
+	just freeze at 128, and focus on optimizing learning rate and
+	hidden unit count.  One more epoch to get the lr curve:
+
+	* optimize01.*: Train the first epoch using the optimal parameters
+	mentioned below.  Confirmed train accuracy: 0.9652 loss: 0.0932.
+	Model saved in data/optimize01_iter_13096.caffemodel.  Testing with dev:
+
+	$ caffe.bin test -model optimize01b.net -weights data/optimize01_iter_13096.caffemodel -gpu 0 -iterations 1
+
+	On the dev set accuracy: 0.9607 loss: 0.1045.
+
+	Now we need to optimize the second epoch to see if the ideal
+	settings changed.  (Certainly the learning rate, for example).
+	However we cannot change certain things, so we modify optimize.py
+	-> optimize02.py.  There is no filler.  Hidden size and type is
+	fixed.
+
+	* q: http://caffe.berkeleyvision.org/gathered/examples/finetune_flickr_style.html
+	If we give provide the weights argument to the caffe train
+	command, the pretrained weights will be loaded into our model,
+	matching layers by name.
+
+	Because we are predicting 20 classes instead of a 1,000, we do
+	need to change the last layer in the model. Therefore, we change
+	the name of the last layer from fc8 to fc8_flickr in our
+	prototxt. Since there is no layer named that in the
+	bvlc_reference_caffenet, that layer will begin training with
+	random weights.
+
+	We will also decrease the overall learning rate base_lr in the
+	solver prototxt, but boost the blobs_lr on the newly introduced
+	layer. The idea is to have the rest of the model change very
+	slowly with new data, but let the new layer learn
+	fast. Additionally, we set stepsize in the solver to a lower value
+	than if we were training from scratch, since we’re virtually far
+	along in training and therefore want the learning rate to go down
+	faster. Note that we could also entirely prevent fine-tuning of
+	all layers other than fc8_flickr by setting their blobs_lr to 0.
+
+	We also need weight sharing:
+	https://github.com/BVLC/caffe/pull/500.
+	There are several word vectors in the feature vector and each is
+	connected to the one-hot layer with the same weights.  Check out
+	the Siamese example.
+
+	We need to have two input layers go into the hidden layer: one for
+	words, one for other features.  Currently the loss layer takes
+	pred and label for example.  But does the inner-product-layer
+	support multiple bottoms: No but we can use the concat layer to
+	concatenate multiple blobs.
+
+	Finally we need to initialize the one-hot weights from constant
+	scode encodings.  We need to construct and save a network in a way
+	caffe will understand.  May need to use the python interface.
+	https://github.com/BVLC/caffe/issues/526
+	https://github.com/BVLC/caffe/pull/455
+	http://nbviewer.ipython.org/github/BVLC/caffe/blob/master/examples/net_surgery.ipynb
+
+	* optimize.py: The best settings for 1-epoch:
+	{'status': 'ok', 'loss': 0.0931981, 'weight_filler_type': 'gaussian', 'accuracy': 0.965215, 'hidden_type': 'RELU', 'weight_filler_sparse': 159.0, 'batch_size': 139.0, 'base_lr': 0.027778874681287355, 'iter': 13096.0, 'time': 158.6161048412323, 'hidden_size': 2291.0, 'momentum': 0, 'solver_type': 'ADAGRAD'}
+
+	* analyze.pl: In general the distr of top 27 settings (best in parens):
+	solver_type: ADAGRAD:27
+	hidden_size(2291): 758.924785608789 */ 2.87852513396102
+	hidden_type(RELU): SIGMOID:21 RELU:6
+	base_lr(0.028): 0.194088790747838 */ 2.26771784380315
+	momentum: 0 (all use ADAGRAD)
+	filler(gauss): xavier:10 gaussian:17
+	sparse(159): 120.969931661535 */ 4.51797291563553 (only used with half of gaussians)
+	batch_size(139): 201.265111755204 */ 1.81666591696717
+
+
+2014-11-26    <dyuret@ku.edu.tr>
+
+	* q: What should we pursue:
+	- fine-tuning
+	- increasing data by replacing words with probable substitutes
+	; (could test using perceptron)
+	- optimizing batch training as below
+	; (write our own or use hyperopt)
+	- looking into optimizing deep architectures with gp, dhc, bigbatch.
+	- fix beam-search parser and go with perceptron training.
+	- try speeding up dynamic oracle using batch updates.
+	- study the numerical optimization book.
+
+	* 1-epoch: Measure training set loss at the end of one pass over
+	the training set.  train=test=1820392
+
+	SOLVER:
+	solver_type: SGD, NESTEROV, ADAGRAD
+	test_iter: 10 (test_batch_size: 182040)
+	test_interval: N (at the end)
+	base_lr: 1 0.5 0.2 0.1 0.05 0.02 0.01 0.005 0.002 0.001 0.0005 0.0002 0.0001
+	momentum: 0 0.9 0.95 0.99 0.995 0.999 0.9995 0.9999
+	weight_decay: 0
+	lr_policy: "fixed" (test others later)
+	display: N (at the end)
+	max_iter: N
+	snapshot: N
+	snapshot_prefix: "/home/yuret/caffe/examples/vectorparser/data/train2"
+	solver_mode: GPU
+
+	NET:
+	train.batchsize: 16, 32, 64, 128, 256, 1024 (N = ceil(182040/train.batchsize)).
+	test.batchsize: 182040 (or same as train data)
+	fc1.num_output: 128, .., 256, .., 512, .., 1024, .., 2048 (where .. is sqrt2 x prev)
+	fc1.weight_filler: gaussian, xavier
+	fc1.weight_filler.sparsity: 8, 16, 32, 64, 128, 256, 512
+	fc1.blobs_lr[]: first one weight, second one bias, 1:2 gives good results.
+	fc1.weight_decay[]: first one weight, second bias, 1:0 is the standard.
+	relu1.type: RELU, SIGMOID, ...
+	fc2.weight_filler.type: gaussian, xavier
+	fc2.weight_filler.sparsity: mean number of non-zero inputs: 8, 16, 32, 64, 128, 256, 512 only supported by gaussian
+	fc2.blobs_lr[]: 1:2
+	fc2.weight_decay[]: 1:0
+
+2014-11-25    <dyuret@ku.edu.tr>
+
+	* stuck: at 0.967 with 700 RELU units (20141125.log).  More units
+	help (1000 is better, got to .9677 in 20141126.log).  Compare this
+	to .970 with perceptron and .968 with matlab nnet.
+
+	We can play with:
+	1. initialization: sparsity,
+	2. increase units,
+	3. add layers,
+	4. unit type: sigmoid,
+	5. learning rate
+	6. momentum.
+	7. batch size
+
+	The learning rate is not slowing down enough?  More momentum may
+	help?  We need to monitor training set loss.  Define it as another
+	test set?  We can take snapshots at various points and find the
+	ideal momentum/lr combination to discover the right schedule.  Can
+	we implement momentum schedule in caffe?  Or continue from a given
+	snapshot?  How can we do finetuning later?  We need to be able to
+	freeze / unfreeze weights.
+
+	* caffe-h5-conversion:
+	h5create('dev.h5', '/data', size(x_dev), 'Datatype', 'single');
+	h5create('dev.h5', '/label', size(y_dev), 'Datatype', 'single');
+	h5write('dev.h5', '/data', single(x_dev));
+	h5write('dev.h5', '/label', single(y_dev-1));
+
+	* cpan-non-root: perl -MCPAN -Mlocal::lib -e 'CPAN::install(LMDB_File)'
+
+	* iphython-to-python: ipython nbconvert --to=python hdf5_classification.ipynb
+
+	* pip-non-root: pip install --user --install-option="--prefix=" -U scikit-learn
+
+2014-11-25    <yuret@biyofiz-4-2>
+
+	* extra-packages: yum -y install epel-release
+
+2014-11-25    <dyuret@ku.edu.tr>
+
+	* nnet15_test.m: Result of averaging 100 nets.  Each trained on a
+	100K random batch for 180 epochs using 500 hidden units.  Skipped
+	nets with loss > 0.04.  Averaged the output of the rest (88 of
+	them).  The stats on the 88 nets:
+
+	loss: n=88 m=0.032301 s=0.00184269 q=[0.0295103 0.030836 0.0321156 0.0335805 0.0391357]
+	err : n=88 m=0.0596701 s=0.00229243 q=[0.0557826 0.0580602 0.0591405 0.0610797 0.065661]
+	
+	Averaging 88 nets
+	Average loss=0.0263064
+	Average error=0.0511753
+
+	Both the error and the loss are below the minimum net but they are
+	not competitive.  If we had processed 88x100K instances
+	sequentially we would have reached ~0.033 error.
+
+2014-11-23    <dyuret@ku.edu.tr>
+
+	* nnet15_test.m: TODO
+
+	* nnet15: averaging running at @@ilac.  100 networks trained on
+	100K random batches with hidden=500.
+
+	- Read momentum paper.
+	- Try caffe with its three training algorithms.
+	- See if caffe better with deeper nets.
+	- Must optimize init and momentum.
+	- Cut/paste networks to pretrain.
+	- Cut/paste networks to finetune?
+	- Dynamic oracle sgd.  with optimized learning params from static
+	sgd.
+	- Beam search parser.
+
+	* 36000: results of the 10 hour experiments (nnet??.out):  See
+	graphs on email for more detailed comparisons based on time and
+	number of instances seen (which may be less for larger models).
+
+	deverr		arch
+	------		----
+	0.0353359	172
+	0.0342687	300
+	0.0327980	400
+	0.0321602	500
+	0.0318349	700
+	0.0321993	1000
+	0.0324205	2000
+	0.0317828	1000,500
+	0.0321082	1500,1000,500
+	0.0338262	2000,1500,1000,500
+	0.0370279	2500,2000,1500,1000,500
+	0.0408673	3000,2500,2000,1500,1000,500
+	
+2014-11-22    <dyuret@ku.edu.tr>
+
+	* ideas: 
+	- 500 seems better than 172 or 1000, try 300 and 700.
+	First batch for 172: 0.0703.
+	First batch for 500: 0.0721.
+	300: .0696 with rng(3), 100k epoch
+	400: .0703 with rng(2), 100k epoch
+	700: .0753 with rng(10), 75k epoch
+	
+	- Try initializing with 1300-500-1300 autoencoder (do we really
+	need sparsity etc?)
+	1300-500-1300: vloss=0.0029 with rng(1), 20k epoch: nnet13.{m,mat,out}
+	- Julia, convnet, ufldl for finetuning: could do in matlab if I
+	cut/paste layers.
+	- Figure out convnet, see if faster.
+	- Check out julia gpu extensions: not mature yet. caffe uses cudnn.
+
+	* nnet14.m: To really do pretraining we need to copy first layer
+	from nnet13.mat, freeze it, train second layer, than fine tune both
+	layers...(TODO).
+
 2014-11-21    <dyuret@ku.edu.tr>
 
 	* nnet_minibatch_adaptive.m: adaptive schedule.  Do not slow down
@@ -10,6 +507,29 @@
 
 	Should I make max_fail a function of successive improvements
 	preceding?  Can we get a probabilistic derivation?
+
+	* q: less memory?  single still doesn't work in 2014a with gpu.
+	Works with cpu but too slow.
+
+	* q: faster training? could try poslin, which i think means the
+	rectified linear unit.  satlin has 45 degree in [0,1], 0 before
+	and 1 after.  satlins is the same for [-1,1].  Does not seem to
+	give as good results.  per-epoch slightly faster.  maybe doing it
+	wrong.
+
+	* q: autoencoder?  can we implement sparsity in the objective
+	function?  should I just write my own code?  implement minibatch
+	in ufldl?  Use Julia?  Theano, Torch, Convnet?
+
+	* @@ilac: nnet01, nnet02, nnet03, nnet04 running.
+
+	* TODO: averaging (easy), two layer (easy), deeper networks (need
+	to keep weights in gpu), autoencoders (need sparsity in objective
+	function), fine-tuning (need to backconvert inputs to one-hot and
+	embeddings to weights)..
+	- Learn convnet.
+	- Run experiments nnet07 and nnet08 when license allows.
+	
 	
 2014-11-20    <dyuret@ku.edu.tr>
 
@@ -247,9 +767,9 @@
 	Downloaded code for: Sample2 classification: elm('diabetes_train', 'diabetes_test', 1, 20, 'sig')
 	From: http://www.ntu.edu.sg/home/egbhuang/elm_random_hidden_nodes.html
 	All depends on the speed of pinv.
-	TODO: check out their claims and code.
+	done: check out their claims and code.
 	
-	* stat: test 3% model on dev data to see corresponding head accuracy. @@biyofiz-4-0.
+	* stat: test 3% model on dev data to see corresponding head accuracy.
 
 		stat_pct		move_pct	      	head_pct	      	word_pct
 	epoch	trn	dev	tst	trn	dev	tst   	trn	dev	tst   	trn	dev	tst   
@@ -676,11 +1196,11 @@
 
 	So we can use logsig everywhere and cancel pre/postprocessing.
 	
-	TODO:
+	DONE:
 	+ check the question marks above.
-	- try minibatch.
-	- try sophisticated optimizers.
-	- find cross-entropy cost, softmax layer, or write it.
+	+ try minibatch.
+	+ try sophisticated optimizers.
+	+ find cross-entropy cost, softmax layer, or write it.
 
 	
 	
