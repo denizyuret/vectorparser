@@ -1,8 +1,98 @@
+2014-12-07    <dyuret@ku.edu.tr>
+
+	* net_forward.py: THE PYCAFFE INTERFACE
+
+	
+
+2014-12-04    <dyuret@ku.edu.tr>
+
+	* a: NO OBVIOUS ADVANTAGE OF USING MULTILAYER...
+
+	
+	* compare: to single layer results: 40K@14221=.9633;
+	10K@20000=.9631; 20K@20000=.9637; 50K@20000=.9640;
+	100K@20000=.9646.  2-layer result does as well as 50K with a
+	quarter of the weights.  3-layer result is as big as the 100K
+	1-layer net and performs about the same.  Not sure if the training
+	and initialization settings are optimal for deeper nets.
+	
+	
+	
+	* caffe/try2layer.solver (weight_decay): try best two layer
+	multi-epoch.  Not sure about base_lr, gamma and power.  Climbs to
+	0.969481 in 29/100 epochs.  Not better than the 10K 1-layer
+	result.
+		
+	
+	* optimize01multi3s.py: search for better solver parameters:
+	hidden_type, solver_type, base_lr, momentum, filler.  Fixing
+	layers to best found: [41744.0, 2139.0, 1278.0].  Crashed after 42
+	epochs.  Could not beat original multi3 result.
+
+	best: {'status': 'ok', 'accuracy': 0.96450599999999997, 'batch_size': 128, 'base_lr': 0.0065169111999158246, 'num_layers': 3, 'num_weights': 147353031.0, 'loss': 0.094876199999999994, 'hidden_size': [1326, 41744.0, 2139.0, 1278.0], 'filler': 'gaussian', 'iter': 14221.0, 'hidden_type': 'RELU', 'sparse': 15, 'time': 2506.8834750652313, 'solver_type': 'ADAGRAD', 'momentum': 0, 'layer_size': (0.40213720841133166, 0.23012665018520029, 0.95601491622076562)}
+	
+
+	* optimize01multi2s.py: fixes the layers and plays with solver
+	parameters: default initialization and base_lr should change:
+
+	gaussian with sparse:15 initialization works better than xavier.
+	RELU and ADAGRAD still best.
+	optimize01multi2.py base_lr was too high:
+	base_lr   GOOD: 0.0170648 */ 1.80459   BAD: 0.0258022 */ 15.6296   ALL: 0.0239517 */ 12.269
+	best: {'status': 'ok', 'accuracy': 0.96415300000000004, 'batch_size': 128, 'base_lr': 0.019044659399853212, 'num_layers': 2, 'num_weights': 19413489, 'loss': 0.095748799999999995, 'hidden_size': [1326, 12684.0, 205.0], 'filler': 'gaussian', 'iter': 14221.0, 'hidden_type': 'RELU', 'sparse': 15, 'time': 388.48415303230286, 'solver_type': 'ADAGRAD', 'momentum': 0, 'layer_size': (0.17713910718922066, 0.76564147675251237)}
+	
+
+	
+	* optimize01multi2: (-t 0.0975, good:26, bad:151, filler:xavier,
+	batch_size: 128, iter:14221, hidden_type:RELU, base_lr: 0.03,
+	solver_type: ADAGRAD, num_layers: 2)
+	
+	num_weights   GOOD: 1.5909e+07 */ 2.04684   BAD: 1.57541e+07 */ 4.80142   ALL: 1.57767e+07 */ 4.37054
+	hidden_size1   GOOD: 10420.6 */ 2.07898   BAD: 6850.87 */ 6.43285   ALL: 7286.21 */ 5.74497
+	hidden_size2   GOOD: 182.231 */ 1.63645   BAD: 414.664 */ 6.82097   ALL: 367.489 */ 6.09214
+	
+	best: {'status': 'ok', 'accuracy': 0.96398300000000003, 'batch_size': 128, 'base_lr': 0.029999999999999999, 'num_layers': 2, 'num_weights': 19413489.0, 'loss': 0.096830600000000003, 'hidden_size': [1326, 12684.0, 205.0], 'filler': 'xavier', 'iter': 14221.0, 'hidden_type': 'RELU', 'sparse': -1, 'time': 387.58310914039612, 'solver_type': 'ADAGRAD', 'momentum': 0, 'layer_size': (0.17713910718922066, 0.76564147675251237)}
+	
+	
+	* optimize01multi3: (-t 0.0962, good:10, bad:86, filler:xavier,
+	batch_size: 128, iter: 14221, hidden_type: RELU, base_lr: 0.015,
+	solver_type: ADAGRAD, num_layers: 3)
+
+	num_weights   GOOD: 1.10835e+08 */ 1.49896   BAD: 2.3453e+07 */ 6.12883   ALL: 2.75712e+07 */ 5.96042
+	hidden_size1   GOOD: 31209.1 */ 1.47272   BAD: 4963.13 */ 7.06238   ALL: 6010.85 */ 6.94193
+	hidden_size2   GOOD: 2038.14 */ 1.53243   BAD: 1648.99 */ 4.05912   ALL: 1685.79 */ 3.79886
+	hidden_size3   GOOD: 1448.22 */ 1.63807   BAD: 1414.01 */ 17.2858   ALL: 1417.54 */ 14.9108
+	
+	best: {'status': 'ok', 'accuracy': 0.96455900000000006, 'batch_size': 128, 'base_lr': 0.014999999999999999, 'num_layers': 3, 'num_weights': 147353031.0, 'loss': 0.094832200000000005, 'hidden_size': [1326, 41744.0, 2139.0, 1278.0], 'filler': 'xavier', 'iter': 14221.0, 'hidden_type': 'RELU', 'sparse': -1, 'time': 2457.8661398887634, 'solver_type': 'ADAGRAD', 'momentum': 0, 'layer_size': (0.40213720841133166, 0.23012665018520029, 0.95601491622076562)}
+	
+
+	* optimize01multi: Crashed after 214 epochs. best:0.964179.
+
+	best: {'status': 'ok', 'accuracy': 0.96417900000000001,
+	'batch_size': 128, 'base_lr': 0.0097047551399354146, 'num_layers':
+	2, 'num_weights': 127870788.0, 'loss': 0.095408099999999996,
+	'hidden_size': [1326, 45907.0, 1460.0], 'filler': 'xavier',
+	'iter': 14221.0, 'hidden_type': 'RELU', 'sparse': -1, 'time':
+	2219.0223879814148, 'solver_type': 'ADAGRAD', 'momentum': 0,
+	'layer_size': (0.39584370595375412, 0.36059017496041618)}
+
+
+	* optimize01multi4: Crashed after 106 epochs.  best:0.962856.
+
+	best: {'status': 'ok', 'accuracy': 0.96285600000000005, 'batch_size': 128, 'base_lr': 0.01, 'num_layers': 4, 'num_weights': 76562671.0, 'loss': 0.099107100000000004, 'hidden_size': [1326, 14702.0, 1870.0, 1671.0, 15833.0], 'filler': 'xavier', 'iter': 14221.0, 'hidden_type': 'RELU', 'sparse': -1, 'time': 1358.0881118774414, 'solver_type': 'ADAGRAD', 'momentum': 0, 'layer_size': (0.59006931288208042, 0.47527763928829037, 0.91893784535046497, 0.48874269490839806)}
+	
+
+	
+2014-12-02    <dyuret@ku.edu.tr>
+
+	* q: start trying multi-layer nets. @@ilac-3-0
+	BUG: we have loss: nan in a number of cases.
+	The culprit seems to be POWER and BNLL units.	
+
+
 2014-11-30    <dyuret@ku.edu.tr>
 
 	* TODO: get ready for fine-tuning.
-
-	* q: start trying two-layer nets. @@ilac-3-0
 
 	* q: try 5k and 20k 50k 100k hidden long training.  100 epochs,
 	1.8e8 instances total.  File:
@@ -12,9 +102,9 @@
 	5	1.5232e+08	0.968657	1.8176e+08	0.968539
 	10	1.2992e+08	0.969549	1.82016e+08	0.969182
 	20	1.408e+08	0.970071	1.8176e+08	0.969873
-	50	7.552e+07	0.970058	8.832e+07	0.969809	crashed.
-	100	1.664e+07	0.969626	2.304e+07	0.969351	@@ilac
-
+	50	1.4208e+08	0.970241	1.8176e+08	0.969952
+	100	1.6896e+08	0.970358	1.8176e+08	0.970189
+	
 	* optimize01big2: Unfortunately nets larger than ~12000 fail!
 	Possibly because I don't batch test set.  Partial results suggest
 	still preferring big networks.  After fixing, still prefers big
@@ -441,7 +531,7 @@
 
 	* nnet15_test.m: TODO
 
-	* nnet15: averaging running at @@ilac.  100 networks trained on
+	* nnet15: averaging running.  100 networks trained on
 	100K random batches with hidden=500.
 
 	- Read momentum paper.
@@ -521,7 +611,7 @@
 	function?  should I just write my own code?  implement minibatch
 	in ufldl?  Use Julia?  Theano, Torch, Convnet?
 
-	* @@ilac: nnet01, nnet02, nnet03, nnet04 running.
+	* q: nnet01, nnet02, nnet03, nnet04 running.
 
 	* TODO: averaging (easy), two layer (easy), deeper networks (need
 	to keep weights in gpu), autoencoders (need sparsity in objective
