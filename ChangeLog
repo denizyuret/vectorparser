@@ -1218,7 +1218,7 @@
 	
 	25 hidden units seems close to optimal.
 	
-	dev:76384, tst:108536, trn:1820392 x1326
+	dev:76834, tst:108536, trn:1820392 x1326
 	
 	trn gives memory error as expected. 19.3GB.  Since we don't have
 	single available, we need to split train and do minibatch
@@ -1470,7 +1470,7 @@ $$b42	* start: run_static_dynamic_1017_archybrid_conllWSJToken_glove6B_100_fv021
 	
 	* Best points:
 	
-	corpus: conllWSJToken (trn02-21:39832s,950028w,1820392m;dev22:1700s,40117w,76384m;tst23:2416s,56684w,108536m)
+	corpus: conllWSJToken (trn02-21:39832s,950028w,1820392m;dev22:1700s,40117w,76834m;tst23:2416s,56684w,108536m)
 	arctype: archybrid (TODO: can archybrid13 be the same?)
 	embedding: wikipedia2MUNK-100
 	feats: fv021a
@@ -1713,7 +1713,7 @@ $$ilac	msub "run_static_dynamic_1010('archybrid', 'conll07EnglishToken_wikipedia
 	
 	* Best points:
 	
-	corpus: conllWSJToken (trn02-21:39832s,950028w,1820392m;dev22:1700s,40117w,76384m;tst23:2416s,56684w,108536m)
+	corpus: conllWSJToken (trn02-21:39832s,950028w,1820392m;dev22:1700s,40117w,76834m;tst23:2416s,56684w,108536m)
 	arctype: archybrid (TODO: can archybrid13 be the same?)
 	embedding: wikipedia2MUNK-100
 	feats: fv021a
@@ -4069,7 +4069,7 @@ featselect_gpu(m0, trndump, devdump, 'fs_conll07_aug7.mat', fv008);
 	-- instances go from 1820392 to 1720986
 	-- first epoch ends with 103524 sv (103062 unique).
 	-- dev error is 5.3180?
-	-- eliminate single choice moves from dev as well. 76384 -> 72555.
+	-- eliminate single choice moves from dev as well. 76834 -> 72555.
 	-- recovered gtrans=3.7392.  (did we do this on cost based perceptron? doesn't matter it screwed up on parsing)
 	-- vectorparser on dev: move:4.26 head:11.20 word:9.84 sent:65.88.
 
