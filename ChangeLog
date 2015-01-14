@@ -1,3 +1,444 @@
+2015-01-14    <dyuret@ku.edu.tr>
+
+	* TODO:
+@@ilac	= try 2x4096 layers
+@@b42	= start finetuning after lr=0 reaches optimum: biyofiz-4-2
+	- parse!
+	- try maxout
+	- try gaussian dropout
+	- try hinge loss
+	- debug metatrain using caffe.
+	+ try adaptive sgd with lr and momentum: metatrain=sgd, metatrain2=nesterov
+	+ check training loss/acc, test loss: rerun trndev_01_2_7
+	+ try smaller/larger lr for adagrad?
+	+ output w1 w2 stats
+	+ check derivatives for finetuning
+	+ check does the same if lr=0: NO, DEBUG! fixed.
+	x try smaller maxnorm?  but maxnorm made it worse! bug?
+
+	the art of generalization:
+	- dropout
+	- hidden units
+	- hidden layers
+	- l1,l2,maxnorm
+	- gaussian dropout
+	- input noise
+	- bagging
+	- bayesian averaging
+	- relation between mcmc and optimizers
+	- models: bayes vs slt vs regret vs bandit?
+
+	
+	*** METATRAIN EXPERIMENTS:
+
+	Find out if SGD or Nesterov is competitive with Adagrad if the
+	best lr and momentum is picked every epoch.  acc is the trn
+	accuracy, how come they never get to .99?  (TODO: investigate with
+	caffe)
+
+	metatrain_04_2_5_9_.out	 epoch=200 lr=0.0003125 mom=0.75 acc=0.976162 loss=0.0665793
+	metatrain2_04_2_5_9_.out epoch=200 lr=0.00015625 mom=0.9375 acc=0.976947 loss=0.0645551
+	
+	
+	*** FINETUNE DEBUG:
+	
+	This should give the same result as trndev (lr=0 for finetune
+	layer) but it doesn't?
+	
+	finetune2_01_2_7_inf_inf_.out	341100004    0.00183221   0.99938      0.248045     0.964989     1356.27      251498       
+
+	Due to small bug (lr=0 was skipped, in effect using lr=1 for first
+	layer).  Fixed it.  However, this does not explain why other
+	finetune experiments did not perform better.  Try finetuning after
+	regular training.  Finetuning starting with random weights may be
+	difficult to regularize.
+
+2015-01-10    <dyuret@ku.edu.tr>
+
+	*** FINETUNING EXPERIMENTS:
+
+	Same settings as Dropout experiments except the word embeddings
+	are allowed to change.  Convergence is faster but lower?
+	
+	Script: finetune.m 
+	Parameters: finetune_lr_d1_d2_m1_m2: 0.lr is the learning rate,
+	  0.d1 is dropout for 1326, 0.d2 is dropout for 20000, m1 is maxnorm
+	  for 1326, m2 is maxnorm for 20000 if specified.
+
+	finetune_01_2_5_.out  49400084	 0.01158    0.99680    0.09453	  0.97208    1452.3	34014.6
+	finetune_01_2_5_2_4_  33000056	 0.0252694  0.99224    0.0827823  0.970924   1377.55	23955.5	   
+	finetune_02_2_7_.out  355200040	 0.00135715 0.99948    0.174747	  0.970339   1538.35	230897	   
+	finetune_02_2_9_.out  57800052	 0.0243736  0.99188    0.106695	  0.968451   1539.81	37537.1	   
+	
+	
+	*** DROPOUT EXPERIMENTS:
+
+	Data: archybrid_conllWSJToken_wikipedia2MUNK-100_fv021a_xy.mat 
+	Train: x_trn, y_trn (1820392)
+	Test: x_dev, y_dev (76834)
+	Epochs: 200 (last output at 364000008 instances)
+	Architecture: 1326 x 20000 x 3
+	Solver: Adagrad
+	Parameters: trndev_lr_d1_d2 where 0.lr is the learning rate, 0.d1 is
+	  dropout rate for 1326, 0.d2 is dropout rate for 20000.
+	Columns: experiment, instances trained at best point, trnloss
+	  (for 100K sample), trnacc, devloss, devacc, speed, time.
+	Script: trndev.m
+	Cmd: for i in trndev*.out; do echo -n "$i	"; grep '^[0-9]' $i | sort -gr -k5 | head -1; done
+	
+	trndev_02_2_7_.out  349900064 0.0138664 0.99678	  0.0851207 0.972994  2709.98	129115	  (best)
+	trndev_03_2_7_.out  195100044 0.0190186 0.99487   0.0837947 0.972916  2525.96   77238.1      
+	trndev_01_2_6_.out  324400076 0.0158897 0.99623	  0.0832696 0.972772  2715.88	119446	  
+	trndev_01_1_7_.out  252300096 0.0193457 0.99496	  0.0808878 0.972733  2717.08	92856.9	  
+	trndev_01_2_7_.out  323100084 0.02304	0.99345	  0.07941   0.97262   2468.9	130868.4
+	trndev_02_3_7_.out  344800088 0.0221946 0.99403   0.0804343 0.972577  2534.09   136065       
+	trndev_02_1_7_.out  249800004 0.0113104 0.99745   0.0898223 0.972577  2533.56   98596.4      
+	trndev_01_2_5_.out  197800036 0.01672	0.99576	  0.08264   0.97253   2578.7	76706.3
+	trndev_01_2_8_.out  336200028 0.0335366 0.98931	  0.0776822 0.972512  2714.95	123833	  
+	trndev_01_3_7_.out  308100048 0.0326249 0.98985	  0.0778532 0.972499  2721.05	113229	  
+	trndev_01_2_7_.out  350000064 0.0219642 0.99403	  0.0794849 0.97246   2717.94	128774	  
+	trndev_02_2_6_.out  206700096 0.0134424 0.99676   0.086945  0.972291  2510.21   82343.7      	
+	trndev_01_0_5_.out  91300000  0.01546	0.99646	  0.08890   0.97211   2485.9	36726.8
+	trndev_005_2_7_.out 332600044 0.0377884 0.9878	  0.0778049 0.972096  2716.29	122446	  
+	trndev_01_2_9_.out  360900016 0.05180	0.98197	  0.07899   0.97158   2607.2	138424.8
+	trndev_005_0_0_.out 179800016 0.00809	0.99840	  0.10002   0.97112   2602.1	69099.1
+	trndev_01_0_0_.out  48400092  0.01139	0.99720	  0.09796   0.97108   2597.6	18632.7
+@@ilac	trndev_02_2_8_.out	2800092      0.108555     0.95962      0.115362     0.957154     2448.85      1143.43      
+	
+	*** SMALL DROPOUT EXPERIMENTS:
+
+	The settings are similar to dropout experiments except they use
+	the smaller x_tst (108536) for training to get quick results.  The
+	training is for 200 epochs, 21700064 instances.
+
+	tstdev_0_01_0_1_0_9_.out	20600004	0.00961	0.99890	0.16212	0.95108	2573.8	8003.9
+	tstdev_0_01_0_2_0_85_.out	20600004	0.00650	0.99943	0.16662	0.95096	2572.3	8008.3
+	tstdev_0_02_0_2_0_9_.out	16700008	0.01333	0.99805	0.16215	0.95084	2579.1	6475.0
+	tstdev_0_01_0_2_0_9_.out	15400076	0.02035	0.99659	0.14859	0.95074	2582.1	5964.1
+	tstdev_0_02_0_2_0_7_.out	19600080	0.00069	0.99990	0.22781	0.95066	2587.7	7574.3
+	tstdev_0_01_0_2_0_8_.out	16800044	0.00466	0.99960	0.17460	0.95066	2571.4	6533.4
+	tstdev_0_005_0_2_0_7_.out	20500068	0.00497	0.99968	0.16888	0.95057	2573.4	7966.3
+	tstdev_0_005_0_2_0_5_.out	18500020	0.00212	0.99990	0.18473	0.95057	2581.8	7165.6
+	tstdev_0_01_0_3_0_9_.out	21700064	0.02035	0.99667	0.14735	0.95056	2567.2	8452.9
+	tstdev_0_01_0_2_0_7_.out	16700008	0.00189	0.99987	0.19339	0.95045	2569.4	6499.6
+	tstdev_0_01_0_3_0_7_.out	14200080	0.00412	0.99971	0.17445	0.95039	2581.1	5501.5
+	tstdev_0_01_0_1_0_7_.out	15600048	0.00137	0.99989	0.20579	0.95033	2581.1	6043.9
+	tstdev_0_005_0_2_0_9_.out	20600004	0.02983	0.99378	0.14162	0.95032	2583.4	7973.9
+	tstdev_0_005_0_3_0_5_.out	20500068	0.00294	0.99985	0.17499	0.95027	2571.3	7972.5
+	tstdev_0_03_0_2_0_7_.out	21700064	0.00054	0.99987	0.25134	0.95015	2473.0	8774.9
+	tstdev_0_01_0_2_0_6_.out	11500080	0.00177	0.99982	0.19593	0.95015	2562.1	4488.6
+	tstdev_0_01_0_2_0_5_.out	11900024	0.00105	0.99992	0.20476	0.95010	2564.1	4641.1
+	tstdev_0_005_0_2_0_3_.out	 8100064	0.00399	0.99971	0.17634	0.95009	2567.3	3155.1
+	tstdev_0_005_0_1_0_5_.out	18100076	0.00155	0.99990	0.19938	0.95005	2571.2	7039.5
+	tstdev_0_0025_0_2_0_5_.out	16700008	0.01289	0.99887	0.15255	0.94998	2569.4	6499.6
+	tstdev_0_01_0_2_0_95_.out	20900012	0.03979	0.98924	0.14130	0.94989	2584.0	8088.1
+	tstdev_0_01_0_1_0_5_.out	20200096	0.00044	0.99993	0.23925	0.94989	2583.5	7818.8
+	tstdev_0_01_0_3_0_5_.out	18000040	0.00098	0.99989	0.20646	0.94979	2572.5	6997.2
+	tstdev_0_01_0_2_0_3_.out	 9100088	0.00092	0.99990	0.21214	0.94979	2583.4	3522.5
+	tstdev_0_02_0_2_0_5_.out	19700016	0.00040	0.99995	0.25615	0.94971	2580.1	7635.4
+	
+	
+2014-12-26    <dyuret@ku.edu.tr>
+
+	* adagrad_of3/oftest3: Trying L1 regularization.
+
+	Summary of results: 
+	
+	lambda	devloss			devacc
+	1e-5	0.145027 @ 9.5e6	0.944972 @ 9.0e6
+	1e-6	0.136917 @ 3.7e6	0.949619 @ 6.3e6
+	
+	Notes: L1 with 1e-6 gives almost identical results with L2 with
+	1e-4.  L1 with 1e-5 starts around the same with L2@1e-3 but later
+	gains both in trn and dev.  Fairly certain there is a hard limit
+	at 0.95 devacc using L1/L2.
+
+	These experiments give nearly identical final devacc:
+	L2@1e-5, L2@1e-4, L2@0, L1@1e-6
+	These are followed by (in order):
+	L2@3e-4, L1@1e-5, L2@1e-3
+
+	Haven't tried: 
+	- separate w1 w2 regularization constants.
+	- higher learning rate
+	- not applying regularization to bias terms.
+	- maxnorm regularization.
+	- dropout
+	
+	* adagrad_of2/oftest2: Trying L2 regularization: 
+	
+	Summary of results:
+	
+	lambda	devloss			devacc
+	1e-2	0.340102 @ 9.5e6	0.882383 @ 6.8e6
+	1e-3	0.169720 @ 9.5e6	0.938582 @ 9.0e6
+	3e-4	0.141040 @ 4.7e6	0.946899 @ 5.2e6
+	1e-4	0.137502 @ 3.7e6	0.949606 @ 9.0e6
+	1e-5	0.143399 @ 6e5		0.948877 @ 3.0e6
+	0	0.144738 @ 6e5		0.949189 @ 9.2e6
+	
+	Notes: 1e-5 is very close to no regularization in trnloss, but the
+	upturn in devloss is less pronounced.  1e-4 and larger lambda have
+	no upturn in devloss at all.
+	
+	Implementation details:
+	ufldl gives the total cost as 
+	
+	J = 1/M sum_m instance_cost_m + lambda/2 |W|^2
+
+	The gradient is
+
+	dJ/dw_ij = 1/M sum_m dJ_m/dw_ij + lambda * W
+
+	The update rule is
+
+	w{l} = w{l} - alpha * [ (1/M) sum_m dJ_m/dw{l} + lambda * w{l} ]
+	
+	- How do we apply this to minibatch?  Can we have lambda be
+	independent of minibatch size?  -- I think it already is, lambda
+	is the tradeoff between |W|^2 and per-instance cost.  Thus it is
+	invariant to batch size in the above expression.
+	
+	- lambda is the precision of individual values in W.  We start
+	from std=1e-2, var=1e-4, prec=1e4.  At the end, with w101 (our
+	model with best dev accuracy): w{1} std=2.8e-2, var=7.9e-4,
+	prec=1.26e3; w{2} std=1.3e-1, var=1.7e-2, prec=5.7e1.  Should we
+	use separate regularization coefficients for w{1} and w{2}?  --
+	next version.
+
+	- Does the scaling in w{2} matter? yes it does.  if all answers
+	are correct w{2}->inf keeps increasing likelihood.
+
+	
+	* adagrad_of1/oftest1: original adagrad for reference, using tst
+	for training and evaluating on dev.  complete evaluation every
+	100K instances.
+
+	trnloss: 1.5e-3 @ 1e7	trnacc: .9999 @ 1e7
+	devloss: 1.4e-1 @ 6e5	devacc: .9492 @ 9e6
+
+	iter	devacc
+	4e5	.943892
+	5e5	.944985
+	6e5	.946469
+	1.2e6	.947810
+	2.0e6	.948096
+	6.2e6	.949098
+
+	* Try:
+	- dropout: seems best chance?
+	- L2 reg
+	- L1 reg
+	- sparsity reg
+	- change obj function (but that is not where the problem is)
+	- start with random w0
+	- reduce hidden layer?
+
+	* starter.mat: To test overfitting remedies quickly, use the 108K
+	tst for training and 76K dev for testing from
+	archybrid_conllWSJToken_wikipedia2MUNK-100_fv021a_xy.mat.  w000 is
+	a random network, w101 is the optimized network from startup1.m.
+	
+	  Name           Size                    Bytes  Class
+	  w000           1x2                       440  cell                
+	  w101           1x2                       440  cell                
+	  x1_dev      1327x76834             407834872  single              
+	  x1_tst      1327x108536            576109088  single              
+	  y_dev          1x76834                307336  single              
+	  y_tst          1x108536               434144  single              
+
+2014-12-25    <dyuret@ku.edu.tr>
+
+	* weight-decay: Here are the average weight magnitudes:
+	mean(abs(w(:))); and dev/trn loss/acc for the final network.
+	
+		1,M	N	O	0
+	w0	0.0801	0.0823	0.0818	-
+	w{1}	0.0221	0.0200	0.0256	0.0831
+	w{2}	0.1114	0.0912	0.1379	0.1297
+	devloss	0.0949	0.1742	0.1399	0.1627
+	trnloss	0.0123	0.0033	0.0018	0.0032
+	devacc	0.9707	0.9655	0.9697	0.9692
+	trnacc	0.9975	0.9992	0.9994	0.9992
+
+	columns:
+	1,M: experiments 1 and M use adagrad lr=0.004 with fixed embeddings w0.
+	N: variable embeddings w0, random initial weights w{1,2}.
+	O: variable embeddings w0, using M's final weights to initialize w{1,2}.
+	0: experiment 0 lr=0.04 with fixed embeddings w0.
+
+	There is definite overfitting signs in loss/acc for N/O but the
+	weight magnitudes are not very different from M.  Unlike
+	experiment 0 (lr=0.04) where you can see a definite increase in
+	weight magnitudes.  So regularization may have improved experiment
+	0 but is not likely to help the others.  Here are the
+	min/mean(abs)/max numbers:
+
+		w0			w{1}			w{2}
+	1,M	[-0.4448:0.0801:0.5000]	[-0.2838:0.0221:0.2211]	[-0.5210:0.1114:0.4351]
+	N	[-0.5575:0.0823:0.6051]	[-0.2218:0.0200:0.1827]	[-0.4414:0.0912:0.3210]
+	O	[-0.4759:0.0818:0.5686]	[-0.2794:0.0256:0.2510]	[-0.5975:0.1379:0.4962]
+	0	--			[-1.3639:0.0831:1.4626]	[-1.0373:0.1297:0.9182]
+	
+	Try:
+	- dropout: seems best chance?
+	- L2 reg
+	- L1 reg
+	- sparsity reg
+	- change obj function (but that is not where the problem is)
+	- start with random w0
+	- reduce hidden layer?
+	
+2014-12-23    <dyuret@ku.edu.tr>
+
+	* summary: definite overfitting:
+
+		startup1	startupN	startupO
+	trnloss	0.00928@1.8e8	0.00475@7.7e7	0.00111@8.0e7
+	devloss	0.080819@4.4e7	0.0839447@5.7e6	0.0940749@3.3e6
+	devacc	0.971614@1.7e8	0.969662@1.1e7	0.97138@2.3e7
+
+	Wish I recorded the average size of weights, gradients, steps,
+	etc: for w101 (final weights of startup1):
+	>> mean(abs(w101{1}(:))) % 0.0221
+	>> mean(abs(w101{2}(:))) % 0.1119
+
+	For the word embeddings:
+	>> mean(abs(w0(:))) % 0.0801
+
+	Overfitting remedies: early-stop, weight-decay, dropout.
+	:(early-stop would not help us).
+
+	Better search remedies: momentum, nesterov, lecunn.  (however we
+	are doing fine with trnloss, so search is not the problem).
+
+	Better objective function: devacc does not always follow devloss.
+	:(could also check trnacc vs trnloss).  At the end of training in
+	startup1, trnacc=0.9975 and trnloss=0.0122.  Note that this is the
+	complete trnloss as opposed to the numbers in the table above
+	which just give a moving average.
+
+	* startupO.out: this one is updating w0, starting from the already
+	converged w.  Stops impoving after 1e7.
+
+	* startupN.out: this one is updating w0 (still starting from
+	random w).  Starts ahead of startup1, but devacc stops improving
+	and goes down after 1e7.  trnloss is reduced much faster to a
+	lower minimum compared to startup1, but devloss hits an earlier
+	:(7e6) and shallower minimum:
+
+	* startupM.out: replicating startup1.
+
+	* prepdata.m: get it all ready for finetuning. data saved in
+	prepdata.mat:
+
+	Name          Size                      Bytes  Class     Attributes
+	w             1x2                   106405544  cell                
+	w0          100x37641                15056400  single              
+	xf_dev      526x76834               161658736  single              
+	xf_trn      526x1820392            3830104768  single              
+	xf_tst      526x108536              228359744  single              
+	xs_dev        8x76834                 2458688  single              
+	xs_trn        8x1820392              58252544  single              
+	xs_tst        8x108536                3473152  single              
+	y_dev         1x76834                  307336  single              
+	y_trn         1x1820392               7281568  single              
+	y_tst         1x108536                 434144  single              
+	
+
+	* test-plan:
+	
+	1. compare forward: To compare forward and ftforward, we need to
+	rearrange x or rearrange w1 or both.  rearrangewx does both.  I
+	saved w101, x1_dev, y_dev, w0 and w0hash for testing under
+	forwtest.mat.  forwtest.m ensures the forward and ftforward work
+	the same way.
+	
+	2. compare backward: backtest works using ftbackward and
+	backsparse but nothing to compare it to.
+	
+	3. test new gradient: gradtest works perfectly.
+	
+	4. finetune: need to transform trn and dev sets, adapt adagrad (is
+	the learning rate going to be ok without the history?), train
+	network.  But first, we may want to replicate w101 using the new
+	architecture without touching the embeddings.
+
+	* function: z = forwsparse(w, x)
+	% x(n,m) is the data matrix where each column is an instance
+	% containing the indices of n words; w(d,v) is the embedding
+	% matrix, column i contains the embedding for word i.  The
+	% resulting z(d*n,m) will contain the embeddings instead of the
+	% indices for the words.
+
+	* function: [xsparse, xfull] = xsplit(x, wcache)
+	% x is the original feature vector with word embeddings mixed with
+	% other features.  wcache is a hash table that returns the word index
+	% given its embedding.  In the output xsparse will contain the indices
+	% of words whose embeddings are in x and xfull will contain all the
+	% other features.
+	
+
+2014-12-20    <dyuret@ku.edu.tr>
+
+	* xformx(x, wcache): transform feature vectors replacing each word
+	embedding with the embedding index.  xformy(y,uniqw) reverses the
+	transformation for debugging.
+
+	* vtable.m (find): fixes the problem with kernelcache, and now
+	wcache = vtable(uniqw, 1:size(uniqw,2)) works.
+
+	* wcache: kernelcache(uniqw, 1:size(uniqw,2)) does not work
+	because kernelcache may not keep all keys.  I need to add
+	collision resolution.
+
+	* uniqw.mat: a dictionary of all unique word embeddings, size:
+	100, 37641.
+
+	* mergew.m (mergew): takes an x matrix, splits into feature
+	matrices, identifies the features that are word embeddings (the
+	ones ending with 4 in fv021a), merges and uniques them.
+
+	* splitx.m (splitx): takes an x matrix and splits it into a cell
+	array of individual feature matrices.
+
+	* fine-tuning:
+	1. figure out which parts of the 1326 dims correspond to word embeddings.
+	2. convert all of x into sparse format:
+	2a. for embeddings use one-hot
+	2b. for the rest keep the original values
+	3. initialize the first layer of weights
+	3a. for embeddings use embeddings as weight
+	3b. for the rest use 1 as weight
+	4. how do we do weight sharing?
+
+	fv021a:
+		dims
+		s2w	100w
+		s2r1l=	4
+		s1w	100w
+		s1r<	4
+		s1r1l=	4
+		s0l1c	100
+		s0l1r=	4
+		s0l1w	100w
+		s0c	100
+		s0-	1
+		s0r=	4
+		s0w	100w
+		s0r1r=	4
+		s0r1w	100w
+		n0l1c	100
+		n0l1-	1
+		n0l1w	100w
+		n0c	100
+		n0w	100w
+		n1c	100
+		n1w	100w
+
+		total	1326
+	
+
 2014-12-07    <dyuret@ku.edu.tr>
 
 	* net_forward.py: THE PYCAFFE INTERFACE
@@ -85,7 +526,7 @@
 	
 2014-12-02    <dyuret@ku.edu.tr>
 
-	* q: start trying multi-layer nets. @@ilac-3-0
+	* q: start trying multi-layer nets. $$ilac-3-0
 	BUG: we have loss: nan in a number of cases.
 	The culprit seems to be POWER and BNLL units.	
 
