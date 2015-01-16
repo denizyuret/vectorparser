@@ -1,3 +1,41 @@
+2015-01-16    <dyuret@ku.edu.tr>
+
+	* vectorparser_rnet.m: debugging vectorparser with rnet:
+
+	1. dump-speed: 29 sent/sec. result is correct.
+
+	2. d1=double2single(d0): convert all data to single.
+	dump-speed: 29 sent/sec. result is correct.
+
+	3. evalnet speed: 2.7 secs for 76834 dev instances.
+	630 sent/sec.
+	static accuracy: 0.9724. (1-0.0276)
+
+	4. test speed: 9.7 sent/sec.
+	sent_pct: 0.5888
+	head_pct: 0.0894
+	word_pct: 0.0785
+	move_pct: 0.0340
+
+	5. eliminate softmax from soft.fforw.
+	test speed: 10.5 sent/sec.
+
+	6. use bsxfun: tried, slower.
+
+	7. try profiling: nothing useful.
+
+	8. no dumping:
+	test speed: 11.64 sent/sec.
+
+	9. train speed: minibatch=100, no save, test, stats
+	dev train speed: 88.40 sent/sec.
+
+	10. vectorparser train speed: 1.6 sent/sec.
+	need minibatching.
+
+	11. Alkan's idea of sentence parallelism: place the initial states
+	of 100 sentences in one matrix and parse in parallel.
+
 2015-01-14    <dyuret@ku.edu.tr>
 
 	* TODO:
@@ -9,7 +47,7 @@
 	- finetuning: delete dw2 at start after convergence and try lr.
 	- finetuning: customize dropout to drop whole features (word embeddings)
 	- feature select with neural nets (start with 8 anchor words)
-	
+
 	+ try adaptive sgd with lr and momentum: metatrain=sgd, metatrain2=nesterov
 	+ check training loss/acc, test loss: rerun trndev_01_2_7
 	+ try smaller/larger lr for adagrad?
@@ -64,6 +102,8 @@
 	- observed <.1% improvement before crash.
 	- TODO: rerun.
 	133100016    0.00297701   0.99923      0.102768     0.973384     1805.91      73702.4
+	- TODO: more efficient finetune?
+	S = sparse(i,j,s,m,n,nzmax) uses vectors i, j, and s to generate an m-by-n sparse matrix such that S(i(k),j(k)) = s(k), with space allocated for nzmax nonzeros. Vectors i, j, and s are all the same length. Any elements of s that are zero are ignored, along with the corresponding values of i and j. Any elements of s that have duplicate values of i and j are added together.
 	
 	* FINETUNE DEBUG:
 	
