@@ -9,7 +9,7 @@
 % stats = eval_conll(corpus, dump);
 
 function [model, dump] = vectorparser_rnet(model, corpus, varargin)
-
+    gpu = gpuDevice; %DBG
     msg('Initializing...');
     m = vectorparser_init(model, corpus, varargin, nargout)
     msg('Processing sentences...');
@@ -33,7 +33,9 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
             if m.compute_features
                 f = features(p, s, m.feats);  % 1153us
                 ftr = f';                         % f is a row vector, ftr column vector
-                m.x(:,end+1) = ftr;
+                if m.dump
+                    m.x(:,end+1) = ftr;
+                end
             end
 
             if m.compute_scores
@@ -43,6 +45,7 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
 
             if m.update
                 update_model(m, mincostmove);
+                wait(gpu); %DBG
             end
 
             if ~m.predict
@@ -99,7 +102,7 @@ function update_model(m, y)
     for l=numel(m.net):-1:2
         y = m.net{l}.back(y);
     end
-    net{1}.back(y);
+    m.net{1}.back(y);
     for l=1:numel(m.net)
         m.net{l}.update();
     end
@@ -110,13 +113,14 @@ function score = compute_scores(m, x)
 % TODO: optimize single vector multiplication in rnet
 % TODO: maybe soft.forw does not need to do softmax
 % and we can do back (with softmax) and update in minibatches.
+% check dbl vs single
     for l=1:numel(m.net)
         if m.update && m.net{l}.dropout
             x = m.net{l}.drop(x);
         end
         x = m.net{l}.forw(x);
     end
-    score = x;
+    score = gather(x);
 end
 
 
@@ -174,12 +178,11 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
         fprintf('Using gold moves.\n');
     end % if m.predict
 
-    if m.compute_features
-        m.x = zeros(nd, 0, 'like', x1);
-    end
-
     if m.dump
         fprintf('Dumping results.\n');
+        if m.compute_features
+            m.x = zeros(nd, 0, 'like', x1);
+        end
         if m.compute_costs
             m.y = zeros(1, 0, 'like', x1);
             m.cost = zeros(nc, 0, 'like', x1);
