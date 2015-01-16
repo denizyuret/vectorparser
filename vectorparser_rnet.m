@@ -15,50 +15,68 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
     msg('Processing sentences...');
     t0 = tic;
 
-    for snum=1:numel(corpus)
-        s = corpus{snum};
-        h = s.head;
-        n = numel(h);
-        p = feval(m.parser, n);
+    for snum1=1:m.batch:numel(corpus)
+        snum2=min(numel(corpus), snum1+m.batch-1);
+        clear b;  % batch specific variables
+        b.sentences = corpus(snum1:snum2);
+        b.nsentences = numel(b.sentences);
+        b.parsers = {};
+        for i=1:b.nsentences
+            b.parsers{i} = feval(m.parser, numel(b.sentences{i}.head));
+        end
+        b.valid = false(m.nmove, b.nsentences);
+        if m.compute_costs
+            b.cost = zeros(m.nmove, b.nsentences, 'single');
+        end
+        if m.compute_features
+            b.feats = zeros(m.ndims, b.nsentences, 'like', b.sentences{1}.wvec);
+        end
 
-        while 1                               % parse one sentence
-            valid = p.valid_moves();
-            if ~any(valid) break; end
+        while 1  % parse one batch
+
+            finished = true;
+            for i=1:b.nsentences
+                b.valid(:,i) = b.parsers{i}.valid_moves();
+                if ~any(b.valid(:,i)) continue; end
+                finished = false;
+                if m.compute_costs
+                    b.cost(:,i) = b.parsers{i}.oracle_cost(b.sentences{i}.head);
+                end
+                if m.compute_features
+                    b.feats(:,i) = features(b.parsers{i}, b.sentences{i}, m.feats)';
+                end
+            end
+            if finished break; end
 
             if m.compute_costs
-                cost = p.oracle_cost(h); 		% 1019us
-                [mincost, mincostmove] = min(cost);
-            end
-
-            if m.compute_features
-                f = features(p, s, m.feats);  % 1153us
-                ftr = f';                         % f is a row vector, ftr column vector
-                if m.dump
-                    m.x(:,end+1) = ftr;
-                end
+                [mincost, mincostmove] = min(b.cost);
             end
 
             if m.compute_scores
-                score = compute_scores(m, ftr);
-                [maxscore, maxscoremove] = max(score); % 925us
+                score = compute_scores(m, b.feats);
+                [maxscore, maxscoremove] = max(score);
             end
 
             if m.update
+                % TODO: make sure finished sentences do not
+                % contribute to update.
+                error('Not implemented update yet');
                 update_model(m, mincostmove);
                 wait(gpu); %DBG
             end
 
             if ~m.predict
                 execmove = mincostmove;
-            elseif valid(maxscoremove)
-                execmove = maxscoremove;
             else
                 zscore = score;
-                zscore(~valid) = -inf;
+                zscore(~b.valid) = -inf;
                 [~,execmove] = max(zscore);
             end
-
-            p.transition(execmove);
+            for i=1:b.nsentences
+                if b.valid(execmove(i), i)
+                    b.parsers{i}.transition(execmove(i));
+                end
+            end
 
             if m.dump 
                 update_dump();
@@ -67,29 +85,35 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
         end % while 1
 
         if m.dump
-            m.pred{end+1} = p.head;
+            for i=1:b.nsentences
+                m.pred{snum1+i-1} = b.parsers{i}.head;
+            end
         end
 
-        dot(snum, numel(corpus), t0);
+        dot(snum2, numel(corpus), t0);
     end % for s1=corpus
 
     if m.dump 
-        if m.compute_features
-            [~,m.fidx] = features(p, s, m.feats);
-        end
         dump = m;
     end
 
 
     %%%%%%%%%%%%%%%%%%%%%%
     function update_dump()
+        v = (sum(b.valid) > 0);
+        idump1 = m.dump;
+        m.dump = m.dump + sum(v);
+        idump2 = m.dump - 1;
+        if m.compute_features
+            m.x(:,idump1:idump2) = b.feats(:,v);
+        end
         if m.compute_costs
-            m.y(end+1) = mincostmove;
-            m.cost(:,end+1) = cost;
+            m.y(:,idump1:idump2) = mincostmove(:,v);
+            m.cost(:,idump1:idump2) = b.cost(:,v);
         end
         if m.compute_scores
-            m.z(end+1) = execmove;
-            m.score(:,end+1) = score;
+            m.z(:,idump1:idump2) = execmove(:,v);
+            m.score(:,idump1:idump2) = score(:,v);
         end
     end % update_dump
 
@@ -138,6 +162,8 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
             m.predict = v1;
           case 'update'  
             m.update  = v1;
+          case 'batch'
+            m.batch = v1;
           otherwise 
             error('Usage: [model, dump] = vectorparser(model, corpus, m)');
         end
@@ -151,7 +177,11 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
         m.update = true;   % update: train the model (default), otherwise model is not updated
     end
 
-    m.dump = (nargout_save >= 2);
+    if ~isfield(m, 'batch')
+        m.batch = 100;
+    end
+
+    m.dump = 0+(nargout_save >= 2);     % needs to be numeric, used as the next index to write
     m.compute_costs = m.update || m.dump || ~m.predict; % eval_conll needs costs
     m.compute_features = m.update || m.dump || m.predict;
     m.compute_scores  = m.update || m.predict;
@@ -159,13 +189,13 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
     assert(isfield(m,'parser'), 'Please specify model.parser.');
     tmp_s = corpus{1};
     tmp_p = feval(m.parser, numel(tmp_s.head));
-    nc = tmp_p.NMOVE;
+    m.nmove = tmp_p.NMOVE;
 
     if m.compute_features
         assert(isfield(m,'feats'), 'Please specify model.feats.');
         assert(size(m.feats, 2) == 3, 'The feats matrix needs 3 columns.');
-        tmp_f = features(tmp_p, tmp_s, m.feats);
-        nd = numel(tmp_f);
+        [tmp_f,m.fidx] = features(tmp_p, tmp_s, m.feats);
+        m.ndims = numel(tmp_f);
     end
 
     if m.compute_scores
@@ -180,18 +210,23 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
 
     if m.dump
         fprintf('Dumping results.\n');
+        nwords = 0;
+        for i=1:numel(corpus)
+            nwords = nwords + numel(corpus{i}.head);
+        end
+        nmoves = 2 * (nwords - numel(corpus));
         if m.compute_features
-            m.x = zeros(nd, 0, 'like', x1);
+            m.x = zeros(m.ndims, nmoves, 'like', x1);
         end
         if m.compute_costs
-            m.y = zeros(1, 0, 'like', x1);
-            m.cost = zeros(nc, 0, 'like', x1);
+            m.y = zeros(1, nmoves, 'like', x1);
+            m.cost = zeros(m.nmove, nmoves, 'like', x1);
         end
         if m.compute_scores
-            m.z = zeros(1, 0, 'like', x1);
-            m.score = zeros(nc, 0, 'like', x1);
+            m.z = zeros(1, nmoves, 'like', x1);
+            m.score = zeros(m.nmove, nmoves, 'like', x1);
         end
-        m.pred = {};
+        m.pred = cell(1, numel(corpus));
     end % if m.dump
 
 end % vectorparser_init
