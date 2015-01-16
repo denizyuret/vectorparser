@@ -1,19 +1,22 @@
 2015-01-14    <dyuret@ku.edu.tr>
 
 	* TODO:
-@@ilac	= try 2x4096 layers
-@@b42	= start finetuning after lr=0 reaches optimum: biyofiz-4-2
 	- parse!
 	- try maxout
 	- try gaussian dropout
 	- try hinge loss
 	- debug metatrain using caffe.
+	- finetuning: delete dw2 at start after convergence and try lr.
+	- finetuning: customize dropout to drop whole features (word embeddings)
+	- feature select with neural nets (start with 8 anchor words)
+	
 	+ try adaptive sgd with lr and momentum: metatrain=sgd, metatrain2=nesterov
 	+ check training loss/acc, test loss: rerun trndev_01_2_7
 	+ try smaller/larger lr for adagrad?
 	+ output w1 w2 stats
 	+ check derivatives for finetuning
 	+ check does the same if lr=0: NO, DEBUG! fixed.
+	+ try 2x4096 layers
 	x try smaller maxnorm?  but maxnorm made it worse! bug?
 
 	the art of generalization:
@@ -40,19 +43,6 @@
 	metatrain2_04_2_5_9_.out epoch=200 lr=0.00015625 mom=0.9375 acc=0.976947 loss=0.0645551
 	
 	
-	*** FINETUNE DEBUG:
-	
-	This should give the same result as trndev (lr=0 for finetune
-	layer) but it doesn't?
-	
-	finetune2_01_2_7_inf_inf_.out	341100004    0.00183221   0.99938      0.248045     0.964989     1356.27      251498       
-
-	Due to small bug (lr=0 was skipped, in effect using lr=1 for first
-	layer).  Fixed it.  However, this does not explain why other
-	finetune experiments did not perform better.  Try finetuning after
-	regular training.  Finetuning starting with random weights may be
-	difficult to regularize.
-
 2015-01-10    <dyuret@ku.edu.tr>
 
 	*** FINETUNING EXPERIMENTS:
@@ -70,6 +60,24 @@
 	finetune_02_2_7_.out  355200040	 0.00135715 0.99948    0.174747	  0.970339   1538.35	230897	   
 	finetune_02_2_9_.out  57800052	 0.0243736  0.99188    0.106695	  0.968451   1539.81	37537.1	   
 	
+	- start finetuning after lr=0 reaches optimum: crashed:	biyofiz-4-2-crash.txt
+	- observed <.1% improvement before crash.
+	- TODO: rerun.
+	133100016    0.00297701   0.99923      0.102768     0.973384     1805.91      73702.4
+	
+	* FINETUNE DEBUG:
+	
+	This should give the same result as trndev (lr=0 for finetune
+	layer) but it doesn't?
+	
+	finetune2_01_2_7_inf_inf_.out	341100004    0.00183221   0.99938      0.248045     0.964989     1356.27      251498       
+
+	Due to small bug (lr=0 was skipped, in effect using lr=1 for first
+	layer).  Fixed it.  However, this does not explain why other
+	finetune experiments did not perform better.  Try finetuning after
+	regular training.  Finetuning starting with random weights may be
+	difficult to regularize.
+
 	
 	*** DROPOUT EXPERIMENTS:
 
@@ -78,6 +86,7 @@
 	Test: x_dev, y_dev (76834)
 	Epochs: 200 (last output at 364000008 instances)
 	Architecture: 1326 x 20000 x 3
+	  except for trndev4096 which has 1326 x 4096 x 4096 x 3
 	Solver: Adagrad
 	Parameters: trndev_lr_d1_d2 where 0.lr is the learning rate, 0.d1 is
 	  dropout rate for 1326, 0.d2 is dropout rate for 20000.
@@ -86,7 +95,9 @@
 	Script: trndev.m
 	Cmd: for i in trndev*.out; do echo -n "$i	"; grep '^[0-9]' $i | sort -gr -k5 | head -1; done
 	
-	trndev_02_2_7_.out  349900064 0.0138664 0.99678	  0.0851207 0.972994  2709.98	129115	  (best)
+	trndev4096_02_2_7_7 273500000 0.0387397 0.98938   0.074399  0.973046  2616.6    104525       
+	trndev_02_2_7_.out  349900064 0.0138664 0.99678	  0.0851207 0.972994  2709.98	129115
+	trndev_02_2_8_.out  357200032 0.0239076 0.99315   0.0793867 0.972994  2516.52   141942       
 	trndev_03_2_7_.out  195100044 0.0190186 0.99487   0.0837947 0.972916  2525.96   77238.1      
 	trndev_01_2_6_.out  324400076 0.0158897 0.99623	  0.0832696 0.972772  2715.88	119446	  
 	trndev_01_1_7_.out  252300096 0.0193457 0.99496	  0.0808878 0.972733  2717.08	92856.9	  
@@ -103,7 +114,6 @@
 	trndev_01_2_9_.out  360900016 0.05180	0.98197	  0.07899   0.97158   2607.2	138424.8
 	trndev_005_0_0_.out 179800016 0.00809	0.99840	  0.10002   0.97112   2602.1	69099.1
 	trndev_01_0_0_.out  48400092  0.01139	0.99720	  0.09796   0.97108   2597.6	18632.7
-@@ilac	trndev_02_2_8_.out	2800092      0.108555     0.95962      0.115362     0.957154     2448.85      1143.43      
 	
 	*** SMALL DROPOUT EXPERIMENTS:
 
