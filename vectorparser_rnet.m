@@ -17,43 +17,45 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
 
     for snum1=1:m.batch:numel(corpus)
         snum2=min(numel(corpus), snum1+m.batch-1);
-        clear b;  % batch specific variables
-        b.sentences = corpus(snum1:snum2);
-        b.nsentences = numel(b.sentences);
-        b.parsers = {};
-        for i=1:b.nsentences
-            b.parsers{i} = feval(m.parser, numel(b.sentences{i}.head));
+        sentences = corpus(snum1:snum2);
+        nsentences = numel(sentences);
+        parsers = {};
+        for i=1:nsentences
+            parsers{i} = feval(m.parser, numel(sentences{i}.head));
         end
-        b.valid = false(m.nmove, b.nsentences);
+        valid = false(m.nmove, nsentences);
         if m.compute_costs
-            b.cost = zeros(m.nmove, b.nsentences, 'single');
+            cost = zeros(m.nmove, nsentences, 'single');
         end
         if m.compute_features
-            b.feats = zeros(m.ndims, b.nsentences, 'like', b.sentences{1}.wvec);
+            feats = zeros(m.ndims, nsentences, 'like', sentences{1}.wvec);
         end
 
         while 1  % parse one batch
 
-            finished = true;
-            for i=1:b.nsentences
-                b.valid(:,i) = b.parsers{i}.valid_moves();
-                if ~any(b.valid(:,i)) continue; end
-                finished = false;
-                if m.compute_costs
-                    b.cost(:,i) = b.parsers{i}.oracle_cost(b.sentences{i}.head);
-                end
-                if m.compute_features
-                    b.feats(:,i) = features(b.parsers{i}, b.sentences{i}, m.feats)';
-                end
+            for i=1:nsentences
+                valid(:,i) = parsers{i}.valid_moves();
             end
-            if finished break; end
+            anyvalid = (sum(valid) > 0);
+            if ~any(anyvalid) break; end
 
             if m.compute_costs
-                [mincost, mincostmove] = min(b.cost);
+                for i=1:nsentences
+                    if anyvalid(i)
+                        cost(:,i) = parsers{i}.oracle_cost(sentences{i}.head);
+                    end
+                end
+                [mincost, mincostmove] = min(cost);
             end
-
+            if m.compute_features
+                for i=1:nsentences
+                    if anyvalid(i)
+                        feats(:,i) = features(parsers{i}, sentences{i}, m.feats)';
+                    end
+                end
+            end
             if m.compute_scores
-                score = compute_scores(m, b.feats);
+                score = compute_scores(m, feats);
                 [maxscore, maxscoremove] = max(score);
             end
 
@@ -69,12 +71,12 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
                 execmove = mincostmove;
             else
                 zscore = score;
-                zscore(~b.valid) = -inf;
+                zscore(~valid) = -inf;
                 [~,execmove] = max(zscore);
             end
-            for i=1:b.nsentences
-                if b.valid(execmove(i), i)
-                    b.parsers{i}.transition(execmove(i));
+            for i=1:nsentences
+                if valid(execmove(i), i)
+                    parsers{i}.transition(execmove(i));
                 end
             end
 
@@ -85,8 +87,8 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
         end % while 1
 
         if m.dump
-            for i=1:b.nsentences
-                m.pred{snum1+i-1} = b.parsers{i}.head;
+            for i=1:nsentences
+                m.pred{snum1+i-1} = parsers{i}.head;
             end
         end
 
@@ -100,16 +102,16 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
 
     %%%%%%%%%%%%%%%%%%%%%%
     function update_dump()
-        v = (sum(b.valid) > 0);
+        v = (sum(valid) > 0);
         idump1 = m.dump;
         m.dump = m.dump + sum(v);
         idump2 = m.dump - 1;
         if m.compute_features
-            m.x(:,idump1:idump2) = b.feats(:,v);
+            m.x(:,idump1:idump2) = feats(:,v);
         end
         if m.compute_costs
             m.y(:,idump1:idump2) = mincostmove(:,v);
-            m.cost(:,idump1:idump2) = b.cost(:,v);
+            m.cost(:,idump1:idump2) = cost(:,v);
         end
         if m.compute_scores
             m.z(:,idump1:idump2) = execmove(:,v);
