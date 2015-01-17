@@ -15,47 +15,52 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
     msg('Processing sentences...');
     t0 = tic;
 
+    % TODO: check if preallocation really helps.
+    parsers = cell(1, m.batch);
+    valid = false(m.nmove, m.batch);
+    if m.compute_costs
+        cost = zeros(m.nmove, m.batch, 'single');
+    end
+    if m.compute_features
+        feats = zeros(m.ndims, m.batch, 'like', corpus{1}.wvec);
+    end
+
     for snum1=1:m.batch:numel(corpus)
         snum2=min(numel(corpus), snum1+m.batch-1);
         sentences = corpus(snum1:snum2);
         nsentences = numel(sentences);
-        parsers = {};
         for i=1:nsentences
             parsers{i} = feval(m.parser, numel(sentences{i}.head));
-        end
-        valid = false(m.nmove, nsentences);
-        if m.compute_costs
-            cost = zeros(m.nmove, nsentences, 'single');
-        end
-        if m.compute_features
-            feats = zeros(m.ndims, nsentences, 'like', sentences{1}.wvec);
         end
 
         while 1  % parse one batch
 
+            % the range of sentences, parsers, valid is 1:nsentences.
             for i=1:nsentences
                 valid(:,i) = parsers{i}.valid_moves();
             end
-            anyvalid = (sum(valid) > 0);
-            if ~any(anyvalid) break; end
+
+            % the range of all other variables is 1:nvalid:
+            % including ivalid, cost, feats, score, etc.
+            ivalid = find(sum(valid(:,1:nsentences)));
+            nvalid = numel(ivalid);
+            if nvalid == 0 break; end
 
             if m.compute_costs
-                for i=1:nsentences
-                    if anyvalid(i)
-                        cost(:,i) = parsers{i}.oracle_cost(sentences{i}.head);
-                    end
+                for j=1:nvalid
+                    i = ivalid(j);
+                    cost(:,j) = parsers{i}.oracle_cost(sentences{i}.head);
                 end
-                [mincost, mincostmove] = min(cost);
+                [mincost, mincostmove] = min(cost(:,1:nvalid));
             end
             if m.compute_features
-                for i=1:nsentences
-                    if anyvalid(i)
-                        feats(:,i) = features(parsers{i}, sentences{i}, m.feats)';
-                    end
+                for j=1:nvalid
+                    i = ivalid(j);
+                    feats(:,j) = features(parsers{i}, sentences{i}, m.feats)';
                 end
             end
             if m.compute_scores
-                score = compute_scores(m, feats);
+                score = compute_scores(m, feats(:,1:nvalid));
                 [maxscore, maxscoremove] = max(score);
             end
 
@@ -71,12 +76,13 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
                 execmove = mincostmove;
             else
                 zscore = score;
-                zscore(~valid) = -inf;
+                zscore(~valid(:,ivalid)) = -inf;
                 [~,execmove] = max(zscore);
             end
-            for i=1:nsentences
-                if valid(execmove(i), i)
-                    parsers{i}.transition(execmove(i));
+            for j=1:nvalid
+                i = ivalid(j);
+                if valid(execmove(j), i)
+                    parsers{i}.transition(execmove(j));
                 end
             end
 
@@ -102,20 +108,19 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
 
     %%%%%%%%%%%%%%%%%%%%%%
     function update_dump()
-        v = (sum(valid) > 0);
         idump1 = m.dump;
-        m.dump = m.dump + sum(v);
+        m.dump = m.dump + nvalid;
         idump2 = m.dump - 1;
         if m.compute_features
-            m.x(:,idump1:idump2) = feats(:,v);
+            m.x(:,idump1:idump2) = feats(:,1:nvalid);
         end
         if m.compute_costs
-            m.y(:,idump1:idump2) = mincostmove(:,v);
-            m.cost(:,idump1:idump2) = cost(:,v);
+            m.y(:,idump1:idump2) = mincostmove(:,1:nvalid);
+            m.cost(:,idump1:idump2) = cost(:,1:nvalid);
         end
         if m.compute_scores
-            m.z(:,idump1:idump2) = execmove(:,v);
-            m.score(:,idump1:idump2) = score(:,v);
+            m.z(:,idump1:idump2) = execmove(:,1:nvalid);
+            m.score(:,idump1:idump2) = score(:,1:nvalid);
         end
     end % update_dump
 
@@ -124,7 +129,6 @@ end % vectorparser
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 function update_model(m, y)
-% TODO: think about minibatching this
     for l=numel(m.net):-1:2
         y = m.net{l}.back(y);
     end
@@ -136,10 +140,6 @@ end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function score = compute_scores(m, x)
-% TODO: optimize single vector multiplication in rnet
-% TODO: maybe soft.forw does not need to do softmax
-% and we can do back (with softmax) and update in minibatches.
-% check dbl vs single
     for l=1:numel(m.net)
         if m.update && m.net{l}.dropout
             x = m.net{l}.drop(x);
