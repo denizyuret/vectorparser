@@ -15,7 +15,6 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
     msg('Processing sentences...');
     t0 = tic;
 
-    % TODO: check if preallocation really helps.
     parsers = cell(1, m.batch);
     valid = false(m.nmove, m.batch);
     if m.compute_costs
@@ -33,15 +32,19 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
             parsers{i} = feval(m.parser, numel(sentences{i}.head));
         end
 
+        % the range of sentences, parsers, valid is 1:nsentences.
+        % the range of all other variables is 1:nvalid.
+        % i=ivalid(j) converts from j=1:nvalid to i=1:nsentences.
+        ivalid = 1:nsentences;
+        nvalid = nsentences;
+
         while 1  % parse one batch
 
-            % the range of sentences, parsers, valid is 1:nsentences.
-            for i=1:nsentences
+            for j=1:nvalid
+                i = ivalid(j);
                 valid(:,i) = parsers{i}.valid_moves();
             end
 
-            % the range of all other variables is 1:nvalid:
-            % including ivalid, cost, feats, score, etc.
             ivalid = find(sum(valid(:,1:nsentences)));
             nvalid = numel(ivalid);
             if nvalid == 0 break; end
@@ -65,9 +68,6 @@ function [model, dump] = vectorparser_rnet(model, corpus, varargin)
             end
 
             if m.update
-                % TODO: make sure finished sentences do not
-                % contribute to update.
-                error('Not implemented update yet');
                 update_model(m, mincostmove);
                 wait(gpu); %DBG
             end
