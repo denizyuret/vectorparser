@@ -35,6 +35,20 @@
 
 	11. Alkan's idea of sentence parallelism: place the initial states
 	of 100 sentences in one matrix and parse in parallel.
+	test speed: 22.5 sent/sec.
+
+	12. Try parfor: hopeless, cannot share memory, communication
+	overhead kills any advantage we might have computing features in
+	parallel.  That's a shame, feature computation is 26.6 sent/sec
+	(different from the initial result of 29 due to minibatching; 37.6
+	ms/sent), feature + score is 22.5 sent/sec (44.4 ms/sent), so nnet
+	takes 6.8 ms, 5 times more time spent on features.
+
+	13. Only keep variables of still active sentences: test speed 24
+	sent/sec.
+
+	14. Only check valid for previously valid sentences: test speed 26
+	sent/sec.  dump speed back to 29.4 sent/sec.
 
 2015-01-14    <dyuret@ku.edu.tr>
 
