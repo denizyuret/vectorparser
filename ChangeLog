@@ -50,6 +50,14 @@
 	14. Only check valid for previously valid sentences: test speed 26
 	sent/sec.  dump speed back to 29.4 sent/sec.
 
+	15. Try train: getting stupid cuda error.  Only difference with
+	regular train is changing input sizes?  It works with cpu:
+	- cpu dump speed: 30.0 sent/sec.
+	- cpu test speed: 15.2 sent/sec.
+	- cpu train speed: 4.6 sent/sec. (with adagrad, dropout)
+	- cpu train speed: 6.0 sent/sec. (no adagrad, dropout)
+	- cpu train speed: 6.4 sent/sec. (no adagrad, no dropout)
+
 2015-01-14    <dyuret@ku.edu.tr>
 
 	* TODO:
