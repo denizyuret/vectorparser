@@ -58,6 +58,25 @@
 	- cpu train speed: 6.0 sent/sec. (no adagrad, dropout)
 	- cpu train speed: 6.4 sent/sec. (no adagrad, no dropout)
 
+	16. Traced cuda bug to (l.dw = dy * l.x') in layer.back.  Works if
+	I comment this out or set l.dw to random matrix.  Does not work if
+	I multiply two random matrices at this point.  Giving up.
+
+	17. Testing cpu for training:
+	m0test1: random init, train with predict=0, should be close to
+	  first epoch of trndev_02_2_7.
+	m0test2: random init, train with predict=1.
+	m1test1: init with 9724 model, train one epoch with predict=1.
+	m2test1: init with 9724 model, dw2=0, train one epoch with pred=1.
+@@ilac	m0test3: start with m0test2, do 10 epochs.
+@@ilac	m1test3: start with m1test1, do 20 epochs.
+@@ilac	m2test3: start with m2test1, do 20 epochs.
+
+	18. It would be faster to separate parsing and training.  GPU
+	parsing is 30min/epoch, training is 10min/epoch.  We can parse and
+	do 3 epochs of training in 1 hour.  CPU code does 5.5 hours for 1
+	epoch.
+	
 2015-01-14    <dyuret@ku.edu.tr>
 
 	* TODO:
