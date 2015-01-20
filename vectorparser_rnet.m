@@ -8,124 +8,126 @@
 % [model,dump] = vectorparser(model, corpus, 'update', 0)); %% testing
 % stats = eval_conll(corpus, dump);
 
-function [model, dump] = vectorparser_rnet(model, corpus, varargin)
-    gpu = gpuDevice; %DBG
+function dump = vectorparser_rnet(model, corpus, varargin)
     msg('Initializing...');
     m = vectorparser_init(model, corpus, varargin, nargout)
+
     msg('Processing sentences...');
+    batches = ceil(numel(corpus)/m.batch);
+    output = cell(1, batches);
     t0 = tic;
 
-    parsers = cell(1, m.batch);
-    valid = false(m.nmove, m.batch);
+    parfor batch=1:batches
+        output{batch} = parse_batch(m, corpus, batch);
+        dot(batch*m.batch, numel(corpus), t0);
+    end
+
+    msg('Concatenating output...');
+    dump = struct;
+    for batch=1:batches
+        names = fieldnames(output{batch});
+        for i=1:numel(names)
+            n = names{i};
+            if ~isfield(dump, n)
+                dump.(n) = output{batch}.(n);
+            else
+                dump.(n) = [ dump.(n), output{batch}.(n) ];
+            end
+        end
+    end
+end
+
+function o = parse_batch(m, corpus, batch)
+    bstart = (batch-1)*m.batch+1;
+    bend = min(batch*m.batch, numel(corpus));
+
+    % Initialize a batch of sentences and parsers:
+    sentences = corpus(bstart:bend);
+    nsentences = numel(sentences);
+    parsers = cell(1, nsentences);
+    nwords = 0;
+    for i=1:nsentences
+        iwords = numel(sentences{i}.head);
+        parsers{i} = feval(m.parser, iwords);
+        nwords = nwords + iwords;
+    end
+    nmoves = 2 * (nwords - nsentences);
+
+    % Pre-allocate arrays:
+    valid = false(m.nmove, nsentences);
+    dtype = class(sentences{1}.wvec);
     if m.compute_costs
-        cost = zeros(m.nmove, m.batch, 'single');
+        cost = zeros(m.nmove, nsentences, dtype);
+        o.y = zeros(1, nmoves, dtype);
+        o.cost = zeros(m.nmove, nmoves, dtype);
     end
     if m.compute_features
-        feats = zeros(m.ndims, m.batch, 'like', corpus{1}.wvec);
+        feats = zeros(m.ndims, nsentences, dtype);
+        o.x = zeros(m.ndims, nmoves, dtype);
+    end
+    if m.compute_scores
+        o.z = zeros(1, nmoves, dtype);
+        o.score = zeros(m.nmove, nmoves, dtype);
     end
 
-    for snum1=1:m.batch:numel(corpus)
-        snum2=min(numel(corpus), snum1+m.batch-1);
-        sentences = corpus(snum1:snum2);
-        nsentences = numel(sentences);
-        for i=1:nsentences
-            parsers{i} = feval(m.parser, numel(sentences{i}.head));
+    % Initialize the number and indices of unfinished sentences:
+    % the range of sentences, parsers, valid is 1:nsentences.
+    % the range of all other variables is idx+1:idx+nvalid.
+    % i=ivalid(j) converts from j=1:nvalid to i=1:nsentences.
+    ivalid = 1:nsentences;
+    nvalid = nsentences;
+    j0 = 0;
+
+    while 1  % parse one batch
+        %% Update valid moves and unfinished sentences:
+        for j=1:nvalid
+            i = ivalid(j);
+            valid(:,i) = parsers{i}.valid_moves();
         end
+        ivalid = find(sum(valid(:,1:nsentences)));
+        nvalid = numel(ivalid);
+        if nvalid == 0 break; end
 
-        % the range of sentences, parsers, valid is 1:nsentences.
-        % the range of all other variables is 1:nvalid.
-        % i=ivalid(j) converts from j=1:nvalid to i=1:nsentences.
-        ivalid = 1:nsentences;
-        nvalid = nsentences;
-
-        while 1  % parse one batch
-
-            for j=1:nvalid
-                i = ivalid(j);
-                valid(:,i) = parsers{i}.valid_moves();
-            end
-
-            ivalid = find(sum(valid(:,1:nsentences)));
-            nvalid = numel(ivalid);
-            if nvalid == 0 break; end
-
-            if m.compute_costs
-                for j=1:nvalid
-                    i = ivalid(j);
-                    cost(:,j) = parsers{i}.oracle_cost(sentences{i}.head);
-                end
-                [mincost, mincostmove] = min(cost(:,1:nvalid));
-            end
-            if m.compute_features
-                for j=1:nvalid
-                    i = ivalid(j);
-                    feats(:,j) = features(parsers{i}, sentences{i}, m.feats)';
-                end
-            end
-            if m.compute_scores
-                score = compute_scores(m, feats(:,1:nvalid));
-                [maxscore, maxscoremove] = max(score);
-            end
-
-            if m.update
-                update_model(m, mincostmove);
-                wait(gpu); %DBG
-            end
-
-            if ~m.predict
-                execmove = mincostmove;
-            else
-                zscore = score;
-                zscore(~valid(:,ivalid)) = -inf;
-                [~,execmove] = max(zscore);
-            end
-            for j=1:nvalid
-                i = ivalid(j);
-                if valid(execmove(j), i)
-                    parsers{i}.transition(execmove(j));
-                end
-            end
-
-            if m.dump 
-                update_dump();
-            end
-
-        end % while 1
-
-        if m.dump
-            for i=1:nsentences
-                m.pred{snum1+i-1} = parsers{i}.head;
-            end
-        end
-
-        dot(snum2, numel(corpus), t0);
-    end % for s1=corpus
-
-    if m.dump 
-        dump = m;
-    end
-
-
-    %%%%%%%%%%%%%%%%%%%%%%
-    function update_dump()
-        idump1 = m.dump;
-        m.dump = m.dump + nvalid;
-        idump2 = m.dump - 1;
-        if m.compute_features
-            m.x(:,idump1:idump2) = feats(:,1:nvalid);
-        end
+        j1 = j0+1;
+        j2 = j0+nvalid;
         if m.compute_costs
-            m.y(:,idump1:idump2) = mincostmove(:,1:nvalid);
-            m.cost(:,idump1:idump2) = cost(:,1:nvalid);
+            for j=1:nvalid
+                i = ivalid(j);
+                o.cost(:,j0+j) = parsers{i}.oracle_cost(sentences{i}.head);
+            end
+            [~,o.y(:,j1:j2)] = min(o.cost(:,j1:j2));
+        end
+        if m.compute_features
+            for j=1:nvalid
+                i = ivalid(j);
+                o.x(:,j0+j) = features(parsers{i}, sentences{i}, m.feats)';
+            end
         end
         if m.compute_scores
-            m.z(:,idump1:idump2) = execmove(:,1:nvalid);
-            m.score(:,idump1:idump2) = score(:,1:nvalid);
+            o.score(:,j1:j2) = compute_scores(m, o.x(:,j1:j2));
         end
-    end % update_dump
+        if ~m.predict
+            execmove = o.y;
+        else
+            zscore = o.score(:,j1:j2);
+            zscore(~valid(:,ivalid)) = -inf;
+            [~,o.z(:,j1:j2)] = max(zscore);
+            execmove = o.z;
+        end
+        for j=1:nvalid
+            i = ivalid(j);
+            parsers{i}.transition(execmove(j0+j));
+        end
+        j0 = j2;
+    end % while 1
+    for i=1:nsentences
+        o.pred{i} = parsers{i}.head;
+    end
+    if ~m.dumpx
+        o = rmfield(o, 'x');
+    end
+end
 
-
-end % vectorparser
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 function update_model(m, y)
@@ -162,28 +164,28 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
         switch v
           case 'predict' 
             m.predict = v1;
-          case 'update'  
-            m.update  = v1;
           case 'batch'
             m.batch = v1;
+          case 'dumpx'
+            m.dumpx = v1;
           otherwise 
-            error('Usage: [model, dump] = vectorparser(model, corpus, m)');
+            error('Usage: dump = vectorparser_rnet(model, corpus, ...)');
         end
     end
 
     if ~isfield(m, 'predict')
         m.predict = true;  % predict: use the model for prediction (default), otherwise follow gold moves
     end
-    
-    if ~isfield(m, 'update')
-        m.update = true;   % update: train the model (default), otherwise model is not updated
+    if ~isfield(m, 'dumpx')
+        m.dumpx = false;   % do not dump features unless explicitly asked
     end
-
     if ~isfield(m, 'batch')
         m.batch = 100;
     end
 
-    m.dump = 0+(nargout_save >= 2);     % needs to be numeric, used as the next index to write
+    % m.dump = 0+(nargout_save >= 2);     % needs to be numeric, used as the next index to write
+    m.dump = 1; %DBG
+    m.update = 0; %DBG
     m.compute_costs = m.update || m.dump || ~m.predict; % eval_conll needs costs
     m.compute_features = m.update || m.dump || m.predict;
     m.compute_scores  = m.update || m.predict;
@@ -209,27 +211,6 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
     else
         fprintf('Using gold moves.\n');
     end % if m.predict
-
-    if m.dump
-        fprintf('Dumping results.\n');
-        nwords = 0;
-        for i=1:numel(corpus)
-            nwords = nwords + numel(corpus{i}.head);
-        end
-        nmoves = 2 * (nwords - numel(corpus));
-        if m.compute_features
-            m.x = zeros(m.ndims, nmoves, 'like', x1);
-        end
-        if m.compute_costs
-            m.y = zeros(1, nmoves, 'like', x1);
-            m.cost = zeros(m.nmove, nmoves, 'like', x1);
-        end
-        if m.compute_scores
-            m.z = zeros(1, nmoves, 'like', x1);
-            m.score = zeros(m.nmove, nmoves, 'like', x1);
-        end
-        m.pred = cell(1, numel(corpus));
-    end % if m.dump
 
 end % vectorparser_init
 
