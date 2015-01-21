@@ -1,3 +1,94 @@
+2015-01-21    <dyuret@ku.edu.tr>
+
+	* m0test1: random init, train 1 epoch with predict=0.  Compare to
+	trndev_02_2_7 at the end of 1 epoch (1820392 instances):
+	devacc=0.956256, deverr=0.0437.  Can the difference be due to
+	random initialization?
+	
+	epoch	move	head	word	sent
+	0	0.2864	0.8042	0.7830	0.9971
+	1	0.0667	0.1754	0.1547	0.8041
+
+	
+	* m0test2: random init, train 1 epoch with predict=1.  This is
+	worse, probably normal for dynamic oracle.
+
+	epoch	move	head	word	sent
+	0	0.2864	0.8042	0.7830	0.9971
+	1	0.0823	0.2077	0.1760	0.8941
+
+
+	* m0test3: start with m0test2, do another 10 epochs.
+
+	epoch	move	head	word	sent
+	0	0.2864	0.8042	0.7830	0.9971
+	1	0.0823	0.2077	0.1760	0.8941
+	2	0.0626	0.1600	0.1409	0.8135
+	3	0.0598	0.1543	0.1370	0.8035
+	4	0.0602	0.1534	0.1346	0.7982
+	5	0.0637	0.1596	0.1356	0.8129
+	6	0.0593	0.1487	0.1289	0.7982
+	7	0.0548	0.1413	0.1247	0.7776
+	8	0.0536	0.1382	0.1220	0.7794
+	9	0.0526	0.1348	0.1188	0.7641
+	10	0.0516	0.1335	0.1183	0.7618
+	11	0.0513	0.1326	0.1166	0.7535
+
+
+	* m1test1: init with 9724 model, train one epoch with predict=1.
+	Gets worse, but also saw this when switching from static to
+	dynamic oracle in perceptron.
+	
+	epoch	move	head	word	sent
+	0	0.0340	0.0894	0.0785	0.5888
+	1	0.0387	0.1004	0.0880	0.6565
+
+
+	* m1test3: start with m1test1 and do 20 more epochs.  This one
+	does not seem to recover.  More epochs needed or buggy code?
+	
+	epoch	move	head	word	sent
+	1	0.0384	0.0993	0.0872	0.6465
+	2	0.0377	0.0967	0.0843	0.6359
+	3	0.0378	0.0970	0.0850	0.6388
+	4	0.0370	0.0946	0.0829	0.6353
+	5	0.0368	0.0943	0.0827	0.6253
+	6	0.0360	0.0931	0.0818	0.6218
+	7	0.0360	0.0939	0.0828	0.6229
+	8	0.0365	0.0940	0.0829	0.6324
+	9	0.0355	0.0922	0.0808	0.6206
+	10	0.0355	0.0920	0.0810	0.6253
+
+
+	* m2test1: init with 9724 model, dw2=0, train one epoch with
+	pred=1.  Forgetting dw2 should allow faster training on a
+	different objective function at the risk of initial oscillation.
+
+	epoch	move	head	word	sent
+	0	0.0340	0.0894	0.0785	0.5888
+	1	0.0609	0.1520	0.1271	0.8082
+
+
+	* m2test3: start with m2test1 and do 20 epochs.  
+
+	epoch	move	head	word	sent
+	1	0.0489	0.1271	0.1113	0.7306
+	2	0.0488	0.1238	0.1079	0.7206
+	3	0.0457	0.1194	0.1038	0.7006
+	4	0.0447	0.1151	0.1008	0.7012
+	5	0.0444	0.1129	0.0993	0.7000
+	6	0.0430	0.1110	0.0977	0.6894
+	7	0.0424	0.1092	0.0959	0.6859
+	8	0.0419	0.1076	0.0944	0.6841
+	9	0.0417	0.1075	0.0944	0.6853
+	10	0.0411	0.1062	0.0933	0.6753
+
+
+	* Summary: never catches up to static model in 10 epochs.  More
+	epochs needed or buggy code?  Too much dropout for a changing
+	objective?  What explains the difference of m0test1 and trndev?
+	
+	
 2015-01-16    <dyuret@ku.edu.tr>
 
 	* vectorparser_rnet.m: debugging vectorparser with rnet:
@@ -68,14 +159,15 @@
 	m0test2: random init, train with predict=1.
 	m1test1: init with 9724 model, train one epoch with predict=1.
 	m2test1: init with 9724 model, dw2=0, train one epoch with pred=1.
-@@ilac	m0test3: start with m0test2, do 10 epochs.
-@@ilac	m1test3: start with m1test1, do 20 epochs.
-@@ilac	m2test3: start with m2test1, do 20 epochs.
 
 	18. It would be faster to separate parsing and training.  GPU
 	parsing is 30min/epoch, training is 10min/epoch.  We can parse and
 	do 3 epochs of training in 1 hour.  CPU code does 5.5 hours for 1
 	epoch.
+
+@@ilac	m0test3: start with m0test2, do 10 epochs.
+@@ilac	m1test3: start with m1test1, do 20 epochs.
+@@ilac	m2test3: start with m2test1, do 20 epochs.
 	
 2015-01-14    <dyuret@ku.edu.tr>
 
