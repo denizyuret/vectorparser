@@ -30,13 +30,13 @@ for i=1:numel(corpus)
   r.head_err = r.head_err + head_err;
 
   % Every sentence has 2*nword-2 moves
-  move1 = nmove + 1;
-  move2 = nmove + 2*nword - 2;
-  nmove = move2;
-  movecost = sum(zcost(move1:move2));
-  assert(movecost == head_err, ...
-         'Discrepancy in sentence %d: %d ~= %d moves(%d,%d)', ...
-         i, movecost, head_err, move1, move2);
+  %   move1 = nmove + 1;
+  %   move2 = nmove + 2*nword - 2;
+  %   nmove = move2;
+  %   movecost = sum(zcost(move1:move2));
+  %   assert(movecost == head_err, ...
+  %          'Discrepancy in sentence %d: %d ~= %d moves(%d,%d)', ...
+  %          i, movecost, head_err, move1, move2);
 
   for j=1:numel(h)
     if (isempty(regexp(s.form{j}, '^\W+$')) ||...
@@ -49,7 +49,7 @@ for i=1:numel(corpus)
   end %for
 
 end
-assert(nmove == numel(dump.z));
+% assert(nmove == numel(dump.z));
 assert(r.head_err == sum(zcost));
 
 r.sent_pct = r.sent_err / r.sent_cnt;
