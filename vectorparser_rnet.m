@@ -17,29 +17,50 @@ function dump = vectorparser_rnet(model, corpus, varargin)
     output = cell(1, batches);
     t0 = tic;
 
-    parfor batch=1:batches
-        output{batch} = parse_batch(m, corpus, batch);
-        dot(batch*m.batch, numel(corpus), t0);
+    parfor ibatch=1:batches
+        output{ibatch} = parse_batch(m, corpus, ibatch);
+        if m.dbg dot(ibatch*m.batch, numel(corpus), t0); end
     end
 
     msg('Concatenating output...');
     dump = struct;
-    for batch=1:batches
-        names = fieldnames(output{batch});
-        for i=1:numel(names)
-            n = names{i};
-            if ~isfield(dump, n)
-                dump.(n) = output{batch}.(n);
-            else
-                dump.(n) = [ dump.(n), output{batch}.(n) ];
+    o1 = output{1};
+    names = fieldnames(o1);
+    for i=1:numel(names)
+        n = names{i};
+        x = o1.(n);
+        rows = size(x, 1);
+        cols = 0;
+        for ibatch=1:batches
+            if size(output{ibatch}.(n), 1) ~= rows
+                error('Size mismatch in output{%d}.%s', ibatch, n);
             end
+            cols = cols + size(output{ibatch}.(n), 2);
         end
+        if iscell(x)
+            d = cell(rows, cols);
+        else
+            d = zeros(rows, cols, 'like', x);
+        end
+        idx2 = 0;
+        for ibatch=1:batches
+            idx1 = idx2+1;
+            idx2 = idx2+size(output{ibatch}.(n), 2);
+            d(:,idx1:idx2) = output{ibatch}.(n);
+        end
+        dump.(n) = d;
     end
+    msg('done');
 end
 
-function o = parse_batch(m, corpus, batch)
-    bstart = (batch-1)*m.batch+1;
-    bend = min(batch*m.batch, numel(corpus));
+function o = parse_batch(m, corpus, ibatch)
+    gpu = gpuDevice;
+    if m.dbg fprintf('gpu1[%d]: %g\n', ibatch, gpu.FreeMemory); end
+    % gnet = copynet(m.net, 'gpu');
+    % if m.dbg fprintf('gpu2[%d]: %g\n', ibatch, gpu.FreeMemory); end
+
+    bstart = (ibatch-1)*m.batch+1;
+    bend = min(ibatch*m.batch, numel(corpus));
 
     % Initialize a batch of sentences and parsers:
     sentences = corpus(bstart:bend);
@@ -104,7 +125,8 @@ function o = parse_batch(m, corpus, batch)
             end
         end
         if m.compute_scores
-            o.score(:,j1:j2) = compute_scores(m, o.x(:,j1:j2));
+            %% o.score(:,j1:j2) = gather(forward(gnet, o.x(:,j1:j2)));
+            o.score(:,j1:j2) = gather(forward(m.net, o.x(:,j1:j2)));
         end
         if ~m.predict
             execmove = o.y;
@@ -126,29 +148,8 @@ function o = parse_batch(m, corpus, batch)
     if ~m.dumpx
         o = rmfield(o, 'x');
     end
-end
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function update_model(m, y)
-    for l=numel(m.net):-1:2
-        y = m.net{l}.back(y);
-    end
-    m.net{1}.back(y);
-    for l=1:numel(m.net)
-        m.net{l}.update();
-    end
-end
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function score = compute_scores(m, x)
-    for l=1:numel(m.net)
-        if m.update && m.net{l}.dropout
-            x = m.net{l}.drop(x);
-        end
-        x = m.net{l}.forw(x);
-    end
-    score = gather(x);
+    % clear gnet;
+    if m.dbg fprintf('gpu3[%d]: %g\n', ibatch, gpu.FreeMemory); end
 end
 
 
@@ -168,6 +169,8 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
             m.batch = v1;
           case 'dumpx'
             m.dumpx = v1;
+          case 'dbg'
+            m.dbg = v1;
           otherwise 
             error('Usage: dump = vectorparser_rnet(model, corpus, ...)');
         end
@@ -181,6 +184,9 @@ function m = vectorparser_init(model, corpus, varargin_save, nargout_save)
     end
     if ~isfield(m, 'batch')
         m.batch = 100;
+    end
+    if ~isfield(m, 'dbg')
+        m.dbg = false;
     end
 
     % m.dump = 0+(nargout_save >= 2);     % needs to be numeric, used as the next index to write
