@@ -1,11 +1,18 @@
+# TODO
+# gpu
+# dropout
+# update
+
 module Jnet
 
-using NumericExtensions
-using Base.LinAlg.BLAS
+using NumericExtensions: softmax!
+using Base.LinAlg.BLAS: gemm!
+using CUDArt: CudaArray, CudaMatrix, CudaVector, devices, device, to_host
 blas_set_num_threads(12)
+# include("cublas.jl")
 
-typealias Mat{t} AbstractMatrix{t}
-typealias Vec{t} AbstractVector{t}
+typealias Mat{t} Union(AbstractMatrix{t}, CudaMatrix{t})
+typealias Vec{t} Union(AbstractVector{t}, CudaVector{t})
 
 type Layer{t}
     w::Mat{t}
@@ -56,19 +63,19 @@ function initforw{t}(l::Layer{t}, x::Mat{t})
     rows = size(l.w,1)
     cols = size(l.x,2)
     if (!isdefined(l, :y) || size(l.y) != (rows, cols))
-        l.y = zeros(t, rows, cols)
+        l.y = similar(l.w, rows, cols)
     end
 end
 
 function initback{t}(l::Layer{t}, dy::Mat{t}, dx::Bool)
     if (!isdefined(l, :dw)) 
-        l.dw = 0 * l.w 
+        l.dw = zeros(l.w)
     end
     if (isdefined(l, :b) && !isdefined(l, :db))
-        l.db = 0 * l.b
+        l.db = zeros(l.b)
     end
     if (dx && !isdefined(l, :dx))
-        l.dx = 0 * l.x
+        l.dx = zeros(l.x)
     end
 end
 
@@ -130,7 +137,9 @@ function forw{t}(net::Net{t}, x::Mat{t}, batch::Int)
     for b=1:batch:xcols
         e = b + batch - 1
         if (e > xcols) e = xcols; end
-        y[:,b:e] = forw(net, sub(x,:,b:e))
+        # copy!(sub(y,:,b:e), forw(net, sub(x,:,b:e)))
+        # y[:,b:e] = forw(net, sub(x,:,b:e))
+        y[:,b:e] = to_host(forw(net, sub(x,:,b:e)))
     end
     return y
 end
@@ -154,31 +163,51 @@ using MAT
 
 function load()
     file = matopen("dev.mat")
-    dev = read(file, "dev")
+    data = read(file, "dev")
     close(file)
-    return dev
+    return data
 end
 
-function test(dev)
+function test(data)
+    result = devices((x->true), nmax=1) do devlist
+    device(devlist[1])
+
     # info("Loading...")
-    # dev = load()
+    # data = load()
+
     info("Initializing...")
-    n01 = relu(dev["w1"][:,2:end], dev["w1"][:,1])
-    n02 = soft(dev["w2"][:,2:end], dev["w2"][:,1])
+    w1 = data["w1"][:,2:end]
+    b1 = data["w1"][:,1]
+    w2 = data["w2"][:,2:end]
+    b2 = data["w2"][:,1]
+    gw1 = CudaArray(w1)
+    gb1 = CudaArray(b1)
+    gw2 = CudaArray(w2)
+    gb2 = CudaArray(b2)
+    #n01 = relu(gw1,gb1)
+    n01 = soft(gw1,gb1)
+    n02 = soft(gw2,gb2)
+    #n01 = relu(w1,b1)
+    #n02 = soft(w2,b2)
     n0 = [n01,n02]
-    x10k = dev["x"][:,1:10000]
-    y10k = dev["y"][1:10000]
+    x10k = data["x"][:,1:10000]
+    y10k = data["y"][1:10000]
     info("Running 10k test with bias...")
     info("Forward 1")
     @time forw(n0, x10k, 100)
     info("Forward 2")
     @time forw(n0, x10k, 100)
-    info("Forwback 1")
-    @time forwback(n0, x10k, y10k, 100)
-    info("Forwback 2")
-    @time forwback(n0, x10k, y10k, 100)
+
+#     info("Forwback 1")
+#     @time forwback(n0, x10k, y10k, 100)
+#     info("Forwback 2")
+#     @time forwback(n0, x10k, y10k, 100)
+
     info("done")
     return n0
-end
+ end # devices
 
-end
+
+end # function test(data)
+
+end # module Jnet
