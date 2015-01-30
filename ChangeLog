@@ -1,3 +1,62 @@
+2015-01-28    <dyuret@ku.edu.tr>
+
+	* julia: EFFICIENT ARRAY OPERATIONS ************************************
+	
+	- is broadcast efficient with anonymous functions or only builtins?
+	
+	-- Only builtins:
+	
+	julia> @time broadcast!(+,a,a,b);
+	elapsed time: 0.167783 seconds (392 bytes allocated)
+	julia> @time broadcast!((x,y)->(x+y),a,a,b);
+	elapsed time: 17.757471 seconds (7837294620 bytes allocated, 34.47% gc time)
+	
+	- is vbroadcast faster than broadcast?
+
+	-- Not significantly, and it matters whether we do dim1 or dim2:
+	
+	julia> @time vbroadcast!(Add(),a,a,b,2);
+	elapsed time: 0.144841 seconds (112 bytes allocated)
+	julia> @time vbroadcast!(Add(),a,a,b,1);
+	elapsed time: 0.176054 seconds (112 bytes allocated)
+
+	-- On the other hand they are both faster than a for loop:
+	
+	elapsed time: 0.191333 seconds (80 bytes allocated)
+
+	-- And slower than ger!:
+	
+	julia> @time ger!(1.0,b,o,a)
+	elapsed time: 0.051292 seconds (80 bytes allocated)
+
+	-- ger! is not only faster because of multithreading:
+	
+	julia> blas_set_num_threads(1)
+	julia> @time ger!(1.0,b,o,a)
+	elapsed time: 0.096977 seconds (80 bytes allocated)
+	julia> blas_set_num_threads(12)	
+	elapsed time: 0.049284 seconds (80 bytes allocated)
+	
+	- why is broadcast efficient and map is not?
+
+	julia> @time map!(+,a,a,a);
+	elapsed time: 14.267179 seconds (6399991904 bytes allocated, 35.12% gc time)
+	julia> @time map!(Add(),a,a,a);
+	elapsed time: 0.174546 seconds (80 bytes allocated)
+	???
+	
+	- how does NumericalExtensions make map faster?
+	- do we have to restrict the kernal functions for NumExt map to builtins?
+	- gemm, ger, axpy & relu etc. enough for forw, back, update?
+	- static 1 array for ger?
+	- @map macro?
+	- contribute cublas.jl
+	- suggest []= operator in mailing list.
+
+2015-01-27    <dyuret@ku.edu.tr>
+
+	* juliatests: more speed tests.
+
 2015-01-24    <dyuret@ku.edu.tr>
 
 	* jnet.jl: speed tests.
