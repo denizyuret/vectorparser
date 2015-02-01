@@ -1,7 +1,7 @@
 # TODO
 # make it work without cudart and gpu
-# debug extra memory usage in gpu mode: is that why blas.jl works with pointers?
-# update
+# debug extra memory usage in gpu mode: is that why blas.jl works with pointers?  ccall convert problem?
+# install update using axpy!
 
 
 ### Union types to cover both regular and cuda arrays:
