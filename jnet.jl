@@ -1,8 +1,4 @@
-# why does forwback alloc 386MB even after first run?  ~4MB/iter?
-# why does back with 10k give dimension error?
-
 module Jnet
-using Debug
 
 include("jnet_util.jl")
 
@@ -106,13 +102,13 @@ function softback{t}(dy::Mat{t}, y::Mat{t})
     # TODO: other types of final layers, losses?
 
     for j=1:size(y,2)
-        ymax = y[1,j]
-        for i=2:size(y,1)
+        ymax = -inf(t)
+        for i=1:size(y,1)
             if (y[i,j] > ymax)
                 ymax = y[i,j]
             end
         end
-        ysum = 0
+        ysum = zero(t)
         for i=1:size(y,1)
             y[i,j] = exp(y[i,j] - ymax)
             ysum += y[i,j]
@@ -249,38 +245,37 @@ function test(data)
     b2 = data["w2"][:,1]
 
     n0 = [relu(w1,b1), soft(w2,b2)]
-#     info("Running 10k cpu test with bias...")
-#     info("CPU Forward 1")
-#     @time y1 = forw(n0, x10k, 100)
-#     info("CPU Forward 2")
-#     @time y2 = forw(n0, x10k, 100)
-#     assert(y1 == y2)
+    info("Running 10k cpu test with bias...")
+    info("CPU Forward 1")
+    @time y1 = forw(n0, x10k, 100)
+    info("CPU Forward 2")
+    @time y2 = forw(n0, x10k, 100)
+    assert(y1 == y2)
     info("CPU Forwback 1")
     @time forwback(n0, x10k, y10k, 100)
-#    clear_malloc_data()
     info("CPU Forwback 2")
     @time forwback(n0, x10k, y10k, 100)
     info("CPU Forwback 3")
     @time forwback(n0, x10k, y10k, 100)
 
-#     device_reset(0)
-#     gw1 = CudaArray(w1)
-#     gb1 = CudaArray(b1)
-#     gw2 = CudaArray(w2)
-#     gb2 = CudaArray(b2)
-#     g0 = [relu(gw1,gb1), soft(gw2,gb2)]
-#     info("Running 10k gpu test with bias...")
-#     info("GPU Forward 1")
-#     @time y3 = forw(g0, x10k, 100)
-#     info("maxabsdiff=$(maximum(abs(y3-y2)))")
-#     info("GPU Forward 2")
-#     @time y4 = forw(g0, x10k, 100)
-#     assert(y4 == y3)
-#     info("GPU Forwback 1")
-#     @time forwback(g0, x10k, y10k, 100)
-#     info("GPU Forwback 2")
-#     @time forwback(g0, x10k, y10k, 100)
-#     info("done")
+    device_reset(0)
+    gw1 = CudaArray(w1)
+    gb1 = CudaArray(b1)
+    gw2 = CudaArray(w2)
+    gb2 = CudaArray(b2)
+    g0 = [relu(gw1,gb1), soft(gw2,gb2)]
+    info("Running 10k gpu test with bias...")
+    info("GPU Forward 1")
+    @time y3 = forw(g0, x10k, 100)
+    info("maxabsdiff=$(maximum(abs(y3-y2)))")
+    info("GPU Forward 2")
+    @time y4 = forw(g0, x10k, 100)
+    assert(y4 == y3)
+    info("GPU Forwback 1")
+    @time forwback(g0, x10k, y10k, 100)
+    info("GPU Forwback 2")
+    @time forwback(g0, x10k, y10k, 100)
+    info("done")
     return n0
 #  end # devices
 
