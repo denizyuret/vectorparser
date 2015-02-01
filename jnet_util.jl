@@ -1,9 +1,11 @@
 # TODO
+# make it work without cudart and gpu
 # gpu: reluforw, reluback, softback
 # dropout
 # update
 # careful with alloc-free of gpu variables
 # do we need all the declarations, or should we keep the code generic
+
 
 ### Union types to cover both regular and cuda arrays:
 using CUDArt: CudaArray, CudaMatrix, CudaVector
@@ -27,8 +29,8 @@ similar{T}(a::CudaArray{T}, dims::Int...) = similar(a, T, dims)
 
 
 ### We need gemm! and ger! for CudaArrays:
-import Base.LinAlg.BLAS: gemm!, ger!
-# blas_set_num_threads(12)
+import Base.LinAlg.BLAS: gemm!, ger!, gemv!, axpy!
+blas_set_num_threads(12)
 using Base.LinAlg: BlasChar, BlasInt
 libcublas="libcublas"
 
