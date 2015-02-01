@@ -1,10 +1,7 @@
 # TODO
 # make it work without cudart and gpu
-# gpu: reluforw, reluback, softback
-# dropout
+# debug extra memory usage in gpu mode: is that why blas.jl works with pointers?
 # update
-# careful with alloc-free of gpu variables
-# do we need all the declarations, or should we keep the code generic
 
 
 ### Union types to cover both regular and cuda arrays:
