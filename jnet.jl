@@ -102,8 +102,8 @@ function softback{t}(dy::Mat{t}, y::Mat{t})
     # TODO: other types of final layers, losses?
 
     for j=1:size(y,2)
-        ymax = -inf(t)
-        for i=1:size(y,1)
+        ymax = y[1,j]
+        for i=2:size(y,1)
             if (y[i,j] > ymax)
                 ymax = y[i,j]
             end
