@@ -19,6 +19,7 @@ type Layer{t}
     x::Mat{t}           # last input
     y::Mat{t}           # last output
     dx::Mat{t}          # gradient wrt input
+    dy::Mat{t}          # gradient wrt output
     xmask::Mat{t}       # input mask for dropout
     xones::Vec{t}       # vector of ones for bias calculation
 
@@ -39,30 +40,28 @@ end
 ### Basic layer functions
 
 function forw{t}(l::Layer{t}, x::Mat{t})
-    initforw(l, x)
-    gemm!('N', 'N', one(t), l.w, l.x, zero(t), l.y)  # y=w*x
-    if isdefined(l, :b) 
-        # broadcast!(+, l.y, l.y, l.b)
-        ger!(one(t), l.b, l.xones, l.y)	 # y=y+b: add b to each column of y
+    initforw(l, x)					# alloc x,y,xones
+    gemm!('N', 'N', one(t), l.w, l.x, zero(t), l.y)	# y=w*x
+    if isdefined(l, :b)
+	ger!(one(t), l.b, l.xones, l.y)			# y=y+b
     end
-    if isdefined(l, :fforw) 
-        l.fforw(l.y)  # y=fforw(y)
+    if isdefined(l, :fforw)
+	l.fforw(l.y)					# y=fforw(y)
     end
     return l.y
 end
 
-function back{t}(l::Layer{t}, dy::Mat{t}, dx=true)
-    initback(l, dy, dx)
-    if (isdefined(l, :fback)) 
-        l.fback(dy, l.y)  # this will overwrite dy and l.y!
+function back{t}(l::Layer{t}, dy::Mat{t}, dx::Bool=true)
+    initback(l, dy, dx)		
+    if isdefined(l, :fback)
+	l.fback(l.dy, l.y)	     # this will overwrite l.dy and l.y!
+    end 
+    gemm!('N', 'T', one(t), l.dy, l.x, zero(t), l.dw)	# dw=dy*x'
+    if isdefined(l, :b)
+	gemv!('N', one(t), l.dy, l.xones, zero(t), l.db) # db=sum(dy,2)
     end
-    gemm!('N', 'T', one(t), dy, l.x, zero(t), l.dw)  # dw=dy*x'
-    if (isdefined(l, :b)) 
-        # sum!(l.db, dy)
-        gemv!('N', one(t), dy, l.xones, zero(t), l.db)  # db=sum(dy,2)
-    end
-    if (dx)  # dx is optional because it is expensive and unnecessary for input layer
-        gemm!('T', 'N', one(t), l.w, dy, zero(t), l.dx)  # dx=w'*dy
+    if (dx) # dx is optional because it is expensive and unnecessary for input layer
+        gemm!('T', 'N', one(t), l.w, l.dy, zero(t), l.dx) # dx=w'*dy
         return l.dx
     end
 end
@@ -126,6 +125,7 @@ end
 typealias Net{t} Array{Layer{t},1}
 
 function forw{t}(net::Net{t}, x::Mat{t})
+    x = initforw(net, x)
     for i=1:length(net)
         x = forw(net[i], x)
     end
@@ -133,6 +133,7 @@ function forw{t}(net::Net{t}, x::Mat{t})
 end
 
 function back{t}(net::Net{t}, dy::Mat{t})
+    dy = initback(net, dy)
     for i=length(net):-1:2
         dy = back(net[i], dy)
     end
@@ -144,25 +145,21 @@ end
 ### Batch processing:
 
 function forw{t}(net::Net{t}, x::Mat{t}, batch::Int)
-    xcols = size(x, 2)
+    xrows,xcols = size(x)
     y = zeros(t, size(net[end].w, 1), xcols)
     info("forw:Alloc(y)=$(mysizeof(y))")
     for b=1:batch:xcols
         e = b + batch - 1
         if (e > xcols) e = xcols; end
-        # copy!(sub(y,:,b:e), forw(net, sub(x,:,b:e)))
-        # y[:,b:e] = forw(net, sub(x,:,b:e))
-        # y[:,b:e] = to_host(forw(net, sub(x,:,b:e)))
-        foo = forw(net, sub(x,:,b:e))
-        # display(foo)
-        y[:,b:e] = to_host(foo)
+        y[:,b:e] = to_host(forw(net, sub(x,1:xrows,b:e)))
     end
     return y
 end
 
 function forwback{t}(net::Net{t}, x::Mat{t}, labels::Vec{t}, batch::Int)
-    xcols = size(x, 2)
-    y = zeros(t, size(net[end].w, 1), xcols)
+    xrows,xcols = size(x)
+    yrows,ycols = size(net[end].w, 1),xcols
+    y = zeros(t, yrows, ycols)
     info("forwback:Alloc(y)=$(mysizeof(y))")
     for i=1:length(labels)
         y[labels[i],i] = 1
@@ -170,9 +167,8 @@ function forwback{t}(net::Net{t}, x::Mat{t}, labels::Vec{t}, batch::Int)
     for b=1:batch:xcols
         e = b + batch - 1
         if (e > xcols) e = xcols; end
-        # info("$((b,e))")
-        forw(net, sub(x,:,b:e))
-        back(net, sub(y,:,b:e))
+        forw(net, sub(x,1:xrows,b:e))
+        back(net, sub(y,1:yrows,b:e))
     end
 end
 
@@ -182,38 +178,56 @@ end
 # 1. Need to free CudaArrays rather than relying on gc()
 # 2. With getindex, ones, etc. missing from CUDArt, not possible to write generic code
 
+function initmat{t}(l::Layer{t}, n::Symbol, dims::Dims, init::t=zero(t))
+    if (!isdefined(l, n) || size(l.(n)) != dims)
+	if (isdefined(l, n)) free(l.(n)); end
+	l.(n) = similar(l.w, dims)
+	fill!(l.(n), init)
+        info("initmat($(n))=$(mysizeof(l.(n)))")
+    end
+end
+
+function initforw{t}(net::Net{t}, x::Mat{t})
+    l = net[1]
+    if (isa(l.w, CudaArray))
+	initmat(l, :x, size(x))
+	copy!(l.x, x)
+	x = l.x
+    end
+    return x
+end
+
+function initback{t}(net::Net{t}, dy::Mat{t})
+    l = net[length(net)]
+    if (isa(l.w, CudaArray))
+	initmat(l, :dy, size(dy))
+	copy!(l.dy, dy)
+	dy = l.dy
+    end
+    return dy
+end
+
 function initforw{t}(l::Layer{t}, x::Mat{t})
+    l.x = x
     if (!isdefined(l, :w))
         error("l.w not defined")
     end
-    l.x = x
     rows = size(l.w,1)
     cols = size(l.x,2)
-    if (!isdefined(l, :y) || (size(l.y) != (rows, cols)))
-        if (isdefined(l, :y)) free(l.y); end
-        l.y = similar(l.w, rows, cols)
-        info("initforw:Alloc(y)=$(mysizeof(l.y))")
-    end
-    if (isdefined(l, :b) && (!isdefined(l, :xones) || (length(l.xones) != cols)))
-        if (isdefined(l, :xones)) free(l.xones); end
-        l.xones = ones(l.w, cols)
-        info("initforw:Alloc(xones)=$(mysizeof(l.xones))")
+    initmat(l, :y, (rows,cols))
+    if (isdefined(l, :b))
+	initmat(l, :xones, (cols,), one(t))
     end
 end
 
 function initback{t}(l::Layer{t}, dy::Mat{t}, dx::Bool)
-    if (!isdefined(l, :dw)) 
-        l.dw = zeros(l.w)
-        info("initback:Alloc(dw)=$(mysizeof(l.dw))")
+    l.dy = dy
+    initmat(l, :dw, size(l.w))
+    if (isdefined(l, :b)) 
+	initmat(l, :db, size(l.b))
     end
-    if (isdefined(l, :b) && !isdefined(l, :db))
-        l.db = zeros(l.b)
-        info("initback:Alloc(db)=$(mysizeof(l.db))")
-    end
-    if (dx && (!isdefined(l, :dx) || (size(l.dx) != size(l.x))))
-        if (isdefined(l, :dx)) free(l.dx); end
-        l.dx = zeros(l.x)
-        info("initback:Alloc(dx)=$(mysizeof(l.dx))")
+    if (dx) 
+	initmat(l, :dx, size(l.x))
     end
 end
 
@@ -255,8 +269,6 @@ function test(data)
     @time forwback(n0, x10k, y10k, 100)
     info("CPU Forwback 2")
     @time forwback(n0, x10k, y10k, 100)
-    info("CPU Forwback 3")
-    @time forwback(n0, x10k, y10k, 100)
 
     device_reset(0)
     gw1 = CudaArray(w1)
@@ -276,7 +288,7 @@ function test(data)
     info("GPU Forwback 2")
     @time forwback(g0, x10k, y10k, 100)
     info("done")
-    return n0
+    return g0
 #  end # devices
 
 

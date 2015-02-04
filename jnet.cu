@@ -13,6 +13,21 @@ static void checkError() {
   }
 }
 
+__global__ void _fill(float *y, int n, float val)
+{
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  while (i < n) {
+    y[i] = val;
+    i += blockDim.x * gridDim.x;
+  }
+}
+
+extern "C" void fill(float *y, int n, float val)
+{
+  _fill<<<BLK,THR>>>(y, n, val);
+  checkError();
+}
+
 __global__ void _reluforw(float *y, int n)
 {
   int i = threadIdx.x + blockIdx.x * blockDim.x;

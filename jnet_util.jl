@@ -15,7 +15,7 @@ to_host(x)=x
 free(x)=x
 
 ### We need ones, zeros, similar for CudaArrays:
-import Base: ones, zeros, similar
+import Base: ones, zeros, similar, copy!
 ones(x::Array,dims...)=ones(eltype(x),dims...)
 ones{T}(a::CudaArray{T})=CudaArray(ones(T,size(a)))
 ones{T}(a::CudaArray{T},dims...)=CudaArray(ones(T,dims...))
@@ -24,6 +24,7 @@ zeros{T}(a::CudaArray{T})=CudaArray(zeros(T,size(a)))
 zeros{T}(a::CudaArray{T},dims...)=CudaArray(zeros(T,dims...))
 similar{T}(a::CudaArray{T}, dims::Int...) = similar(a, T, dims)
 
+copy!{T}(a::CudaArray{T}, b::SubArray{T}) = copy!(a, map(d->1:d,size(a)), b.parent, b.indexes)
 
 ### We need gemm! and ger! for CudaArrays:
 import Base.LinAlg.BLAS: gemm!, ger!, gemv!, axpy!
@@ -131,7 +132,7 @@ end
 
 ### CUDA versions of activation functions:
 
-const libjnet="./libjnet.so.7"
+const libjnet="./libjnet.so.8"
 
 function reluforw(y::CudaMatrix{Float32})
     ccall(("reluforw",libjnet), Void, (Ptr{Float32},Cint), y, length(y))
@@ -147,3 +148,8 @@ function softback(dy::Mat{Float32}, y::CudaMatrix{Float32})
     if (!is(ddy,dy)) free(ddy); end
 end
 
+import Base.fill!
+
+function fill!(y::CudaArray{Float32}, val::Float32)
+    ccall(("fill",libjnet), Void, (Ptr{Float32},Cint,Float32), y, length(y), val)
+end
